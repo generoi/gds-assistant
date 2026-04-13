@@ -33,6 +33,9 @@ class Plugin
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
 
+        // Settings page
+        new Admin\SettingsPage($this);
+
         register_activation_hook($this->file, [$this, 'activate']);
         register_deactivation_hook($this->file, [$this, 'deactivate']);
     }
@@ -115,6 +118,26 @@ class Plugin
             'has_archive' => false,
             'rewrite' => false,
         ]);
+
+        register_post_type('assistant_memory', [
+            'labels' => [
+                'name' => 'Memory',
+                'singular_name' => 'Memory Entry',
+                'add_new_item' => 'Add Memory',
+                'edit_item' => 'Edit Memory',
+                'menu_name' => 'AI Memory',
+            ],
+            'public' => false,
+            'show_ui' => true,
+            'show_in_menu' => false, // Managed via settings page DataView
+            'show_in_rest' => true,
+            'rest_base' => 'assistant-memory',
+            'supports' => ['title', 'editor', 'revisions'],
+            'capability_type' => 'post',
+            'map_meta_cap' => true,
+            'has_archive' => false,
+            'rewrite' => false,
+        ]);
     }
 
     public function registerToolProviders(Bridge\ToolRegistry $registry): void
@@ -126,6 +149,9 @@ class Plugin
 
         // Skills CRUD tools (always available)
         $registry->register(new Bridge\SkillsToolProvider);
+
+        // Memory tools (persistent knowledge base)
+        $registry->register(new Bridge\MemoryToolProvider);
 
     }
 

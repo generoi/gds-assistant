@@ -41,11 +41,21 @@ class AnthropicProvider implements LlmProviderInterface
         ];
 
         if ($systemPrompt) {
-            $payload['system'] = $systemPrompt;
+            // Use cache_control on system prompt — it's stable across turns
+            $payload['system'] = [
+                [
+                    'type' => 'text',
+                    'text' => $systemPrompt,
+                    'cache_control' => ['type' => 'ephemeral'],
+                ],
+            ];
         }
 
         if (! empty($tools)) {
             $payload['tools'] = $tools;
+            // Mark last tool with cache_control — tools are stable across turns
+            $lastIdx = count($payload['tools']) - 1;
+            $payload['tools'][$lastIdx]['cache_control'] = ['type' => 'ephemeral'];
         }
 
         // Advisor strategy: add advisor tool with Opus as the advisor model
