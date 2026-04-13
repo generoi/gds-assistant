@@ -7,7 +7,12 @@ let currentModel = '';
 let currentMaxTokens = 0;
 let currentSystemContext = '';
 
-const sessionUsage = {inputTokens: 0, outputTokens: 0, listeners: new Set()};
+const sessionUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cost: 0,
+  listeners: new Set(),
+};
 
 // ── Public API ──────────────────────────────────────────────
 
@@ -37,10 +42,16 @@ export function onUsageUpdate(callback) {
 function emitUsage(input, output) {
   sessionUsage.inputTokens += input;
   sessionUsage.outputTokens += output;
+  // Calculate cost delta based on current model's pricing
+  const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [3, 15]; // fallback to Sonnet
+  const costDelta =
+    (input / 1_000_000) * pricing[0] + (output / 1_000_000) * pricing[1];
+  sessionUsage.cost += costDelta;
   for (const fn of sessionUsage.listeners) {
     fn({
       inputTokens: sessionUsage.inputTokens,
       outputTokens: sessionUsage.outputTokens,
+      cost: sessionUsage.cost,
     });
   }
 }
@@ -49,8 +60,9 @@ export function newChat() {
   currentConversationId = null;
   sessionUsage.inputTokens = 0;
   sessionUsage.outputTokens = 0;
+  sessionUsage.cost = 0;
   for (const fn of sessionUsage.listeners) {
-    fn({inputTokens: 0, outputTokens: 0});
+    fn({inputTokens: 0, outputTokens: 0, cost: 0});
   }
 }
 
@@ -198,6 +210,10 @@ export function useAssistantRuntime() {
             if (event.data.conversation_id) {
               currentConversationId = event.data.conversation_id;
             }
+            // Server confirms which model is actually being used — update for pricing
+            if (event.data.model) {
+              currentModel = event.data.model;
+            }
             break;
           case 'usage':
             emitUsage(
@@ -269,10 +285,18 @@ export function useAssistantRuntime() {
     // Restore token usage from the stored conversation
     sessionUsage.inputTokens = Number(conv.total_input_tokens) || 0;
     sessionUsage.outputTokens = Number(conv.total_output_tokens) || 0;
+    // Estimate cost from stored tokens using default pricing (model may have changed)
+    const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [
+      3, 15,
+    ];
+    sessionUsage.cost =
+      (sessionUsage.inputTokens / 1_000_000) * pricing[0] +
+      (sessionUsage.outputTokens / 1_000_000) * pricing[1];
     for (const fn of sessionUsage.listeners) {
       fn({
         inputTokens: sessionUsage.inputTokens,
         outputTokens: sessionUsage.outputTokens,
+        cost: sessionUsage.cost,
       });
     }
     // Convert stored messages to UI format, skipping tool-only messages

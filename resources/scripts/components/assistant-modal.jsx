@@ -349,20 +349,14 @@ function SystemContextInput({value, onChange}) {
 // ── Cost / usage helpers ────────────────────────────────────
 
 /**
- * Estimates USD cost from token counts (Sonnet 4 pricing).
+ * Format a dollar amount for display.
  *
- * @param {number} inputTokens  Input token count.
- * @param {number} outputTokens Output token count.
+ * @param {number} dollars Dollar amount.
  * @return {string} Formatted cost string.
  */
-function estimateCost(inputTokens, outputTokens) {
-  const cost = (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15;
-  if (cost < 0.001) return '<$0.001';
-  return `$${cost.toFixed(3)}`;
-}
-
-function estimateCostNum(inputTokens, outputTokens) {
-  return (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15;
+function formatCost(dollars) {
+  if (dollars < 0.001) return '<$0.001';
+  return `~$${dollars.toFixed(3)}`;
 }
 
 /**
@@ -542,9 +536,9 @@ function ConversationList({conversations, onSelect}) {
           <span className="gds-assistant__history-meta">
             {(conv.total_input_tokens > 0 || conv.total_output_tokens > 0) && (
               <span className="gds-assistant__history-cost">
-                {estimateCost(
-                  Number(conv.total_input_tokens) || 0,
-                  Number(conv.total_output_tokens) || 0,
+                {formatCost(
+                  ((Number(conv.total_input_tokens) || 0) / 1e6) * 3 +
+                    ((Number(conv.total_output_tokens) || 0) / 1e6) * 15,
                 )}
               </span>
             )}
@@ -558,22 +552,19 @@ function ConversationList({conversations, onSelect}) {
 
 // ── Model / token selectors ─────────────────────────────────
 
-function getModelOptions() {
-  const def = window.gdsAssistant?.defaultModel || 'sonnet';
-  const names = {haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus'};
-  const defLabel = names[def] || def;
-  return [
-    {value: '', label: defLabel},
-    ...Object.entries(names)
-      .filter(([k]) => k !== def)
-      .map(([k, v]) => ({value: k, label: v})),
-    {value: 'haiku-advisor', label: 'Haiku+Advisor'},
-    {value: 'advisor', label: 'Sonnet+Advisor'},
-  ];
+function getModelConfig() {
+  return window.gdsAssistant?.models || {providers: [], default: null};
+}
+
+function getDefaultModelKey() {
+  return getModelConfig().default || '';
 }
 
 function ModelSelector() {
-  const [model, setModelState] = useState(getModel);
+  const [model, setModelState] = useState(
+    () => getModel() || getDefaultModelKey(),
+  );
+  const config = getModelConfig();
 
   const handleChange = useCallback((e) => {
     const value = e.target.value;
@@ -588,10 +579,14 @@ function ModelSelector() {
       onChange={handleChange}
       title="Select model"
     >
-      {getModelOptions().map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
+      {config.providers.map((provider) => (
+        <optgroup key={provider.name} label={provider.label}>
+          {provider.models.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   );
@@ -637,16 +632,18 @@ function MaxTokensSelector() {
 // ── Usage bar with cost warning ─────────────────────────────
 
 function UsageBar() {
-  const [usage, setUsage] = useState({inputTokens: 0, outputTokens: 0});
+  const [usage, setUsage] = useState({
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
+  });
 
   useEffect(() => onUsageUpdate(setUsage), []);
 
   if (usage.inputTokens === 0 && usage.outputTokens === 0) return null;
 
   const total = usage.inputTokens + usage.outputTokens;
-  const cost = estimateCost(usage.inputTokens, usage.outputTokens);
-  const costNum = estimateCostNum(usage.inputTokens, usage.outputTokens);
-  const overBudget = costNum >= COST_WARNING_THRESHOLD;
+  const overBudget = usage.cost >= COST_WARNING_THRESHOLD;
 
   return (
     <div className="gds-assistant__usage">
@@ -654,7 +651,7 @@ function UsageBar() {
         className={overBudget ? 'gds-assistant__usage--warn' : ''}
         title={`Input: ${usage.inputTokens.toLocaleString()} / Output: ${usage.outputTokens.toLocaleString()}`}
       >
-        {total.toLocaleString()} tokens &middot; ~{cost}
+        {total.toLocaleString()} tokens &middot; {formatCost(usage.cost)}
         {overBudget ? ' ⚠' : ''}
       </span>
     </div>
