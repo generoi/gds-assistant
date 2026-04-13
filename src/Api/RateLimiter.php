@@ -12,7 +12,7 @@ class RateLimiter
     public static function check(int $userId): true|\WP_Error
     {
         $config = apply_filters('gds-assistant/rate_limit', [
-            'requests' => 20,
+            'requests' => 60,
             'window' => 300, // 5 minutes
         ]);
 

@@ -249,11 +249,18 @@ class GeminiProvider implements LlmProviderInterface
         // Remove keys Gemini doesn't support
         unset($schema['additionalProperties'], $schema['$schema'], $schema['title']);
 
-        // Gemini rejects empty enum values — filter them out
+        // Gemini requires enum values to be strings — convert integers and filter empties
         if (isset($schema['enum']) && is_array($schema['enum'])) {
-            $schema['enum'] = array_values(array_filter($schema['enum'], fn ($v) => $v !== '' && $v !== null));
+            $schema['enum'] = array_values(array_filter(
+                array_map(fn ($v) => is_int($v) || is_float($v) ? (string) $v : $v, $schema['enum']),
+                fn ($v) => $v !== '' && $v !== null,
+            ));
             if (empty($schema['enum'])) {
                 unset($schema['enum']);
+            }
+            // If enum has strings but type is integer, change type to string
+            if (($schema['type'] ?? '') === 'integer' && ! empty($schema['enum'])) {
+                $schema['type'] = 'string';
             }
         }
 

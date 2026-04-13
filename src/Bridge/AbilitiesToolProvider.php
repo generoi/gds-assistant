@@ -35,13 +35,6 @@ class AbilitiesToolProvider implements ToolProviderInterface
                 continue;
             }
 
-            // Skip REST-delegated CRUD for non-core post types to keep token count manageable.
-            // The help tool can still discover everything.
-            $meta = $ability->get_meta();
-            if ($this->shouldSkip($name, $meta)) {
-                continue;
-            }
-
             $meta = $ability->get_meta();
             $annotations = $meta['annotations'] ?? [];
 
@@ -112,40 +105,6 @@ class AbilitiesToolProvider implements ToolProviderInterface
     public function handles(string $name): bool
     {
         return str_starts_with($name, 'gds'.self::SEPARATOR);
-    }
-
-    /**
-     * Skip abilities that would bloat the tool list beyond the token limit.
-     *
-     * With 149 tools + schemas, context easily exceeds 200K tokens.
-     * We keep a curated set and let Claude discover more via gds/help.
-     */
-    private function shouldSkip(string $name, array $meta): bool
-    {
-        // Allowed prefixes — core CRUD + all custom/integration abilities
-        static $allowedPrefixes = [
-            'gds/help',
-            'gds/posts-', 'gds/pages-', 'gds/media-',
-            'gds/categories-', 'gds/tags-',
-            // Custom abilities (non-CRUD)
-            'gds/posts-duplicate', 'gds/posts-bulk-update',
-            'gds/blocks-get', 'gds/blocks-patch', 'gds/block-types-',
-            'gds/revisions-',
-            'gds/site-map', 'gds/design-', 'gds/acf-',
-            // Integrations
-            'gds/languages-', 'gds/translations-', 'gds/strings-',
-            'gds/forms-', 'gds/cache-',
-            // Product CRUD (core CPT for this site)
-            'gds/product-list', 'gds/product-read', 'gds/product-create', 'gds/product-update',
-        ];
-
-        foreach ($allowedPrefixes as $prefix) {
-            if (str_starts_with($name, $prefix) || $name === $prefix) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
