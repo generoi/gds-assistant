@@ -88,6 +88,16 @@ const FIELDS = [
     },
   },
   {
+    id: 'schedule',
+    label: __('Schedule', 'gds-assistant'),
+    render: ({item}) => {
+      const schedule = item.meta?._assistant_schedule || '';
+      return schedule ?
+          <code>{schedule}</code>
+        : <span className="gds-assistant-muted">-</span>;
+    },
+  },
+  {
     id: 'date',
     label: __('Date', 'gds-assistant'),
     type: 'datetime',
@@ -103,7 +113,7 @@ const DEFAULT_VIEW = {
   perPage: 25,
   sort: {field: 'title', direction: 'asc'},
   filters: [],
-  fields: ['title', 'slug', 'excerpt', 'model', 'date'],
+  fields: ['title', 'slug', 'excerpt', 'model', 'schedule', 'date'],
 };
 
 // ── Component ───────────────────────────────────────────────

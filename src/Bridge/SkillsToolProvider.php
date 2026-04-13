@@ -28,6 +28,7 @@ class SkillsToolProvider implements ToolProviderInterface
                         'description' => ['type' => 'string', 'description' => 'Brief description of what the skill does'],
                         'prompt' => ['type' => 'string', 'description' => 'The full prompt template. Can include {{placeholders}} that the user fills in.'],
                         'model' => ['type' => 'string', 'description' => 'Preferred model key (e.g. "gemini:gemini-flash", "anthropic:sonnet"). Auto-switches when skill is invoked. Leave empty for user\'s current selection.'],
+                        'schedule' => ['type' => 'string', 'description' => 'Auto-run schedule: "hourly", "daily", "weekly", or empty to disable.', 'enum' => ['', 'hourly', 'daily', 'weekly']],
                     ],
                     'required' => ['title', 'prompt'],
                 ],
@@ -44,6 +45,7 @@ class SkillsToolProvider implements ToolProviderInterface
                         'description' => ['type' => 'string'],
                         'prompt' => ['type' => 'string'],
                         'model' => ['type' => 'string', 'description' => 'Preferred model key'],
+                        'schedule' => ['type' => 'string', 'description' => 'Auto-run schedule: "hourly", "daily", "weekly", or empty to disable.', 'enum' => ['', 'hourly', 'daily', 'weekly']],
                     ],
                     'required' => ['id'],
                 ],
@@ -123,6 +125,11 @@ class SkillsToolProvider implements ToolProviderInterface
             update_post_meta($postId, '_assistant_model', sanitize_text_field($input['model']));
         }
 
+        if (isset($input['schedule'])) {
+            $schedule = in_array($input['schedule'], ['hourly', 'daily', 'weekly'], true) ? $input['schedule'] : '';
+            update_post_meta($postId, '_assistant_schedule', $schedule);
+        }
+
         $post = get_post($postId);
 
         return [
@@ -160,6 +167,11 @@ class SkillsToolProvider implements ToolProviderInterface
 
         if (isset($input['model'])) {
             update_post_meta($id, '_assistant_model', sanitize_text_field($input['model']));
+        }
+
+        if (isset($input['schedule'])) {
+            $schedule = in_array($input['schedule'], ['hourly', 'daily', 'weekly'], true) ? $input['schedule'] : '';
+            update_post_meta($id, '_assistant_schedule', $schedule);
         }
 
         $result = wp_update_post($update, true);
