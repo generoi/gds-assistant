@@ -130,6 +130,18 @@ class ChatEndpoint
             'model' => $modelKey,
         ]);
 
+        // Check for tool approval/denial response
+        $approval = $this->detectToolApproval($request->get_param('messages'));
+        if ($approval) {
+            [$toolUseId, $approved] = $approval;
+            // Remove the approval message from the conversation (it's a control message)
+            array_pop($messages);
+            $messages = $this->handleToolApproval(
+                $messages, $toolUseId, $approved,
+                fn (string $type, array $data) => $this->sendSSE($type, $data),
+            );
+        }
+
         // Allow filter to override the provider
         $provider = apply_filters('gds-assistant/provider', $provider);
 
@@ -248,6 +260,100 @@ class ChatEndpoint
 
             return ['role' => $role, 'content' => $content];
         }, $messages);
+    }
+
+    /**
+     * Check if the incoming messages contain a tool approval/denial response.
+     * Returns [toolUseId, approved] or null.
+     */
+    private function detectToolApproval(array $messages): ?array
+    {
+        if (empty($messages)) {
+            return null;
+        }
+
+        $lastMsg = end($messages);
+        $content = $lastMsg['content'] ?? '';
+        if (! is_string($content)) {
+            return null;
+        }
+
+        if (str_starts_with($content, '__tool_approved__:')) {
+            return [substr($content, strlen('__tool_approved__:')), true];
+        }
+        if (str_starts_with($content, '__tool_denied__:')) {
+            return [substr($content, strlen('__tool_denied__:')), false];
+        }
+
+        return null;
+    }
+
+    /**
+     * Handle tool approval: find the pending tool in stored messages, execute or deny it,
+     * replace the pending_approval result, and return the updated messages ready for the loop.
+     */
+    private function handleToolApproval(
+        array $storedMessages,
+        string $toolUseId,
+        bool $approved,
+        callable $onEvent,
+    ): array {
+        $toolRegistry = new ToolRegistry;
+        do_action('gds-assistant/register_tools', $toolRegistry);
+
+        // Find the pending tool_result and its corresponding tool_use
+        $toolName = '';
+        $toolInput = [];
+
+        foreach (array_reverse($storedMessages) as $msg) {
+            if (! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as $block) {
+                if (($block['type'] ?? '') === 'tool_use' && ($block['id'] ?? '') === $toolUseId) {
+                    $toolName = $block['name'];
+                    $toolInput = json_decode(json_encode($block['input'] ?? []), true) ?: [];
+                    break 2;
+                }
+            }
+        }
+
+        if ($approved && $toolName) {
+            $result = $toolRegistry->executeTool($toolName, $toolInput);
+            $isError = is_wp_error($result);
+            $resultContent = $isError ? ['error' => $result->get_error_message()] : $result;
+            $resultJson = json_encode($resultContent);
+
+            $onEvent('tool_result', [
+                'tool_use_id' => $toolUseId,
+                'result' => $resultContent,
+                'is_error' => $isError,
+            ]);
+        } else {
+            $resultJson = json_encode(['error' => 'User denied this action']);
+            $isError = true;
+            $onEvent('tool_result', [
+                'tool_use_id' => $toolUseId,
+                'result' => ['error' => 'User denied this action'],
+                'is_error' => true,
+            ]);
+        }
+
+        // Replace the pending_approval tool_result in stored messages
+        foreach ($storedMessages as &$msg) {
+            if (! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as &$block) {
+                if (($block['type'] ?? '') === 'tool_result' && ($block['tool_use_id'] ?? '') === $toolUseId) {
+                    $block['content'] = $resultJson;
+                    $block['is_error'] = $isError;
+                    break 2;
+                }
+            }
+        }
+
+        return $storedMessages;
     }
 
     private function generateTitle(array $messages): string

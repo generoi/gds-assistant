@@ -78,12 +78,18 @@ const SUGGESTIONS = [
  * @param {Function} root0.onLoadConversation    Callback to load an old conversation by UUID.
  * @param {string}   root0.systemContext         Optional system context prepended to first message.
  * @param {Function} root0.onSystemContextChange Callback when system context changes.
+ * @param {Function} root0.onApproveToolCall     Callback to approve a pending tool call.
+ * @param {Function} root0.onDenyToolCall        Callback to deny a pending tool call.
+ * @param {Object}   root0.pendingApprovalRef    React ref holding pending approval state.
  */
 export function AssistantModal({
   onNewChat,
   onLoadConversation,
   systemContext,
   onSystemContextChange,
+  onApproveToolCall,
+  onDenyToolCall,
+  pendingApprovalRef,
 }) {
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
   // Also open when a conversation is resumed
@@ -126,6 +132,9 @@ export function AssistantModal({
           onLoadConversation={onLoadConversation}
           systemContext={systemContext}
           onSystemContextChange={onSystemContextChange}
+          onApproveToolCall={onApproveToolCall}
+          onDenyToolCall={onDenyToolCall}
+          pendingApprovalRef={pendingApprovalRef}
         />
       </AssistantModalPrimitive.Content>
     </AssistantModalPrimitive.Root>
@@ -137,6 +146,9 @@ function Thread({
   onLoadConversation,
   systemContext,
   onSystemContextChange,
+  onApproveToolCall,
+  onDenyToolCall,
+  pendingApprovalRef,
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState([]);
@@ -284,6 +296,24 @@ function Thread({
         />
         <TypingIndicator />
       </ThreadPrimitive.Viewport>
+
+      {pendingApprovalRef?.current && (
+        <div className="gds-assistant__approval-bar">
+          <span>Approve this action?</span>
+          <button
+            className="gds-assistant__approval-btn gds-assistant__approval-btn--approve"
+            onClick={onApproveToolCall}
+          >
+            Approve
+          </button>
+          <button
+            className="gds-assistant__approval-btn gds-assistant__approval-btn--deny"
+            onClick={onDenyToolCall}
+          >
+            Deny
+          </button>
+        </div>
+      )}
 
       <Composer />
       <div className="gds-assistant__footer">
