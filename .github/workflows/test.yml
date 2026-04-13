@@ -1,0 +1,55 @@
+name: Test
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PHP_VERSION: '8.3'
+  NODE_VERSION: '22'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+
+      - run: composer install --no-interaction
+
+      - run: composer lint
+
+  test:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction
+
+      - name: Configure wp-env for CI
+        run: cp .wp-env.override.json.ci .wp-env.override.json
+
+      - name: Start wp-env
+        run: npx @wordpress/env start
+
+      - name: Activate plugins
+        run: npx @wordpress/env run tests-cli wp plugin activate gds-assistant
+
+      - name: Run PHPUnit
+        run: npx @wordpress/env run tests-cli --env-cwd=wp-content/plugins/gds-assistant vendor/bin/phpunit

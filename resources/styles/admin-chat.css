@@ -1,0 +1,846 @@
+/*
+ * No Tailwind utility scan — streamdown's Tailwind classes are handled
+ * via explicit CSS below using data-streamdown attributes.
+ */
+
+/*
+ * GDS Assistant — chat modal styles.
+ * Scoped to .gds-assistant to avoid polluting WP admin.
+ */
+
+.gds-assistant {
+  /* Ensure we sit above WP admin elements */
+  position: relative;
+  z-index: 100100;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Trigger button — bottom-right floating */
+.gds-assistant__trigger {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #2271b1;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+  z-index: 100100;
+
+  &:hover {
+    background: #135e96;
+    transform: scale(1.05);
+  }
+
+  &[data-state='open'] {
+    background: #135e96;
+  }
+}
+
+/* Panel — the chat container */
+.gds-assistant__panel {
+  position: fixed;
+  bottom: 84px;
+  right: 24px;
+  width: 420px;
+  height: 600px;
+  max-height: calc(100vh - 120px);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.15),
+    0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 100100;
+  animation: gds-assistant-slide-up 0.2s ease-out;
+}
+
+@keyframes gds-assistant-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.gds-assistant__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.gds-assistant__title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e1e1e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.gds-assistant__header-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.gds-assistant__header-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+
+  &:hover {
+    background: #f0f0f0;
+    color: #1e1e1e;
+  }
+
+  &.gds-assistant__header-btn--active {
+    background: #f0f6fc;
+    color: #2271b1;
+  }
+}
+
+/* History list */
+.gds-assistant__history-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.gds-assistant__history-empty {
+  padding: 16px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+}
+
+.gds-assistant__history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+
+  &:hover {
+    background: #f6f7f7;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.gds-assistant__history-title {
+  font-size: 13px;
+  color: #1e1e1e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.gds-assistant__history-meta {
+  font-size: 11px;
+  color: #999;
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.gds-assistant__history-cost {
+  color: #757575;
+  font-size: 10px;
+}
+
+/* Thread */
+.gds-assistant__thread {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.gds-assistant__viewport {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scroll-behavior: smooth;
+}
+
+/* Empty state with suggestions */
+.gds-assistant__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #757575;
+  text-align: center;
+  padding: 32px;
+}
+
+.gds-assistant__empty-title {
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.gds-assistant__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.gds-assistant__suggestion {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  background: #fff;
+  color: #1e1e1e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: #2271b1;
+    color: #2271b1;
+    background: #f0f6fc;
+  }
+}
+
+/* System context input */
+.gds-assistant__context {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+
+.gds-assistant__context-input {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+  max-height: 80px;
+  line-height: 1.4;
+  color: #1e1e1e;
+  background: #fff;
+
+  &::placeholder {
+    color: #999;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #2271b1;
+  }
+}
+
+/* Messages */
+.gds-assistant__message {
+  margin-bottom: 12px;
+  max-width: 90%;
+  overflow: hidden;
+}
+
+.gds-assistant__message--user {
+  margin-left: auto;
+  background: #2271b1;
+  color: #fff;
+  border-radius: 12px 12px 2px 12px;
+  padding: 8px 12px;
+
+  & p {
+    margin: 0;
+  }
+}
+
+/* Expand/collapse for long user messages (skill prompts) */
+.gds-assistant__expand-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+
+  &:hover {
+    color: #fff;
+  }
+}
+
+/* Typing indicator */
+.gds-assistant__typing {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  align-items: center;
+}
+
+.gds-assistant__typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #999;
+  animation: gds-assistant-bounce 1.4s infinite ease-in-out both;
+}
+
+.gds-assistant__typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.gds-assistant__typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes gds-assistant-bounce {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Copy message button */
+.gds-assistant__copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  font-size: 12px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+
+  &:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.gds-assistant__message--assistant {
+  position: relative;
+  margin-right: auto;
+  background: #f0f0f0;
+
+  &:hover .gds-assistant__copy-btn {
+    display: flex;
+  }
+  color: #1e1e1e;
+  border-radius: 12px 12px 12px 2px;
+  padding: 8px 12px;
+
+  /* Markdown content styling */
+  & p {
+    margin: 0 0 8px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  & code {
+    background: #e0e0e0;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 13px;
+  }
+
+  & pre {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-size: 13px;
+
+    & code {
+      background: none;
+      padding: 0;
+    }
+  }
+
+  & ul,
+  & ol {
+    margin: 4px 0;
+    padding-left: 20px;
+  }
+
+  & a {
+    color: #2271b1;
+    text-decoration: underline;
+  }
+}
+
+/* Footer bar (model selector + usage) */
+.gds-assistant__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 11px;
+  color: #757575;
+}
+
+.gds-assistant__footer-controls {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+/* Override .wp-core-ui select via panel scope (Radix portals to body) */
+.gds-assistant__panel select.gds-assistant__model-select {
+  font-size: 11px;
+  padding: 1px 4px;
+  min-height: 0;
+  height: auto;
+  line-height: 1.4;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none;
+  width: auto;
+
+  &:hover {
+    color: #555;
+    background: #f0f0f0;
+  }
+
+  &:focus {
+    outline: none;
+    color: #555;
+    background: #f0f0f0;
+    box-shadow: none;
+  }
+}
+
+.gds-assistant__footer-sep {
+  color: #ddd;
+  font-size: 11px;
+  user-select: none;
+}
+
+.gds-assistant__usage {
+  font-size: 11px;
+  text-align: right;
+}
+
+.gds-assistant__usage--warn {
+  color: #d63638;
+  font-weight: 600;
+}
+
+/* Tool call cards */
+.gds-assistant__tool-call {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.gds-assistant__tool-call--error {
+  border-color: #d63638;
+  background: #fcf0f1;
+}
+
+.gds-assistant__tool-call-summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+}
+
+.gds-assistant__tool-call-name {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.gds-assistant__tool-call-status {
+  font-size: 12px;
+  color: #757575;
+  margin-left: auto;
+}
+
+.gds-assistant__tool-call-status--done {
+  color: #00a32a;
+}
+
+.gds-assistant__tool-call-status--error {
+  color: #d63638;
+}
+
+.gds-assistant__tool-call-args,
+.gds-assistant__tool-call-result {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid #ddd;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Composer */
+.gds-assistant__composer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+.gds-assistant__input {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  max-height: 120px;
+  line-height: 1.4;
+
+  &:focus {
+    outline: none;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+  }
+}
+
+.gds-assistant__send,
+.gds-assistant__cancel {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s ease;
+}
+
+.gds-assistant__send {
+  background: #2271b1;
+  color: #fff;
+
+  &:hover {
+    background: #135e96;
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+.gds-assistant__cancel {
+  background: #d63638;
+  color: #fff;
+
+  &:hover {
+    background: #b32d2e;
+  }
+
+  &:active {
+    background: #8a2424;
+    transform: scale(0.95);
+  }
+}
+
+.gds-assistant__stopped {
+  position: absolute;
+  right: 52px;
+  font-size: 11px;
+  color: #d63638;
+  animation: gds-assistant-fade-out 2s ease-out forwards;
+}
+
+@keyframes gds-assistant-fade-out {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Scroll to bottom button */
+.gds-assistant__scroll-btn {
+  position: absolute;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+}
+
+/* Skills list */
+.gds-assistant__skills-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.gds-assistant__skill-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  gap: 2px;
+
+  &:hover {
+    background: #f6f7f7;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.gds-assistant__skill-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gds-assistant__skill-name {
+  font-family: monospace;
+  font-size: 12px;
+  color: #2271b1;
+  font-weight: 600;
+}
+
+.gds-assistant__skill-title {
+  font-size: 13px;
+  color: #1e1e1e;
+}
+
+.gds-assistant__skill-desc {
+  font-size: 11px;
+  color: #999;
+}
+
+/* Slash command autocomplete */
+.gds-assistant__autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 4px;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.gds-assistant__autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: #f0f6fc;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.gds-assistant__autocomplete-slug {
+  font-family: monospace;
+  font-size: 12px;
+  color: #2271b1;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.gds-assistant__autocomplete-desc {
+  font-size: 12px;
+  color: #757575;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Streamdown table wrapper + action buttons */
+.gds-assistant__message--assistant [data-streamdown='table-wrapper'] {
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  padding: 6px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+/* Button toolbar row (copy/download/fullscreen) */
+.gds-assistant__message--assistant [data-streamdown='table-wrapper'] > .flex {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.gds-assistant__message--assistant [data-streamdown='table-wrapper'] button {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: #999;
+  cursor: pointer;
+
+  &:hover {
+    color: #1e1e1e;
+  }
+}
+
+.gds-assistant__message--assistant [data-streamdown='table-wrapper'] .relative {
+  position: relative;
+}
+
+/* Streamdown inner table container (the div wrapping the <table>) */
+.gds-assistant__message--assistant [data-streamdown='table-wrapper'] > div:last-child {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 300px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.gds-assistant__message--assistant table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.gds-assistant__message--assistant th,
+.gds-assistant__message--assistant td {
+  border: 1px solid #ddd;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.gds-assistant__message--assistant th {
+  background: #e8e8e8;
+  font-weight: 600;
+}
+
+.gds-assistant__message--assistant tr:nth-child(even) {
+  background: #f8f8f8;
+}
+
+/* Responsive — smaller screens */
+@media (max-width: 480px) {
+  .gds-assistant__panel {
+    width: calc(100vw - 16px);
+    right: 8px;
+    bottom: 76px;
+    height: calc(100vh - 100px);
+  }
+}
