@@ -24,6 +24,7 @@ class ConversationStore
             user_id bigint(20) unsigned NOT NULL,
             title varchar(255) DEFAULT '',
             messages longtext NOT NULL,
+            summary text DEFAULT '',
             model varchar(100) NOT NULL DEFAULT '',
             total_input_tokens int unsigned DEFAULT 0,
             total_output_tokens int unsigned DEFAULT 0,
@@ -97,6 +98,9 @@ class ConversationStore
         }
         if (isset($data['total_output_tokens'])) {
             $update['total_output_tokens'] = $data['total_output_tokens'];
+        }
+        if (isset($data['summary'])) {
+            $update['summary'] = $data['summary'];
         }
 
         $update['updated_at'] = current_time('mysql', true);

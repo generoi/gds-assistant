@@ -13,12 +13,15 @@ class MessageLoop
 
     private int $outputTokens = 0;
 
+    private string $updatedSummary = '';
+
     public function __construct(
         private readonly LlmProviderInterface $provider,
         private readonly ToolRegistry $toolRegistry,
         private readonly ?AuditLog $auditLog = null,
         private readonly string $conversationUuid = '',
         private readonly int $userId = 0,
+        private readonly string $existingSummary = '',
     ) {}
 
     public function getInputTokens(): int
@@ -29,6 +32,11 @@ class MessageLoop
     public function getOutputTokens(): int
     {
         return $this->outputTokens;
+    }
+
+    public function getUpdatedSummary(): string
+    {
+        return $this->updatedSummary;
     }
 
     /**
@@ -59,7 +67,16 @@ class MessageLoop
 
         for ($i = 0; $i < $maxIterations; $i++) {
             // Compress context if conversation is getting long
-            $messagesForLlm = ContextCompressor::compress($messages);
+            $tokensBefore = ContextCompressor::estimateTokens($messages);
+            $compressed = ContextCompressor::compress($messages, $this->existingSummary);
+            $messagesForLlm = $compressed['messages'];
+            $tokensAfter = ContextCompressor::estimateTokens($messagesForLlm);
+            if (! empty($compressed['summary'])) {
+                $this->updatedSummary = $compressed['summary'];
+            }
+            if ($tokensAfter < $tokensBefore) {
+                $onEvent('text_delta', ['text' => "\n_Context compressed: {$tokensBefore} → {$tokensAfter} tokens_\n"]);
+            }
 
             $contentBlocks = $this->provider->stream(
                 $messagesForLlm,

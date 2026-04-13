@@ -134,12 +134,14 @@ class ChatEndpoint
 
         // Run the agentic loop with audit logging
         $auditLog = new AuditLog;
+        $existingSummary = $conversation['summary'] ?? '';
         $loop = new MessageLoop(
             $provider,
             $toolRegistry,
             $auditLog,
             $conversationId,
             $userId,
+            $existingSummary,
         );
 
         try {
@@ -198,6 +200,22 @@ class ChatEndpoint
             $currentTitle = $conversation['title'] ?? '';
             if (! $currentTitle) {
                 $updateData['title'] = $this->generateTitle($messages);
+            }
+
+            // Update rolling summary — either from compression or incremental turn
+            $newSummary = $loop->getUpdatedSummary();
+            if ($newSummary) {
+                $updateData['summary'] = $newSummary;
+            } else {
+                // Append a turn summary to the rolling summary
+                $newMessages = array_slice($updatedMessages, count($messages) - count($request->get_param('messages')));
+                $turnSummary = ContextCompressor::buildTurnSummary($newMessages);
+                if ($turnSummary) {
+                    $current = $existingSummary;
+                    $updateData['summary'] = $current
+                        ? $current."\n".$turnSummary
+                        : $turnSummary;
+                }
             }
 
             $store->update($conversationId, $updateData);

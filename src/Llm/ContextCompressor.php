@@ -3,39 +3,56 @@
 namespace GeneroWP\Assistant\Llm;
 
 /**
- * 3-level progressive context compression for long conversations.
+ * Progressive context compression for long conversations.
  *
- * Level 1: Truncate large tool results to structured summaries (free)
- * Level 2: Drop old tool_result content entirely (free)
- * Level 3: Summarize old conversation via LLM call (costs 1 API call)
+ * Level 1: Truncate large tool results to smart structured summaries (free)
+ * Level 2: Strip old tool_result content, keep recent intact (free)
+ * Level 3: Replace old messages with LLM-generated structured summary (1 cheap API call)
  *
- * User messages are preserved longer than assistant/tool messages.
  * Full conversation is always in the DB — LLM can re-fetch via tools.
+ * Rolling summary persisted to DB for cross-request context continuity.
  */
 class ContextCompressor
 {
-    /** Rough token estimate: 1 token ≈ 4 chars of JSON */
     private const CHARS_PER_TOKEN = 4;
 
-    /** Level 1: truncate individual tool results over this size */
-    private const TOOL_RESULT_MAX_CHARS = 8000; // ~2K tokens
+    private const TOOL_RESULT_MAX_CHARS = 8000;
 
-    /** Level 2 triggers at this token threshold */
     private const LEVEL2_THRESHOLD = 50000;
 
-    /** Level 3 triggers at this token threshold */
     private const LEVEL3_THRESHOLD = 80000;
 
-    /** Keep this many recent messages in full (never compressed) */
     private const KEEP_RECENT = 6;
+
+    private const SUMMARY_PROMPT = <<<'PROMPT'
+    Summarize this conversation for context continuity using these sections:
+
+    ## What was done
+    What the user asked for and what actions were taken.
+
+    ## Key content
+    IDs, titles, URLs, form IDs, page names, post types, taxonomies — anything that might be referenced later.
+
+    ## Decisions made
+    Choices, preferences, configurations established during the conversation.
+
+    ## Current state
+    What's the state of things right now — what's published, drafted, configured, broken.
+
+    ## Pending tasks
+    Anything mentioned but not yet done, or follow-ups discussed.
+
+    Be thorough — this summary replaces the full conversation history. Include specific IDs and names, not just "some pages were edited".
+    PROMPT;
 
     /**
      * Compress messages to fit within reasonable token limits.
      *
      * @param  array  $messages  Full conversation messages
-     * @return array Compressed messages
+     * @param  string  $existingSummary  Rolling summary from previous compressions
+     * @return array{messages: array, summary: string} Compressed messages + updated summary
      */
-    public static function compress(array $messages): array
+    public static function compress(array $messages, string $existingSummary = ''): array
     {
         $thresholdL2 = apply_filters('gds-assistant/compression_threshold', self::LEVEL2_THRESHOLD);
         $thresholdL3 = apply_filters('gds-assistant/summary_threshold', self::LEVEL3_THRESHOLD);
@@ -45,35 +62,129 @@ class ContextCompressor
 
         // Under threshold — no compression needed
         if ($tokens < $thresholdL2) {
-            return $messages;
+            return ['messages' => $messages, 'summary' => $existingSummary];
         }
 
-        // Level 1: Truncate large tool results everywhere
+        // Level 1: Truncate large tool results with smart summaries
         $messages = self::truncateLargeToolResults($messages);
         $tokens = self::estimateTokens($messages);
 
         if ($tokens < $thresholdL2) {
-            return $messages;
+            return ['messages' => $messages, 'summary' => $existingSummary];
         }
 
-        // Level 2: Strip old tool_result content (keep recent messages intact)
+        // Level 2: Strip old tool_result content
         $messages = self::stripOldToolResults($messages, $keepRecent);
         $tokens = self::estimateTokens($messages);
 
         if ($tokens < $thresholdL3) {
-            return $messages;
+            return ['messages' => $messages, 'summary' => $existingSummary];
         }
 
-        // Level 3: Summarize old conversation (replace old messages with summary)
-        $messages = self::summarizeOldMessages($messages, $keepRecent);
+        // Level 3: Summarize old messages
+        $result = self::summarizeOldMessages($messages, $keepRecent, $existingSummary);
 
-        return $messages;
+        return $result;
     }
 
     /**
-     * Level 1: Truncate individual tool_result content blocks over the size limit.
-     * Keeps a structured summary with key data points (IDs, titles, counts).
+     * Build a rolling summary update for the current turn.
+     * Appended to the stored summary after each request.
      */
+    public static function buildTurnSummary(array $newMessages): string
+    {
+        $parts = [];
+
+        foreach ($newMessages as $msg) {
+            $role = $msg['role'] ?? '';
+            $content = $msg['content'] ?? '';
+
+            if ($role === 'user') {
+                $text = self::extractText($content);
+                if ($text && ! str_starts_with($text, '[')) {
+                    $parts[] = 'User asked: '.self::truncateText($text, 150);
+                }
+            } elseif ($role === 'assistant' && is_array($content)) {
+                $toolNames = [];
+                $responseText = '';
+                foreach ($content as $block) {
+                    if (($block['type'] ?? '') === 'tool_use') {
+                        $toolNames[] = str_replace('__', '/', $block['name'] ?? '');
+                    } elseif (($block['type'] ?? '') === 'text') {
+                        $responseText .= $block['text'] ?? '';
+                    }
+                }
+                if ($toolNames) {
+                    $parts[] = 'Tools used: '.implode(', ', $toolNames);
+                }
+                if ($responseText) {
+                    $parts[] = 'Result: '.self::truncateText(trim($responseText), 200);
+                }
+            }
+        }
+
+        return implode('. ', $parts);
+    }
+
+    /**
+     * Generate an LLM-powered structured summary of old messages.
+     * Uses the cheapest available model for the summary call.
+     */
+    public static function generateLlmSummary(array $oldMessages): ?string
+    {
+        // Build conversation text for the summarizer
+        $conversationText = self::buildConversationText($oldMessages);
+
+        // Use cheapest available provider
+        $modelKey = self::getCheapestModel();
+        if (! $modelKey) {
+            return null; // No provider available, fall back to mechanical summary
+        }
+
+        $resolved = ProviderRegistry::resolve($modelKey, 4096);
+        if (! $resolved) {
+            return null;
+        }
+
+        $provider = $resolved['provider'];
+
+        // Make a non-streaming summary call
+        $summaryMessages = [
+            ['role' => 'user', 'content' => "Here is a conversation to summarize:\n\n{$conversationText}"],
+        ];
+
+        $result = '';
+        try {
+            $blocks = $provider->stream(
+                $summaryMessages,
+                [], // no tools
+                function (string $type, array $data) use (&$result) {
+                    if ($type === 'text_delta') {
+                        $result .= $data['text'] ?? '';
+                    }
+                },
+                self::SUMMARY_PROMPT,
+            );
+
+            // Extract text from content blocks
+            if (! $result) {
+                foreach ($blocks as $block) {
+                    if (($block['type'] ?? '') === 'text') {
+                        $result .= $block['text'] ?? '';
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[gds-assistant] LLM summary failed: '.$e->getMessage());
+
+            return null;
+        }
+
+        return $result ?: null;
+    }
+
+    // ── Level 1: Smart tool result truncation ───────────────────
+
     private static function truncateLargeToolResults(array $messages): array
     {
         foreach ($messages as &$msg) {
@@ -91,7 +202,6 @@ class ContextCompressor
                     continue;
                 }
 
-                // Extract a structured summary from the JSON
                 $block['content'] = self::summarizeToolResult($content);
             }
         }
@@ -99,10 +209,8 @@ class ContextCompressor
         return $messages;
     }
 
-    /**
-     * Level 2: Replace old tool_result content with placeholders.
-     * Preserves the last $keepRecent messages in full.
-     */
+    // ── Level 2: Strip old tool results ─────────────────────────
+
     private static function stripOldToolResults(array $messages, int $keepRecent): array
     {
         $total = count($messages);
@@ -117,8 +225,7 @@ class ContextCompressor
 
             foreach ($msg['content'] as &$block) {
                 if (($block['type'] ?? '') === 'tool_result') {
-                    $toolId = $block['tool_use_id'] ?? '';
-                    $block['content'] = "[Previous tool result for {$toolId} — call the tool again if you need the data]";
+                    $block['content'] = '[Earlier tool result removed — call the tool again if needed]';
                 }
             }
         }
@@ -126,46 +233,216 @@ class ContextCompressor
         return $messages;
     }
 
-    /**
-     * Level 3: Replace old messages with a conversation summary.
-     * Extracts key facts from old messages and consolidates into one message.
-     */
-    private static function summarizeOldMessages(array $messages, int $keepRecent): array
+    // ── Level 3: Summarize old messages ─────────────────────────
+
+    private static function summarizeOldMessages(array $messages, int $keepRecent, string $existingSummary): array
     {
         $total = count($messages);
         $cutoff = max(0, $total - $keepRecent);
 
         if ($cutoff <= 1) {
-            return $messages;
+            return ['messages' => $messages, 'summary' => $existingSummary];
         }
 
         $oldMessages = array_slice($messages, 0, $cutoff);
         $recentMessages = array_slice($messages, $cutoff);
 
-        // Build a summary from old messages
-        $summary = self::buildConversationSummary($oldMessages);
+        // Try LLM-powered summary first, fall back to mechanical
+        $summary = self::generateLlmSummary($oldMessages);
+        if (! $summary) {
+            $summary = self::buildMechanicalSummary($oldMessages);
+        }
 
-        // Prepend summary as a user message, then append recent messages
+        // Merge with existing rolling summary
+        if ($existingSummary) {
+            $summary = "## Previous context\n{$existingSummary}\n\n## This session\n{$summary}";
+        }
+
         $compressed = [];
         $compressed[] = [
             'role' => 'user',
-            'content' => "[Conversation history summary — older messages were compressed to save context]\n\n".$summary."\n\n[End of summary. Recent messages follow. If you need details from the summary, call the relevant tool again to get fresh data.]",
+            'content' => "[Conversation history — older messages were compressed]\n\n{$summary}\n\n[End of summary. Recent messages follow. Call tools again if you need data from earlier.]",
         ];
-
-        // Need an assistant acknowledgment for valid message alternation
         $compressed[] = [
             'role' => 'assistant',
-            'content' => [['type' => 'text', 'text' => 'Understood, I have the conversation context. Continuing.']],
+            'content' => [['type' => 'text', 'text' => 'Understood, I have the conversation context.']],
         ];
 
-        return array_merge($compressed, $recentMessages);
+        return [
+            'messages' => array_merge($compressed, $recentMessages),
+            'summary' => $summary,
+        ];
     }
 
-    /**
-     * Build a text summary from old messages.
-     * Extracts: user requests, tool calls made, key results, decisions.
-     */
-    private static function buildConversationSummary(array $messages): string
+    // ── Smart tool result summaries ─────────────────────────────
+
+    private static function summarizeToolResult(string $json): string
+    {
+        $data = json_decode($json, true);
+        if (! is_array($data)) {
+            return '[Tool result: '.strlen($json).' bytes]';
+        }
+
+        // Content list (posts/pages/products/etc.)
+        if (isset($data['posts']) && is_array($data['posts'])) {
+            return self::summarizeContentList($data);
+        }
+
+        // Single content item
+        if (isset($data['id']) && (isset($data['title']) || isset($data['name']))) {
+            return self::summarizeSingleItem($data);
+        }
+
+        // Form data
+        if (isset($data['fields']) && isset($data['title'])) {
+            return self::summarizeForm($data);
+        }
+
+        // Site map
+        if (isset($data['menu']) || isset($data['disconnected'])) {
+            return self::summarizeSiteMap($data);
+        }
+
+        // Translation audit
+        if (isset($data['missing']) || isset($data['audit'])) {
+            return self::summarizeAudit($data);
+        }
+
+        // Generic: show keys and sizes
+        $keys = array_keys($data);
+
+        return '[Result: '.strlen($json).' bytes, keys: '.implode(', ', array_slice($keys, 0, 10)).']';
+    }
+
+    private static function summarizeContentList(array $data): string
+    {
+        $count = count($data['posts']);
+        $total = $data['total'] ?? $count;
+        $items = array_map(function ($post) {
+            $id = $post['id'] ?? '?';
+            $title = self::extractTitle($post);
+            $status = $post['status'] ?? '';
+            $lang = $post['lang'] ?? $post['language'] ?? '';
+            $parts = ["ID {$id}: \"{$title}\""];
+            if ($status) {
+                $parts[] = $status;
+            }
+            if ($lang) {
+                $parts[] = "({$lang})";
+            }
+
+            return implode(' ', $parts);
+        }, array_slice($data['posts'], 0, 25));
+
+        $summary = "[Content list: {$total} total]\n".implode("\n", $items);
+        if ($count > 25) {
+            $summary .= "\n... +".($count - 25).' more';
+        }
+
+        return $summary;
+    }
+
+    private static function summarizeSingleItem(array $data): string
+    {
+        $id = $data['id'] ?? '?';
+        $title = self::extractTitle($data);
+        $status = $data['status'] ?? '';
+        $type = $data['type'] ?? '';
+
+        $parts = ["[Item: ID {$id}, \"{$title}\""];
+        if ($type) {
+            $parts[] = "type={$type}";
+        }
+        if ($status) {
+            $parts[] = "status={$status}";
+        }
+
+        // Include block structure if present
+        $content = $data['content']['rendered'] ?? $data['content'] ?? '';
+        if (is_string($content) && strlen($content) > 100) {
+            preg_match_all('/<!-- wp:([a-z\/-]+)/', $content, $blocks);
+            if (! empty($blocks[1])) {
+                $blockCounts = array_count_values($blocks[1]);
+                $blockSummary = array_map(fn ($name, $c) => "{$name}×{$c}", array_keys($blockCounts), $blockCounts);
+                $parts[] = 'blocks: '.implode(', ', array_slice($blockSummary, 0, 10));
+            }
+        }
+
+        return implode(', ', $parts).']';
+    }
+
+    private static function summarizeForm(array $data): string
+    {
+        $id = $data['id'] ?? '?';
+        $title = $data['title'] ?? '?';
+        $fieldCount = count($data['fields'] ?? []);
+        $fields = array_map(fn ($f) => ($f['label'] ?? $f['type'] ?? '?'), array_slice($data['fields'] ?? [], 0, 10));
+        $notifCount = count($data['notifications'] ?? []);
+
+        return "[Form #{$id}: \"{$title}\", {$fieldCount} fields (".implode(', ', $fields)."), {$notifCount} notifications]";
+    }
+
+    private static function summarizeSiteMap(array $data): string
+    {
+        $menuName = $data['menu']['name'] ?? 'unknown';
+        $menuItems = count($data['menu']['items'] ?? []);
+        $disconnected = count($data['disconnected'] ?? []);
+
+        return "[Site map: menu \"{$menuName}\" ({$menuItems} top-level items), {$disconnected} disconnected pages]";
+    }
+
+    private static function summarizeAudit(array $data): string
+    {
+        return '[Audit result: '.json_encode(array_map(fn ($v) => is_array($v) ? count($v).' items' : $v, $data)).']';
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    private static function getCheapestModel(): ?string
+    {
+        $available = ProviderRegistry::getAvailable();
+
+        // Priority: Gemini Flash > Haiku > anything else
+        $preferences = ['gemini:gemini-flash', 'anthropic:haiku', 'groq:llama-scout'];
+        foreach ($preferences as $key) {
+            [$provider] = explode(':', $key);
+            if (isset($available[$provider])) {
+                return $key;
+            }
+        }
+
+        // Fall back to default
+        return ProviderRegistry::getDefaultModelKey();
+    }
+
+    private static function buildConversationText(array $messages): string
+    {
+        $parts = [];
+        foreach ($messages as $msg) {
+            $role = ucfirst($msg['role'] ?? 'unknown');
+            $text = self::extractText($msg['content'] ?? '');
+
+            if (is_array($msg['content'] ?? null)) {
+                foreach ($msg['content'] as $block) {
+                    if (($block['type'] ?? '') === 'tool_use') {
+                        $name = str_replace('__', '/', $block['name'] ?? '');
+                        $parts[] = "[Tool call: {$name}]";
+                    } elseif (($block['type'] ?? '') === 'tool_result') {
+                        $content = $block['content'] ?? '';
+                        $parts[] = '[Tool result: '.self::truncateText($content, 200).']';
+                    }
+                }
+            }
+
+            if ($text) {
+                $parts[] = "{$role}: ".self::truncateText($text, 500);
+            }
+        }
+
+        return implode("\n", $parts);
+    }
+
+    private static function buildMechanicalSummary(array $messages): string
     {
         $parts = [];
         $toolCalls = [];
@@ -175,124 +452,68 @@ class ContextCompressor
             $content = $msg['content'] ?? '';
 
             if ($role === 'user') {
-                $text = is_string($content) ? $content : '';
-                if (is_array($content)) {
-                    // Extract text parts, skip tool_results
-                    foreach ($content as $block) {
-                        if (($block['type'] ?? '') === 'text') {
-                            $text .= $block['text'] ?? '';
-                        }
-                    }
-                }
-                $text = trim($text);
+                $text = self::extractText($content);
                 if ($text && ! str_starts_with($text, '[')) {
-                    // Truncate long user messages
-                    if (mb_strlen($text) > 200) {
-                        $text = mb_substr($text, 0, 197).'...';
-                    }
-                    $parts[] = "User: {$text}";
+                    $parts[] = 'User: '.self::truncateText($text, 200);
                 }
-            } elseif ($role === 'assistant') {
-                if (is_array($content)) {
-                    foreach ($content as $block) {
-                        if (($block['type'] ?? '') === 'tool_use') {
-                            $name = str_replace('__', '/', $block['name'] ?? '');
-                            $input = $block['input'] ?? [];
-                            $inputSummary = is_string($input) ? $input : json_encode($input);
-                            if (strlen($inputSummary) > 100) {
-                                $inputSummary = substr($inputSummary, 0, 97).'...';
-                            }
-                            $toolCalls[] = $name;
-                            $parts[] = "Tool called: {$name} ({$inputSummary})";
-                        } elseif (($block['type'] ?? '') === 'text') {
-                            $text = trim($block['text'] ?? '');
-                            if ($text && mb_strlen($text) > 300) {
-                                $text = mb_substr($text, 0, 297).'...';
-                            }
-                            if ($text) {
-                                $parts[] = "Assistant: {$text}";
-                            }
+            } elseif ($role === 'assistant' && is_array($content)) {
+                foreach ($content as $block) {
+                    if (($block['type'] ?? '') === 'tool_use') {
+                        $name = str_replace('__', '/', $block['name'] ?? '');
+                        $toolCalls[] = $name;
+                        $parts[] = "Tool: {$name}";
+                    } elseif (($block['type'] ?? '') === 'text') {
+                        $text = trim($block['text'] ?? '');
+                        if ($text) {
+                            $parts[] = 'Assistant: '.self::truncateText($text, 300);
                         }
-                    }
-                } elseif (is_string($content)) {
-                    $text = trim($content);
-                    if ($text && mb_strlen($text) > 300) {
-                        $text = mb_substr($text, 0, 297).'...';
-                    }
-                    if ($text) {
-                        $parts[] = "Assistant: {$text}";
                     }
                 }
             }
         }
 
         $summary = implode("\n", $parts);
-
         if ($toolCalls) {
-            $uniqueTools = array_unique($toolCalls);
-            $summary .= "\n\nTools used in this conversation: ".implode(', ', $uniqueTools);
+            $summary .= "\n\nTools used: ".implode(', ', array_unique($toolCalls));
         }
 
         return $summary;
     }
 
-    /**
-     * Summarize a large tool result JSON into a compact structured format.
-     * Keeps IDs, titles, counts — drops full content/HTML/meta.
-     */
-    private static function summarizeToolResult(string $json): string
+    private static function extractText(mixed $content): string
     {
-        $data = json_decode($json, true);
-        if (! is_array($data)) {
-            return '[Tool result truncated: '.strlen($json).' bytes]';
+        if (is_string($content)) {
+            return trim($content);
         }
-
-        // List response with posts array
-        if (isset($data['posts']) && is_array($data['posts'])) {
-            $count = count($data['posts']);
-            $total = $data['total'] ?? $count;
-            $items = array_map(function ($post) {
-                $id = $post['id'] ?? '?';
-                $title = $post['title']['rendered'] ?? $post['title'] ?? '?';
-                if (is_array($title)) {
-                    $title = $title['rendered'] ?? $title['raw'] ?? '?';
+        if (is_array($content)) {
+            $texts = [];
+            foreach ($content as $block) {
+                if (($block['type'] ?? '') === 'text') {
+                    $texts[] = $block['text'] ?? '';
                 }
-                $status = $post['status'] ?? '';
-
-                return "ID {$id}: \"{$title}\" ({$status})";
-            }, array_slice($data['posts'], 0, 20));
-
-            $summary = "[List result: {$total} total, showing {$count}]\n".implode("\n", $items);
-            if ($count > 20) {
-                $summary .= "\n... and ".($count - 20).' more';
             }
 
-            return $summary;
+            return trim(implode(' ', $texts));
         }
 
-        // Single item response
-        if (isset($data['id'])) {
-            $id = $data['id'];
-            $title = $data['title']['rendered'] ?? $data['title'] ?? '';
-            if (is_array($title)) {
-                $title = $title['rendered'] ?? $title['raw'] ?? '';
-            }
-            $status = $data['status'] ?? '';
-            $type = $data['type'] ?? '';
-
-            return "[Item: ID {$id}, \"{$title}\", status={$status}, type={$type}]";
-        }
-
-        // Generic fallback — show keys and sizes
-        $keys = array_keys($data);
-        $keySummary = implode(', ', array_slice($keys, 0, 10));
-
-        return '[Tool result truncated: '.strlen($json)." bytes, keys: {$keySummary}]";
+        return '';
     }
 
-    /**
-     * Estimate token count from messages.
-     */
+    private static function extractTitle(array $data): string
+    {
+        $title = $data['title']['rendered'] ?? $data['title']['raw'] ?? $data['title'] ?? $data['name'] ?? '?';
+        if (is_array($title)) {
+            $title = $title['rendered'] ?? $title['raw'] ?? '?';
+        }
+
+        return (string) $title;
+    }
+
+    private static function truncateText(string $text, int $maxLen): string
+    {
+        return mb_strlen($text) > $maxLen ? mb_substr($text, 0, $maxLen - 3).'...' : $text;
+    }
+
     public static function estimateTokens(array $messages): int
     {
         return (int) (strlen(json_encode($messages)) / self::CHARS_PER_TOKEN);
