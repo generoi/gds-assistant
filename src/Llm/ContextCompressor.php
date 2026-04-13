@@ -287,7 +287,7 @@ class ContextCompressor
         $keys = array_keys($data);
         $keySummary = implode(', ', array_slice($keys, 0, 10));
 
-        return "[Tool result truncated: ".strlen($json)." bytes, keys: {$keySummary}]";
+        return '[Tool result truncated: '.strlen($json)." bytes, keys: {$keySummary}]";
     }
 
     /**
