@@ -109,7 +109,7 @@ class Plugin
             ],
             'public' => false,
             'show_ui' => true,
-            'show_in_menu' => 'tools.php',
+            'show_in_menu' => false, // Managed via AI Assistant > Skills DataView
             'show_in_rest' => true,
             'rest_base' => 'assistant-skills',
             'supports' => ['title', 'editor', 'excerpt', 'revisions', 'author'],
