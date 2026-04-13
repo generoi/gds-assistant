@@ -140,7 +140,7 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         foreach ($contentBlocks as $i => $block) {
             if (($block['type'] ?? '') === 'tool_use') {
                 $inputJson = json_encode($block['input'] ?? null);
-                error_log("[gds-assistant] OpenAI: final block[$i] tool_use name={$block['name']} input_len=".strlen($inputJson)." input_preview=".substr($inputJson, 0, 200));
+                error_log("[gds-assistant] OpenAI: final block[$i] tool_use name={$block['name']} input_len=".strlen($inputJson).' input_preview='.substr($inputJson, 0, 200));
             }
         }
 
