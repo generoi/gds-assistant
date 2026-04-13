@@ -33,8 +33,8 @@ function toExportFormat(item) {
 /**
  * Download JSON as a file.
  *
- * @param {Object|Array} data    Data to export.
- * @param {string}        filename Filename.
+ * @param {Object|Array} data     Data to export.
+ * @param {string}       filename Filename.
  */
 function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -56,9 +56,7 @@ const FIELDS = [
     label: __('Title', 'gds-assistant'),
     enableSorting: true,
     enableGlobalSearch: true,
-    render: ({item}) => (
-      <strong>{item.title?.rendered || item.title}</strong>
-    ),
+    render: ({item}) => <strong>{item.title?.rendered || item.title}</strong>,
   },
   {
     id: 'slug',
@@ -84,11 +82,9 @@ const FIELDS = [
     label: __('Model', 'gds-assistant'),
     render: ({item}) => {
       const model = item.meta?._assistant_model || '';
-      return model ? (
-        <code>{model}</code>
-      ) : (
-        <span className="gds-assistant-muted">default</span>
-      );
+      return model ?
+          <code>{model}</code>
+        : <span className="gds-assistant-muted">default</span>;
     },
   },
   {
@@ -155,9 +151,9 @@ export function SkillsDataView() {
   const handleExport = useCallback((items) => {
     const exported = items.map(toExportFormat);
     const filename =
-      items.length === 1
-        ? `skill-${items[0].slug || items[0].id}.json`
-        : `gds-assistant-skills-${items.length}.json`;
+      items.length === 1 ?
+        `skill-${items[0].slug || items[0].id}.json`
+      : `gds-assistant-skills-${items.length}.json`;
     downloadJson(exported, filename);
   }, []);
 
@@ -166,53 +162,48 @@ export function SkillsDataView() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback(
-    async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const handleFileChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      try {
-        const text = await file.text();
-        let skills = JSON.parse(text);
+    try {
+      const text = await file.text();
+      let skills = JSON.parse(text);
 
-        // Support both single skill and array
-        if (!Array.isArray(skills)) {
-          skills = [skills];
-        }
-
-        let imported = 0;
-        for (const skill of skills) {
-          if (!skill.title || !skill.prompt) continue;
-
-          await apiFetch({
-            path: '/wp/v2/assistant-skills',
-            method: 'POST',
-            data: {
-              title: skill.title,
-              slug: skill.slug || '',
-              content: skill.prompt,
-              excerpt: skill.description || '',
-              status: 'publish',
-            },
-          });
-          imported++;
-        }
-
-        // eslint-disable-next-line no-alert
-        window.alert(
-          `Imported ${imported} skill${imported !== 1 ? 's' : ''}.`,
-        );
-        setView((v) => ({...v})); // Refresh
-      } catch (err) {
-        // eslint-disable-next-line no-alert
-        window.alert(`Import failed: ${err.message}`);
+      // Support both single skill and array
+      if (!Array.isArray(skills)) {
+        skills = [skills];
       }
 
-      // Reset file input
-      e.target.value = '';
-    },
-    [],
-  );
+      let imported = 0;
+      for (const skill of skills) {
+        if (!skill.title || !skill.prompt) continue;
+
+        await apiFetch({
+          path: '/wp/v2/assistant-skills',
+          method: 'POST',
+          data: {
+            title: skill.title,
+            slug: skill.slug || '',
+            content: skill.prompt,
+            excerpt: skill.description || '',
+            status: 'publish',
+          },
+        });
+        imported++;
+      }
+
+      // eslint-disable-next-line no-alert
+      window.alert(`Imported ${imported} skill${imported !== 1 ? 's' : ''}.`);
+      setView((v) => ({...v})); // Refresh
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      window.alert(`Import failed: ${err.message}`);
+    }
+
+    // Reset file input
+    e.target.value = '';
+  }, []);
 
   const actions = [
     {

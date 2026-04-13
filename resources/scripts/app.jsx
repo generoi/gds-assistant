@@ -16,13 +16,10 @@ export function App() {
     loadConversation(null);
   }, [loadConversation]);
 
-  const handleContextChange = useCallback(
-    (val) => {
-      setContext(val);
-      setSystemContext(val);
-    },
-    [],
-  );
+  const handleContextChange = useCallback((val) => {
+    setContext(val);
+    setSystemContext(val);
+  }, []);
 
   // Resume conversation from settings page or localStorage
   useEffect(() => {
