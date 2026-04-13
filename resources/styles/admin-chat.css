@@ -1,7 +1,29 @@
-/*
- * No Tailwind utility scan — streamdown's Tailwind classes are handled
- * via explicit CSS below using data-streamdown attributes.
- */
+@import 'tailwindcss/utilities' layer(gds-assistant);
+@import 'tailwindcss/theme' layer(gds-assistant);
+
+/* Scan streamdown for Tailwind utility classes.
+   Local node_modules, hoisted workspace root, and btb-transformers root. */
+@source "../../node_modules/@assistant-ui/react-streamdown";
+@source "../../../../node_modules/@assistant-ui/react-streamdown";
+@source "../../../../../../node_modules/@assistant-ui/react-streamdown";
+
+@theme {
+  --color-muted-foreground: #999;
+  --color-foreground: #1e1e1e;
+  --color-border: #ddd;
+  --color-background: #fff;
+  --color-sidebar: #f9f9f9;
+  --color-muted: #f0f0f0;
+  --color-primary: #2271b1;
+  --color-primary-foreground: #fff;
+  --spacing: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-xl: 0.75rem;
+  --radius-lg: 0.5rem;
+  --font-weight-semibold: 600;
+  --font-weight-medium: 500;
+  --blur-sm: 4px;
+}
 
 /*
  * GDS Assistant — chat modal styles.
@@ -835,6 +857,23 @@
 
 .gds-assistant__message--assistant tr:nth-child(even) {
   background: #f8f8f8;
+}
+
+/* Streamdown link safety modal — portal to panel level instead of viewport */
+[data-streamdown='link-safety-modal'] {
+  position: absolute;
+  inset: 0;
+  z-index: 100101;
+}
+
+/* Ensure the message doesn't clip the modal */
+.gds-assistant__message--assistant {
+  overflow: visible;
+}
+
+/* The viewport needs to be the containing block for the absolute modal */
+.gds-assistant__viewport {
+  position: relative;
 }
 
 /* Responsive — smaller screens */
