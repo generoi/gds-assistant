@@ -86,6 +86,7 @@ export function AssistantModal({
   onSystemContextChange,
 }) {
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
+  // Also open when a conversation is resumed
   const triggerRef = useRef(null);
   useEffect(() => {
     const handler = (e) => {
@@ -94,8 +95,17 @@ export function AssistantModal({
         triggerRef.current?.click();
       }
     };
+    // Open modal when resume event fires
+    const resumeHandler = () => {
+      // Small delay to let loadConversation complete first
+      setTimeout(() => triggerRef.current?.click(), 100);
+    };
+    window.addEventListener('gds-assistant-resume', resumeHandler);
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      window.removeEventListener('gds-assistant-resume', resumeHandler);
+    };
   }, []);
 
   return (
