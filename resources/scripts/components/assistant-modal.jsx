@@ -178,8 +178,62 @@ function Thread({
     onNewChat();
   }, [onNewChat]);
 
+  // Export conversation as Markdown
+  const threadRuntime = useThreadRuntime();
+  const handleExport = useCallback(() => {
+    const state = threadRuntime.getState();
+    const msgs = state?.messages || [];
+    if (!msgs.length) return;
+
+    const lines = [
+      `# Conversation Export\n`,
+      `_Exported: ${new Date().toLocaleString()}_\n`,
+      `---\n`,
+    ];
+
+    for (const msg of msgs) {
+      const role = msg.role === 'user' ? '## User' : '## Assistant';
+      lines.push(`\n${role}\n`);
+
+      const parts = msg.content || [];
+      for (const part of parts) {
+        if (part.type === 'text') {
+          // Strip tool markers
+          const clean = (part.text || '')
+            .replace(/<!--[^>]+-->/g, '')
+            .replace(/_Running\.\.\._/g, '');
+          lines.push(clean);
+        } else if (part.type === 'image') {
+          lines.push('\n[Image attached]\n');
+        } else if (part.type === 'tool-call') {
+          lines.push(`\n**Tool:** \`${part.toolName}\`\n`);
+        }
+      }
+      lines.push('\n\n---\n');
+    }
+
+    const md = lines.join('');
+    const blob = new Blob([md], {type: 'text/markdown'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [threadRuntime]);
+
   return (
-    <ThreadPrimitive.Root className="gds-assistant__thread">
+    <ThreadPrimitive.Root
+      className="gds-assistant__thread"
+      ref={(el) => {
+        // Auto-focus composer input when thread mounts
+        if (el) {
+          setTimeout(() => {
+            el.querySelector('.gds-assistant__input')?.focus();
+          }, 100);
+        }
+      }}
+    >
       <div className="gds-assistant__header">
         <span className="gds-assistant__title">
           {activeTitle || 'AI Assistant'}
@@ -262,6 +316,27 @@ function Thread({
             >
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="gds-assistant__header-btn"
+            onClick={handleExport}
+            title="Export as Markdown"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
         </div>
@@ -563,6 +638,14 @@ function SlashAutocomplete({query, onSelect, onDismiss}) {
 // ── Conversation history list ───────────────────────────────
 
 function ConversationList({conversations, onSelect}) {
+  const [search, setSearch] = useState('');
+  const filtered =
+    search ?
+      conversations.filter((c) =>
+        (c.title || '').toLowerCase().includes(search.toLowerCase()),
+      )
+    : conversations;
+
   if (!conversations.length) {
     return (
       <div className="gds-assistant__history-list">
@@ -573,7 +656,14 @@ function ConversationList({conversations, onSelect}) {
 
   return (
     <div className="gds-assistant__history-list">
-      {conversations.map((conv) => (
+      <input
+        type="text"
+        className="gds-assistant__history-search"
+        placeholder="Search conversations..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      {filtered.map((conv) => (
         <button
           key={conv.uuid}
           type="button"
