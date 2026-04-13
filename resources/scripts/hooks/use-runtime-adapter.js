@@ -110,6 +110,8 @@ export function useAssistantRuntime() {
   const [messages, setMessages] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef(null);
+  const pendingApprovalRef = useRef(null);
+  const onNewRef = useRef(null);
 
   const onNew = useCallback(async (message) => {
     // Extract user text from the append message
@@ -196,6 +198,23 @@ export function useAssistantRuntime() {
                   text.slice(lastRunning + '_Running..._\n'.length);
               }
             }
+            break;
+          }
+          case 'tool_approval_required': {
+            const approvalTool =
+              event.data.tool_name?.replace('gds/', '') || 'unknown';
+            const approvalId = event.data.tool_use_id || '';
+            text += `\n\n---\n**Approval required:** \`${event.data.tool_name}\`\n`;
+            if (event.data.input && Object.keys(event.data.input).length > 0) {
+              text += `\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\`\n`;
+            }
+            text += `<!--approval:${approvalId}:${approvalTool}-->\n`;
+            text += `_Waiting for approval..._\n`;
+            pendingApprovalRef.current = {
+              toolUseId: approvalId,
+              toolName: event.data.tool_name,
+              input: event.data.input,
+            };
             break;
           }
           case 'ask_user':
@@ -365,9 +384,36 @@ export function useAssistantRuntime() {
     [messages, isRunning, onNew, onCancel, convertMessage],
   );
 
+  // Keep ref to onNew for approval callbacks
+  onNewRef.current = onNew;
+
+  const approveToolCall = useCallback(() => {
+    const pending = pendingApprovalRef.current;
+    if (!pending) return;
+    pendingApprovalRef.current = null;
+    onNewRef.current?.({
+      content: `__tool_approved__:${pending.toolUseId}`,
+    });
+  }, []);
+
+  const denyToolCall = useCallback(() => {
+    const pending = pendingApprovalRef.current;
+    if (!pending) return;
+    pendingApprovalRef.current = null;
+    onNewRef.current?.({
+      content: `__tool_denied__:${pending.toolUseId}`,
+    });
+  }, []);
+
   const runtime = useExternalStoreRuntime(adapter);
 
-  return {runtime, loadConversation};
+  return {
+    runtime,
+    loadConversation,
+    approveToolCall,
+    denyToolCall,
+    pendingApprovalRef,
+  };
 }
 
 // ── SSE parser ──────────────────────────────────────────────
