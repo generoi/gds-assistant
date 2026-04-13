@@ -55,8 +55,8 @@ class ProviderRegistry
             'label' => 'Gemini',
             'env' => ['GDS_ASSISTANT_GEMINI_KEY', 'GOOGLE_AI_API_KEY'],
             'models' => [
-                'gemini-flash' => ['id' => 'gemini-2.5-flash-preview-05-20', 'label' => 'Flash 2.5', 'pricing' => [0.15, 0.6]],
-                'gemini-pro' => ['id' => 'gemini-2.5-pro-preview-06-05', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10]],
+                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.15, 0.6]],
+                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10]],
             ],
             'default' => 'gemini-flash',
         ]);
@@ -242,23 +242,29 @@ class ProviderRegistry
     /**
      * Get the default model key (first available provider's default).
      */
+    /** Preferred provider order when no explicit default is set. */
+    private const PROVIDER_PRIORITY = ['gemini', 'anthropic', 'groq', 'openai', 'deepseek', 'mistral', 'xai'];
+
     public static function getDefaultModelKey(): ?string
     {
         $defaultProvider = env('GDS_ASSISTANT_DEFAULT_PROVIDER') ?: null;
+        $available = self::getAvailable();
 
-        foreach (self::getAvailable() as $name => $config) {
-            if ($defaultProvider && $name !== $defaultProvider) {
-                continue;
-            }
-
-            return $name.':'.$config['default'];
+        // Explicit default
+        if ($defaultProvider && isset($available[$defaultProvider])) {
+            return $defaultProvider.':'.$available[$defaultProvider]['default'];
         }
 
-        // If preferred provider not found, fall back to first available
-        if ($defaultProvider) {
-            foreach (self::getAvailable() as $name => $config) {
-                return $name.':'.$config['default'];
+        // Priority order: cheapest fast model first
+        foreach (self::PROVIDER_PRIORITY as $name) {
+            if (isset($available[$name])) {
+                return $name.':'.$available[$name]['default'];
             }
+        }
+
+        // Fallback to first available
+        foreach ($available as $name => $config) {
+            return $name.':'.$config['default'];
         }
 
         return null;
@@ -275,9 +281,20 @@ class ProviderRegistry
         foreach (self::getAvailable() as $name => $config) {
             $models = [];
             foreach ($config['models'] as $key => $def) {
+                $pricing = $def['pricing'] ?? [0, 0];
+                // Cost tier based on output price (dominant cost factor)
+                $outputPrice = $pricing[1];
+                $tier = match (true) {
+                    $outputPrice <= 1 => '$',
+                    $outputPrice <= 5 => '$$',
+                    $outputPrice <= 20 => '$$$',
+                    default => '$$$$',
+                };
+
                 $models[] = [
                     'value' => $name.':'.$key,
                     'label' => $def['label'],
+                    'tier' => $tier,
                 ];
             }
             $providers[] = [
@@ -288,6 +305,7 @@ class ProviderRegistry
         }
 
         // Pricing map for frontend cost tracking ($/M tokens: [input, output])
+        // Last verified: 2026-04-13. Override via gds-assistant/model_pricing filter.
         $pricing = [];
         foreach (self::getAvailable() as $name => $config) {
             foreach ($config['models'] as $key => $def) {
@@ -296,6 +314,8 @@ class ProviderRegistry
                 }
             }
         }
+
+        $pricing = apply_filters('gds-assistant/model_pricing', $pricing);
 
         return [
             'providers' => $providers,

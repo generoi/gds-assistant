@@ -1,6 +1,15 @@
 # GDS Assistant
 
-AI-powered admin assistant for WordPress. Provides a chat interface in the admin panel where editors can interact with an LLM to manage site content using WordPress tools.
+AI chat assistant built into the WordPress admin. Talk to it in natural language to manage your site — create pages, edit content, run audits, handle translations, and more.
+
+### What it does
+
+- **Chat with AI in your admin** — a floating chat widget on every admin page. Ask it to do things like "create a draft campaign page" or "find all pages with broken links" and it actually does them using your site's real data.
+- **Multiple AI providers** — supports Claude (Anthropic), GPT (OpenAI), Gemini (Google), Mistral, Groq, xAI, and DeepSeek. Pick the model that fits the task — cheap and fast for quick queries, powerful for complex operations. Switch mid-conversation.
+- **Skills** — save reusable prompts as skills (like macros). Create them through the chat or in WP Admin under Tools > AI Skills. Invoke with `/skill-name`. Each skill can have a preferred model — e.g. use a cheap model for lookups, a smart one for content creation.
+- **Conversation history** — past chats are saved and searchable. Pick up where you left off. See how much each conversation cost.
+- **Cost tracking** — live token count and estimated cost displayed as you chat. Price indicators ($-$$$$) next to each model so you know what you're spending.
+- **Works with your content** — the assistant can list, create, update, and delete posts, pages, products, media, translations, forms, blocks, and more. It sees your actual site structure and uses real WordPress APIs.
 
 Built on [assistant-ui](https://www.assistant-ui.com/) for the chat UI and the [WordPress Abilities API](https://github.com/WordPress/abilities-api) for tool execution.
 

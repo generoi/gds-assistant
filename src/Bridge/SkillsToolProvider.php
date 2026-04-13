@@ -27,6 +27,7 @@ class SkillsToolProvider implements ToolProviderInterface
                         'slug' => ['type' => 'string', 'description' => 'Short slash-command slug (e.g. "translate-product")'],
                         'description' => ['type' => 'string', 'description' => 'Brief description of what the skill does'],
                         'prompt' => ['type' => 'string', 'description' => 'The full prompt template. Can include {{placeholders}} that the user fills in.'],
+                        'model' => ['type' => 'string', 'description' => 'Preferred model key (e.g. "gemini:gemini-flash", "anthropic:sonnet"). Auto-switches when skill is invoked. Leave empty for user\'s current selection.'],
                     ],
                     'required' => ['title', 'prompt'],
                 ],
@@ -42,6 +43,7 @@ class SkillsToolProvider implements ToolProviderInterface
                         'slug' => ['type' => 'string'],
                         'description' => ['type' => 'string'],
                         'prompt' => ['type' => 'string'],
+                        'model' => ['type' => 'string', 'description' => 'Preferred model key'],
                     ],
                     'required' => ['id'],
                 ],
@@ -99,6 +101,10 @@ class SkillsToolProvider implements ToolProviderInterface
             return $postId;
         }
 
+        if (! empty($input['model'])) {
+            update_post_meta($postId, '_assistant_model', sanitize_text_field($input['model']));
+        }
+
         $post = get_post($postId);
 
         return [
@@ -106,6 +112,7 @@ class SkillsToolProvider implements ToolProviderInterface
             'slug' => $post->post_name,
             'title' => $post->post_title,
             'description' => $post->post_excerpt,
+            'model' => get_post_meta($postId, '_assistant_model', true) ?: '',
             'message' => "Skill created. Users can invoke it with /{$post->post_name} in the chat.",
         ];
     }
@@ -131,6 +138,10 @@ class SkillsToolProvider implements ToolProviderInterface
         }
         if (isset($input['description'])) {
             $update['post_excerpt'] = $input['description'];
+        }
+
+        if (isset($input['model'])) {
+            update_post_meta($id, '_assistant_model', sanitize_text_field($input['model']));
         }
 
         $result = wp_update_post($update, true);

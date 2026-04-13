@@ -145,6 +145,7 @@ class Plugin
             'title' => $post->post_title,
             'description' => $post->post_excerpt,
             'prompt' => $post->post_content,
+            'model' => get_post_meta($post->ID, '_assistant_model', true) ?: '',
         ], $posts);
     }
 

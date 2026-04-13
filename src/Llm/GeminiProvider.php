@@ -249,6 +249,31 @@ class GeminiProvider implements LlmProviderInterface
         // Remove keys Gemini doesn't support
         unset($schema['additionalProperties'], $schema['$schema'], $schema['title']);
 
+        // Gemini rejects empty enum values — filter them out
+        if (isset($schema['enum']) && is_array($schema['enum'])) {
+            $schema['enum'] = array_values(array_filter($schema['enum'], fn ($v) => $v !== '' && $v !== null));
+            if (empty($schema['enum'])) {
+                unset($schema['enum']);
+            }
+        }
+
+        // Gemini doesn't support type arrays like ["string", "object"].
+        // Flatten to the first type.
+        if (isset($schema['type']) && is_array($schema['type'])) {
+            $schema['type'] = $schema['type'][0];
+        }
+
+        // Gemini doesn't support oneOf/anyOf — flatten to first option
+        foreach (['oneOf', 'anyOf'] as $key) {
+            if (isset($schema[$key]) && is_array($schema[$key])) {
+                $first = $schema[$key][0] ?? [];
+                unset($schema[$key]);
+                if (is_array($first)) {
+                    $schema = array_merge($schema, $first);
+                }
+            }
+        }
+
         // Recursively sanitize nested schemas
         if (isset($schema['properties']) && is_array($schema['properties'])) {
             foreach ($schema['properties'] as &$prop) {
