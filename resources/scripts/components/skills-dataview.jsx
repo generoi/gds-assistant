@@ -2,7 +2,8 @@ import {DataViews} from '@wordpress/dataviews';
 import {useEntityRecords} from '@wordpress/core-data';
 import {useState, useCallback} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
-import {edit, trash} from '@wordpress/icons';
+import {edit, trash, plus} from '@wordpress/icons';
+import {Button} from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 
 const FIELDS = [
@@ -111,16 +112,30 @@ export function SkillsDataView() {
   ];
 
   return (
-    <DataViews
-      data={records || []}
-      fields={FIELDS}
-      view={view}
-      onChangeView={setView}
-      paginationInfo={{totalItems: totalItems || 0, totalPages: totalPages || 1}}
-      isLoading={isResolving}
-      actions={actions}
-      getItemId={(item) => String(item.id)}
-      defaultLayouts={{table: {}}}
-    />
+    <>
+      <div style={{marginBottom: '16px'}}>
+        <Button
+          variant="primary"
+          icon={plus}
+          href="post-new.php?post_type=assistant_skill"
+        >
+          {__('Add New Skill', 'gds-assistant')}
+        </Button>
+      </div>
+      <DataViews
+        data={records || []}
+        fields={FIELDS}
+        view={view}
+        onChangeView={setView}
+        paginationInfo={{
+          totalItems: totalItems || 0,
+          totalPages: totalPages || 1,
+        }}
+        isLoading={isResolving}
+        actions={actions}
+        getItemId={(item) => String(item.id)}
+        defaultLayouts={{table: {}}}
+      />
+    </>
   );
 }
