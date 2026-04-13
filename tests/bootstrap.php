@@ -2,6 +2,16 @@
 
 require_once dirname(__DIR__).'/vendor/autoload.php';
 
+// Polyfill Acorn's env() for test environments where Laravel isn't loaded
+if (! function_exists('env')) {
+    function env(string $key, $default = null)
+    {
+        $value = getenv($key);
+
+        return $value !== false ? $value : $default;
+    }
+}
+
 require_once getenv('WP_PHPUNIT__DIR').'/includes/functions.php';
 
 tests_add_filter('muplugins_loaded', function () {

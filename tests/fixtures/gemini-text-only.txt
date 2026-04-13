@@ -1,0 +1,6 @@
+data: {"candidates":[{"content":{"parts":[{"text":"Hello! "}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":5,"totalTokenCount":55}}
+
+data: {"candidates":[{"content":{"parts":[{"text":"I can help you manage your site."}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":15,"totalTokenCount":65}}
+
+data: {"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":15,"totalTokenCount":65}}
+

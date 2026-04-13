@@ -41,7 +41,10 @@ export default {
   },
   entry: {
     'admin-chat': path.resolve(__dirname, 'resources/scripts/admin-chat.jsx'),
-    'admin-settings': path.resolve(__dirname, 'resources/scripts/admin-settings.jsx'),
+    'admin-settings': path.resolve(
+      __dirname,
+      'resources/scripts/admin-settings.jsx',
+    ),
   },
   output: {
     ...defaultConfig.output,

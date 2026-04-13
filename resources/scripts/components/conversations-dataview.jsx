@@ -1,7 +1,7 @@
 import {DataViews} from '@wordpress/dataviews';
 import {useState, useEffect, useCallback} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
-import {trash, backup, external} from '@wordpress/icons';
+import {backup, external} from '@wordpress/icons';
 import apiFetch from '@wordpress/api-fetch';
 
 /**
@@ -44,9 +44,7 @@ const FIELDS = [
     label: __('Title', 'gds-assistant'),
     enableGlobalSearch: true,
     enableSorting: true,
-    render: ({item}) => (
-      <strong>{item.title || 'Untitled'}</strong>
-    ),
+    render: ({item}) => <strong>{item.title || 'Untitled'}</strong>,
   },
   {
     id: 'model',
@@ -162,7 +160,11 @@ export function ConversationsDataView() {
     const dir = view.sort?.direction === 'asc' ? 1 : -1;
     const aVal = a[field] || '';
     const bVal = b[field] || '';
-    return aVal > bVal ? dir : aVal < bVal ? -dir : 0;
+    return (
+      aVal > bVal ? dir
+      : aVal < bVal ? -dir
+      : 0
+    );
   });
 
   const start = (view.page - 1) * view.perPage;

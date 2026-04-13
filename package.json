@@ -33,7 +33,9 @@
     "@wordpress/icons": "^12.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.0.0",
+    "@wordpress/e2e-test-utils-playwright": "^1.43.0",
     "@wordpress/scripts": "~31.6.0",
     "tailwindcss": "^4.0.0"
   }

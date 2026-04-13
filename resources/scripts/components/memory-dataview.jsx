@@ -12,9 +12,7 @@ const FIELDS = [
     label: __('Title', 'gds-assistant'),
     enableSorting: true,
     enableGlobalSearch: true,
-    render: ({item}) => (
-      <strong>{item.title?.rendered || item.title}</strong>
-    ),
+    render: ({item}) => <strong>{item.title?.rendered || item.title}</strong>,
   },
   {
     id: 'content',
@@ -25,7 +23,9 @@ const FIELDS = [
         item.content?.raw ||
         item.content?.rendered?.replace(/<[^>]*>/g, '') ||
         '';
-      return <span>{text.length > 120 ? text.slice(0, 117) + '...' : text}</span>;
+      return (
+        <span>{text.length > 120 ? text.slice(0, 117) + '...' : text}</span>
+      );
     },
   },
   {

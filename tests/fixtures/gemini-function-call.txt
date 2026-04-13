@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"parts":[{"text":"Let me list the pages for you."}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":10,"totalTokenCount":110}}
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"gds__content-list","args":{"type":"page","per_page":10}}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":30,"totalTokenCount":130}}
+
