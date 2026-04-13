@@ -163,11 +163,10 @@ class ChatEndpoint
                 function (string $type, array $data) use ($conversationId) {
                     $this->sendSSE($type, $data);
 
-                    // Log tool events
+                    // Log tool events (tool_use_start has empty input — real input logged by MessageLoop)
                     if ($type === 'tool_use_start') {
                         self::log('info', 'Tool call: '.$data['name'], [
                             'conversation' => $conversationId,
-                            'input' => $data['input'] ?? null,
                         ]);
                     } elseif ($type === 'tool_result' && ! empty($data['is_error'])) {
                         self::log('warning', 'Tool error: '.($data['tool_use_id'] ?? ''), [
