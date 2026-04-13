@@ -135,13 +135,16 @@ export function ConversationsDataView() {
   const actions = [
     {
       id: 'resume',
-      label: __('Resume in chat', 'gds-assistant'),
+      label: __('Resume', 'gds-assistant'),
       icon: external,
       isPrimary: true,
       callback: ([item]) => {
-        // Store the conversation UUID so the chat widget picks it up
+        // Store the conversation UUID so the chat widget picks it up on next page
         localStorage.setItem('gds-assistant-resume', item.uuid);
-        window.location.href = 'index.php'; // Go to dashboard where chat widget loads
+        // Chat widget is on this page too — trigger it directly
+        window.dispatchEvent(
+          new CustomEvent('gds-assistant-resume', {detail: {uuid: item.uuid}}),
+        );
       },
     },
     {

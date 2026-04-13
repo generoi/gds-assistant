@@ -1,5 +1,5 @@
 import {AssistantRuntimeProvider} from '@assistant-ui/react';
-import {useState, useCallback} from '@wordpress/element';
+import {useState, useCallback, useEffect} from '@wordpress/element';
 import {AssistantModal} from './components/assistant-modal';
 import {
   useAssistantRuntime,
@@ -16,10 +16,32 @@ export function App() {
     loadConversation(null);
   }, [loadConversation]);
 
-  const handleContextChange = useCallback((val) => {
-    setContext(val);
-    setSystemContext(val);
-  }, []);
+  const handleContextChange = useCallback(
+    (val) => {
+      setContext(val);
+      setSystemContext(val);
+    },
+    [],
+  );
+
+  // Resume conversation from settings page or localStorage
+  useEffect(() => {
+    // Check localStorage for resume request
+    const resumeUuid = localStorage.getItem('gds-assistant-resume');
+    if (resumeUuid) {
+      localStorage.removeItem('gds-assistant-resume');
+      loadConversation(resumeUuid);
+    }
+
+    // Listen for resume events from the conversations DataView
+    const handler = (e) => {
+      if (e.detail?.uuid) {
+        loadConversation(e.detail.uuid);
+      }
+    };
+    window.addEventListener('gds-assistant-resume', handler);
+    return () => window.removeEventListener('gds-assistant-resume', handler);
+  }, [loadConversation]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
