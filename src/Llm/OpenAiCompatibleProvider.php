@@ -121,6 +121,29 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         $curlError = curl_error($ch);
         curl_close($ch);
 
+        // Flush any remaining tool call arguments that weren't finalized
+        if (! empty($toolCallBuffers)) {
+            error_log('[gds-assistant] OpenAI: flushing '.count($toolCallBuffers).' unflushed tool call buffers');
+            foreach ($toolCallBuffers as $tcIdx => $tc) {
+                error_log("[gds-assistant] OpenAI: buffer[$tcIdx] id={$tc['id']} name={$tc['name']} args_len=".strlen($tc['arguments']));
+                $parsed = json_decode($tc['arguments'], true);
+                foreach ($contentBlocks as &$block) {
+                    if (($block['type'] ?? '') === 'tool_use' && ($block['id'] ?? '') === $tc['id']) {
+                        $block['input'] = $parsed ?: new \stdClass;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Debug: log final contentBlocks for tool calls
+        foreach ($contentBlocks as $i => $block) {
+            if (($block['type'] ?? '') === 'tool_use') {
+                $inputJson = json_encode($block['input'] ?? null);
+                error_log("[gds-assistant] OpenAI: final block[$i] tool_use name={$block['name']} input_len=".strlen($inputJson)." input_preview=".substr($inputJson, 0, 200));
+            }
+        }
+
         if ($curlError) {
             $onEvent('error', ['message' => 'curl error: '.$curlError]);
         }
@@ -148,7 +171,7 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         $finishReason = $event['choices'][0]['finish_reason'] ?? null;
         $usage = $event['usage'] ?? null;
 
-        if ($delta) {
+        if ($delta && is_array($delta)) {
             // Text content
             if (isset($delta['content']) && $delta['content'] !== '') {
                 if (! isset($contentBlocks[$currentIndex]) || ($contentBlocks[$currentIndex]['type'] ?? '') !== 'text') {
@@ -194,8 +217,15 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
             }
         }
 
-        // Finish: parse tool call arguments
-        if ($finishReason === 'tool_calls' || $finishReason === 'stop') {
+        // Finish: parse tool call arguments.
+        if ($finishReason) {
+            $bufferSummary = [];
+            foreach ($toolCallBuffers as $idx => $buf) {
+                $bufferSummary[] = "[$idx] id={$buf['id']} name={$buf['name']} args_len=".strlen($buf['arguments']).' args='.substr($buf['arguments'], 0, 300);
+            }
+            error_log("[gds-assistant] OpenAI: finish_reason={$finishReason} buffers=".count($toolCallBuffers).' '.implode('; ', $bufferSummary));
+        }
+        if ($finishReason === 'tool_calls' || ($finishReason === 'stop' && ! empty($toolCallBuffers))) {
             foreach ($toolCallBuffers as $tcIndex => $tc) {
                 $parsed = json_decode($tc['arguments'], true);
                 // Find the matching content block and update input
@@ -231,9 +261,40 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
             'function' => [
                 'name' => $tool['name'],
                 'description' => $tool['description'] ?? '',
-                'parameters' => $tool['input_schema'] ?? ['type' => 'object'],
+                'parameters' => self::sanitizeSchema($tool['input_schema'] ?? ['type' => 'object']),
             ],
         ], $tools);
+    }
+
+    /**
+     * Sanitize schema for OpenAI compatibility.
+     */
+    private static function sanitizeSchema(array $schema): array
+    {
+        // Flatten type arrays — OpenAI doesn't support ["string", "object"]
+        if (isset($schema['type']) && is_array($schema['type'])) {
+            $schema['type'] = $schema['type'][0];
+        }
+
+        // Array type must have items
+        if (($schema['type'] ?? '') === 'array' && ! isset($schema['items'])) {
+            $schema['items'] = ['type' => 'string'];
+        }
+
+        // Recursively sanitize properties
+        if (isset($schema['properties']) && is_array($schema['properties'])) {
+            foreach ($schema['properties'] as &$prop) {
+                if (is_array($prop)) {
+                    $prop = self::sanitizeSchema($prop);
+                }
+            }
+        }
+
+        if (isset($schema['items']) && is_array($schema['items'])) {
+            $schema['items'] = self::sanitizeSchema($schema['items']);
+        }
+
+        return $schema;
     }
 
     /**
