@@ -395,6 +395,10 @@ function SkillsList() {
 
   const handleUse = useCallback(
     (skill) => {
+      // Auto-switch model if skill has a preferred one
+      if (skill.model) {
+        setModel(skill.model);
+      }
       threadRuntime.append({
         role: 'user',
         content: [{type: 'text', text: skill.prompt}],
@@ -427,9 +431,15 @@ function SkillsList() {
             <span className="gds-assistant__skill-name">/{skill.slug}</span>
             <span className="gds-assistant__skill-title">{skill.title}</span>
           </div>
-          {skill.description && (
+          {(skill.description || skill.model) && (
             <span className="gds-assistant__skill-desc">
               {skill.description}
+              {skill.model && (
+                <span className="gds-assistant__skill-model">
+                  {' '}
+                  ({skill.model.split(':').pop()})
+                </span>
+              )}
             </span>
           )}
         </button>
@@ -583,7 +593,7 @@ function ModelSelector() {
         <optgroup key={provider.name} label={provider.label}>
           {provider.models.map((m) => (
             <option key={m.value} value={m.value}>
-              {m.label}
+              {m.label} {m.tier || ''}
             </option>
           ))}
         </optgroup>
@@ -695,6 +705,9 @@ function Composer() {
   const handleSkillSelect = useCallback(
     (skill) => {
       setSlashQuery(null);
+      if (skill.model) {
+        setModel(skill.model);
+      }
       threadRuntime.append({
         role: 'user',
         content: [{type: 'text', text: skill.prompt}],

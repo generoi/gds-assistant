@@ -3,8 +3,9 @@ import {useState, useRef, useCallback, useMemo} from '@wordpress/element';
 
 // Session state
 let currentConversationId = null;
-let currentModel = '';
-let currentMaxTokens = 0;
+let currentModel = localStorage.getItem('gds-assistant-model') || '';
+let currentMaxTokens =
+  parseInt(localStorage.getItem('gds-assistant-max-tokens'), 10) || 0;
 let currentSystemContext = '';
 
 const sessionUsage = {
@@ -18,12 +19,14 @@ const sessionUsage = {
 
 export function setModel(model) {
   currentModel = model;
+  localStorage.setItem('gds-assistant-model', model);
 }
 export function getModel() {
   return currentModel;
 }
 export function setMaxTokens(tokens) {
   currentMaxTokens = tokens;
+  localStorage.setItem('gds-assistant-max-tokens', String(tokens));
 }
 export function getMaxTokens() {
   return currentMaxTokens;
