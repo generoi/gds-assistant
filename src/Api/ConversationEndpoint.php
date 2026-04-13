@@ -61,8 +61,11 @@ class ConversationEndpoint
         $store = new ConversationStore;
         $conversation = $store->get($request->get_param('uuid'));
 
-        if (! $conversation || (int) $conversation['user_id'] !== get_current_user_id()) {
+        if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
+        }
+        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+            return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
         return new WP_REST_Response($conversation);
@@ -74,8 +77,11 @@ class ConversationEndpoint
         $uuid = $request->get_param('uuid');
         $conversation = $store->get($uuid);
 
-        if (! $conversation || (int) $conversation['user_id'] !== get_current_user_id()) {
+        if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
+        }
+        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+            return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
         $data = [];
@@ -97,8 +103,11 @@ class ConversationEndpoint
         $uuid = $request->get_param('uuid');
         $conversation = $store->get($uuid);
 
-        if (! $conversation || (int) $conversation['user_id'] !== get_current_user_id()) {
+        if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
+        }
+        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+            return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
         $store->update($uuid, ['archived' => 1]);
