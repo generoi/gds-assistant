@@ -53,6 +53,12 @@ class SkillsToolProvider implements ToolProviderInterface
 
     public function executeTool(string $name, array $input): mixed
     {
+        // Verify user has permission to manage skills
+        $capability = apply_filters('gds-assistant/capability', 'edit_posts');
+        if (! current_user_can($capability)) {
+            return new \WP_Error('forbidden', 'Insufficient permissions');
+        }
+
         return match ($name) {
             'assistant__skills-list' => $this->listSkills(),
             'assistant__skills-create' => $this->createSkill($input),
@@ -88,6 +94,18 @@ class SkillsToolProvider implements ToolProviderInterface
 
     private function createSkill(array $input): array|\WP_Error
     {
+        $title = sanitize_text_field($input['title'] ?? '');
+        $prompt = wp_kses_post($input['prompt'] ?? '');
+        if (! $title || ! $prompt) {
+            return new \WP_Error('invalid_input', 'Title and prompt are required');
+        }
+        if (mb_strlen($title) > 200) {
+            return new \WP_Error('invalid_input', 'Title too long (max 200 characters)');
+        }
+        if (mb_strlen($prompt) > 50000) {
+            return new \WP_Error('invalid_input', 'Prompt too long (max 50000 characters)');
+        }
+
         $postId = wp_insert_post([
             'post_type' => 'assistant_skill',
             'post_title' => $input['title'] ?? '',

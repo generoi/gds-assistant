@@ -344,6 +344,8 @@ class ChatEndpoint
         header('Content-Type: text/event-stream');
         header('Cache-Control: no-cache');
         header('Connection: keep-alive');
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
         header('X-Accel-Buffering: no');
     }
 

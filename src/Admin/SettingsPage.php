@@ -79,13 +79,7 @@ class SettingsPage
             'default' => true,
         ]);
 
-        // Provider API keys (stored in DB, env var takes precedence)
-        foreach (ProviderRegistry::getAvailable() + self::getAllProviderConfigs() as $name => $config) {
-            register_setting('gds_assistant_providers', "gds_assistant_key_{$name}", [
-                'type' => 'string',
-                'sanitize_callback' => 'sanitize_text_field',
-            ]);
-        }
+        // API keys are env-only for security — not stored in DB
     }
 
     public function enqueueAssets(string $hookSuffix): void
@@ -148,28 +142,19 @@ class SettingsPage
                 </label>
 
                 <h2><?php esc_html_e('Providers', 'gds-assistant'); ?></h2>
-                <p class="description"><?php esc_html_e('API keys can also be set via environment variables (env takes precedence).', 'gds-assistant'); ?></p>
+                <p class="description"><?php esc_html_e('API keys are configured via environment variables in your .env file. The chat widget only loads when at least one provider is configured.', 'gds-assistant'); ?></p>
                 <table class="form-table">
                     <?php foreach (self::getAllProviderConfigs() as $name => $config) { ?>
-                        <?php
-                        $envKey = ProviderRegistry::getApiKey($name);
-                        $dbKey = get_option("gds_assistant_key_{$name}", '');
-                        $hasKey = $envKey || $dbKey;
-                        ?>
+                        <?php $hasKey = ProviderRegistry::getApiKey($name); ?>
                         <tr>
                             <th scope="row"><?php echo esc_html($config['label']); ?></th>
                             <td>
-                                <?php if ($envKey) { ?>
+                                <?php if ($hasKey) { ?>
                                     <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                                    <?php esc_html_e('Set via environment variable', 'gds-assistant'); ?>
+                                    <?php esc_html_e('Configured', 'gds-assistant'); ?>
                                 <?php } else { ?>
-                                    <input type="password" name="gds_assistant_key_<?php echo esc_attr($name); ?>"
-                                        value="<?php echo esc_attr($dbKey); ?>"
-                                        class="regular-text"
-                                        placeholder="<?php echo esc_attr($config['env'][0] ?? ''); ?>">
-                                    <?php if ($dbKey) { ?>
-                                        <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                                    <?php } ?>
+                                    <span class="dashicons dashicons-minus" style="color: #999;"></span>
+                                    <code><?php echo esc_html($config['env'][0] ?? ''); ?></code>
                                 <?php } ?>
                             </td>
                         </tr>

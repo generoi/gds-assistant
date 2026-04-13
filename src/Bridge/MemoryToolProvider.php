@@ -45,6 +45,11 @@ class MemoryToolProvider implements ToolProviderInterface
 
     public function executeTool(string $name, array $input): mixed
     {
+        $capability = apply_filters('gds-assistant/capability', 'edit_posts');
+        if (! current_user_can($capability)) {
+            return new \WP_Error('forbidden', 'Insufficient permissions');
+        }
+
         return match ($name) {
             'assistant__memory-list' => $this->listMemories(),
             'assistant__memory-save' => $this->saveMemory($input),
@@ -79,10 +84,19 @@ class MemoryToolProvider implements ToolProviderInterface
 
     private function saveMemory(array $input): array|\WP_Error
     {
+        $title = sanitize_text_field($input['title'] ?? '');
+        $content = sanitize_textarea_field($input['content'] ?? '');
+        if (! $title || ! $content) {
+            return new \WP_Error('invalid_input', 'Title and content are required');
+        }
+        if (mb_strlen($title) > 200 || mb_strlen($content) > 5000) {
+            return new \WP_Error('invalid_input', 'Title max 200 chars, content max 5000 chars');
+        }
+
         $postId = wp_insert_post([
             'post_type' => 'assistant_memory',
-            'post_title' => $input['title'] ?? '',
-            'post_content' => $input['content'] ?? '',
+            'post_title' => $title,
+            'post_content' => $content,
             'post_status' => 'publish',
         ], true);
 
