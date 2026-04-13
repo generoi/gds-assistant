@@ -32,6 +32,7 @@ class Plugin
         add_action('rest_api_init', [$this, 'registerRestRoutes']);
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
+        add_action('gds_assistant_run_scheduled_skills', [Cron\SkillScheduler::class, 'run']);
 
         // Bust system prompt cache when relevant data changes
         add_action('update_option_gds_assistant_custom_prompt', [Llm\SystemPrompt::class, 'bustCache']);
@@ -201,10 +202,14 @@ class Plugin
         if (! wp_next_scheduled('gds_assistant_cleanup')) {
             wp_schedule_event(time(), 'daily', 'gds_assistant_cleanup');
         }
+        if (! wp_next_scheduled('gds_assistant_run_scheduled_skills')) {
+            wp_schedule_event(time(), 'hourly', 'gds_assistant_run_scheduled_skills');
+        }
     }
 
     public function deactivate(): void
     {
         wp_clear_scheduled_hook('gds_assistant_cleanup');
+        wp_clear_scheduled_hook('gds_assistant_run_scheduled_skills');
     }
 }

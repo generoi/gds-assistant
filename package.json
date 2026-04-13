@@ -16,6 +16,7 @@
     "translate": "npm run translate:pot && npm run translate:js",
     "translate:pot": "npm run wp -- i18n make-pot . ./resources/lang/gds-assistant.pot --domain=gds-assistant --include=\"src,resources\"",
     "translate:js": "npm run wp -- i18n make-json ./resources/lang --pretty-print",
+    "test:e2e": "npx playwright test --config tests/e2e/playwright.config.js",
     "wp": "../../../../vendor/bin/wp"
   },
   "eslintConfig": {},
