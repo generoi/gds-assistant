@@ -1,0 +1,24 @@
+@import '@wordpress/dataviews/build-style/style.css';
+
+.gds-assistant-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.gds-assistant-badge--auto {
+  background: #f0f6fc;
+  color: #2271b1;
+}
+
+.gds-assistant-badge--manual {
+  background: #f0f0f0;
+  color: #757575;
+}
+
+.gds-assistant-muted {
+  color: #999;
+  font-style: italic;
+}
