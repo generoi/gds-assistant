@@ -58,8 +58,11 @@ class MessageLoop
         };
 
         for ($i = 0; $i < $maxIterations; $i++) {
+            // Compress context if conversation is getting long
+            $messagesForLlm = ContextCompressor::compress($messages);
+
             $contentBlocks = $this->provider->stream(
-                $messages,
+                $messagesForLlm,
                 $tools,
                 $wrappedOnEvent,
                 $systemPrompt,
