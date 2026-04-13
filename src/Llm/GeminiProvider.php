@@ -209,6 +209,13 @@ class GeminiProvider implements LlmProviderInterface
                                 'args' => $block['input'] ?? new \stdClass,
                             ],
                         ];
+                    } elseif ($type === 'image') {
+                        $parts[] = [
+                            'inlineData' => [
+                                'mimeType' => $block['source']['media_type'] ?? 'image/png',
+                                'data' => $block['source']['data'] ?? '',
+                            ],
+                        ];
                     } elseif ($type === 'tool_result') {
                         $parts[] = [
                             'functionResponse' => [
