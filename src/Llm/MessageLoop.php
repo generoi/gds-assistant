@@ -4,6 +4,7 @@ namespace GeneroWP\Assistant\Llm;
 
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
+use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Storage\AuditLog;
 use Illuminate\Support\Facades\Log;
 
@@ -104,14 +105,42 @@ class MessageLoop
 
             // Execute each tool and collect results
             $toolResults = [];
+            $pendingApproval = false;
+
             foreach ($toolUseBlocks as $toolUse) {
                 $toolInput = json_decode(json_encode($toolUse['input'] ?? []), true) ?: [];
-
-                // Check if this tool is destructive (for audit logging)
                 $abilityName = AbilitiesToolProvider::toAbilityName($toolUse['name']);
                 $isDestructive = $this->isDestructive($abilityName);
 
-                // Log the actual parsed input (not the empty initial from tool_use_start)
+                // Check if this tool requires user approval (dangerous tools)
+                $toolDef = ['name' => $toolUse['name'], 'description' => ''];
+                foreach ($tools as $t) {
+                    if (($t['name'] ?? '') === $toolUse['name']) {
+                        $toolDef = $t;
+                        break;
+                    }
+                }
+                $riskLevel = ToolRestrictor::classifyRisk($toolDef);
+
+                if ($riskLevel === 'dangerous' || ($riskLevel === 'moderate' && $isDestructive)) {
+                    $onEvent('tool_approval_required', [
+                        'tool_use_id' => $toolUse['id'],
+                        'tool_name' => $abilityName,
+                        'input' => $toolInput,
+                    ]);
+
+                    $toolResults[] = [
+                        'type' => 'tool_result',
+                        'tool_use_id' => $toolUse['id'],
+                        'content' => json_encode(['status' => 'pending_approval', 'tool_name' => $abilityName]),
+                        'is_error' => false,
+                    ];
+                    $pendingApproval = true;
+
+                    break; // Stop processing more tools, wait for user
+                }
+
+                // Log the actual parsed input
                 if (class_exists(Log::class)) {
                     try {
                         Log::info("[gds-assistant] Tool execute: {$abilityName}", [
@@ -170,6 +199,11 @@ class MessageLoop
 
             // Add tool results as a user message
             $messages[] = ['role' => 'user', 'content' => $toolResults];
+
+            // If a tool requires approval, break the loop and let the user decide
+            if ($pendingApproval) {
+                break;
+            }
         }
 
         return $messages;

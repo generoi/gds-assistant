@@ -8,7 +8,13 @@ import {
 } from './hooks/use-runtime-adapter';
 
 export function App() {
-  const {runtime, loadConversation} = useAssistantRuntime();
+  const {
+    runtime,
+    loadConversation,
+    approveToolCall,
+    denyToolCall,
+    pendingApprovalRef,
+  } = useAssistantRuntime();
   const [context, setContext] = useState('');
 
   const handleNewChat = useCallback(() => {
@@ -53,6 +59,9 @@ export function App() {
         onLoadConversation={loadConversation}
         systemContext={context}
         onSystemContextChange={handleContextChange}
+        onApproveToolCall={approveToolCall}
+        onDenyToolCall={denyToolCall}
+        pendingApprovalRef={pendingApprovalRef}
       />
     </AssistantRuntimeProvider>
   );
