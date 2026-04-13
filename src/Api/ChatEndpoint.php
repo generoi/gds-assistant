@@ -3,6 +3,7 @@
 namespace GeneroWP\Assistant\Api;
 
 use GeneroWP\Assistant\Bridge\ToolRegistry;
+use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Llm\MessageLoop;
 use GeneroWP\Assistant\Llm\ProviderRegistry;
 use GeneroWP\Assistant\Llm\SystemPrompt;
@@ -96,6 +97,10 @@ class ChatEndpoint
 
         $provider = $resolved['provider'];
         $modelId = $resolved['modelId'];
+        $modelTier = $resolved['tier'] ?? 'standard';
+
+        // Filter tools based on model tier
+        add_filter('gds-assistant/tools', fn (array $tools) => ToolRestrictor::filter($tools, $modelTier));
 
         // Resolve or create conversation
         $store = new ConversationStore;

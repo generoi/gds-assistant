@@ -33,6 +33,16 @@ class Plugin
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
 
+        // Bust system prompt cache when relevant data changes
+        add_action('update_option_gds_assistant_custom_prompt', [Llm\SystemPrompt::class, 'bustCache']);
+        add_action('update_option_gds_assistant_auto_memory', [Llm\SystemPrompt::class, 'bustCache']);
+        add_action('save_post_assistant_memory', [Llm\SystemPrompt::class, 'bustCache']);
+        add_action('delete_post', function (int $postId) {
+            if (get_post_type($postId) === 'assistant_memory') {
+                Llm\SystemPrompt::bustCache();
+            }
+        });
+
         // Settings page
         new Admin\SettingsPage($this);
 
