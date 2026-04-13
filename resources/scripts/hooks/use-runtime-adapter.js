@@ -114,7 +114,10 @@ export function useAssistantRuntime() {
   const onNewRef = useRef(null);
 
   const onNew = useCallback(async (message) => {
-    // Extract user text from the append message
+    // Build content blocks from text + attachments
+    const contentBlocks = [];
+
+    // Extract text
     const userText =
       typeof message.content === 'string' ?
         message.content
@@ -122,8 +125,28 @@ export function useAssistantRuntime() {
           ?.map((p) => (p.type === 'text' ? p.text : ''))
           .join('') || '';
 
-    // Add user message to state
-    const userMsg = {role: 'user', content: [{type: 'text', text: userText}]};
+    if (userText) {
+      contentBlocks.push({type: 'text', text: userText});
+    }
+
+    // Extract image attachments (from SimpleImageAttachmentAdapter)
+    if (message.attachments?.length) {
+      for (const attachment of message.attachments) {
+        if (attachment.type === 'image' && attachment.content?.[0]?.image) {
+          const dataUrl = attachment.content[0].image;
+          const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            contentBlocks.push({
+              type: 'image',
+              source: {type: 'base64', media_type: match[1], data: match[2]},
+            });
+          }
+        }
+      }
+    }
+
+    // Add user message to state (show text only in UI)
+    const userMsg = {role: 'user', content: contentBlocks};
     setMessages((prev) => [...prev, userMsg]);
 
     // Start streaming
@@ -140,7 +163,7 @@ export function useAssistantRuntime() {
           'X-WP-Nonce': nonce,
         },
         body: JSON.stringify({
-          messages: [{role: 'user', content: userText}],
+          messages: [{role: 'user', content: contentBlocks}],
           conversation_id: currentConversationId || '',
           model: currentModel || '',
           max_tokens: currentMaxTokens || undefined,
@@ -373,15 +396,58 @@ export function useAssistantRuntime() {
     };
   }, []);
 
+  // Edit: truncate conversation to the edited message and re-send
+  const onEdit = useCallback(
+    (message) => {
+      const parentId = message.parentId;
+      setMessages((prev) => {
+        // Find the parent message index and truncate after it
+        const idx = prev.findIndex((m) => m.id === parentId);
+        return idx >= 0 ? prev.slice(0, idx) : prev;
+      });
+      // Re-send with edited content
+      onNew(message);
+    },
+    [onNew],
+  );
+
+  // Reload: re-send from a parent message (retry)
+  const onReload = useCallback(
+    (parentId) => {
+      setMessages((prev) => {
+        if (!parentId) return [];
+        const idx = prev.findIndex((m) => m.id === parentId);
+        const truncated = idx >= 0 ? prev.slice(0, idx + 1) : prev;
+        // Find the last user message to re-send
+        const lastUser = [...truncated]
+          .reverse()
+          .find((m) => m.role === 'user');
+        if (lastUser) {
+          const text =
+            lastUser.content
+              ?.map((p) => (p.type === 'text' ? p.text : ''))
+              .join('') || '';
+          if (text) {
+            setTimeout(() => onNew({content: text}), 0);
+          }
+        }
+        return truncated;
+      });
+    },
+    [onNew],
+  );
+
   const adapter = useMemo(
     () => ({
       messages,
       isRunning,
       onNew,
+      onEdit,
+      onReload,
       onCancel,
       convertMessage,
     }),
-    [messages, isRunning, onNew, onCancel, convertMessage],
+    [messages, isRunning, onNew, onEdit, onReload, onCancel, convertMessage],
   );
 
   // Keep ref to onNew for approval callbacks

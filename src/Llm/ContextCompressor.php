@@ -73,6 +73,9 @@ class ContextCompressor
             return ['messages' => $messages, 'summary' => $existingSummary];
         }
 
+        // Strip old images before further compression
+        $messages = self::stripOldImages($messages, $keepRecent);
+
         // Level 2: Strip old tool_result content
         $messages = self::stripOldToolResults($messages, $keepRecent);
         $tokens = self::estimateTokens($messages);
@@ -516,6 +519,52 @@ class ContextCompressor
 
     public static function estimateTokens(array $messages): int
     {
-        return (int) (strlen(json_encode($messages)) / self::CHARS_PER_TOKEN);
+        $imageCount = 0;
+        // Strip image data before estimating — base64 would massively inflate the count
+        $stripped = array_map(function ($msg) use (&$imageCount) {
+            if (! is_array($msg['content'] ?? null)) {
+                return $msg;
+            }
+            $msg['content'] = array_map(function ($block) use (&$imageCount) {
+                if (($block['type'] ?? '') === 'image') {
+                    $imageCount++;
+
+                    return ['type' => 'image', 'source' => '[stripped]'];
+                }
+
+                return $block;
+            }, $msg['content']);
+
+            return $msg;
+        }, $messages);
+
+        // ~1500 tokens per image (typical for vision models)
+        return (int) (strlen(json_encode($stripped)) / self::CHARS_PER_TOKEN) + ($imageCount * 1500);
+    }
+
+    /**
+     * Strip image blocks from old messages to keep context manageable.
+     * Replaces images with a placeholder text block.
+     */
+    public static function stripOldImages(array $messages, int $keepRecent = 4): array
+    {
+        $total = count($messages);
+        foreach ($messages as $i => &$msg) {
+            if ($i >= $total - $keepRecent) {
+                break; // Keep recent messages intact
+            }
+            if (! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            $msg['content'] = array_map(function ($block) {
+                if (($block['type'] ?? '') === 'image') {
+                    return ['type' => 'text', 'text' => '[image removed for context compression]'];
+                }
+
+                return $block;
+            }, $msg['content']);
+        }
+
+        return $messages;
     }
 }

@@ -366,6 +366,33 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
                 return array_filter($msg, fn ($v) => $v !== null);
             }
 
+            // Check for image blocks (vision content)
+            $hasImages = false;
+            foreach ($content as $block) {
+                if (($block['type'] ?? '') === 'image') {
+                    $hasImages = true;
+                    break;
+                }
+            }
+
+            if ($hasImages) {
+                $parts = [];
+                foreach ($content as $block) {
+                    if (($block['type'] ?? '') === 'text') {
+                        $parts[] = ['type' => 'text', 'text' => $block['text'] ?? ''];
+                    } elseif (($block['type'] ?? '') === 'image') {
+                        $mediaType = $block['source']['media_type'] ?? 'image/png';
+                        $data = $block['source']['data'] ?? '';
+                        $parts[] = [
+                            'type' => 'image_url',
+                            'image_url' => ['url' => "data:{$mediaType};base64,{$data}"],
+                        ];
+                    }
+                }
+
+                return ['role' => $role, 'content' => $parts];
+            }
+
             // Plain text blocks
             $text = implode('', array_map(fn ($b) => $b['text'] ?? '', $content));
 
