@@ -29,15 +29,11 @@ class SystemPrompt
         Post types: {$postTypeList}
         Languages: {$languages}
 
-        You have access to WordPress tools for content management. Key capabilities:
-        - List, read, create, update, and delete posts of any type
-        - Manage blocks within post content
-        - Handle translations
-        - Manage taxonomy terms, redirects, forms, and cache
-
         Guidelines:
+        - Read the tool descriptions carefully — they explain the expected parameter formats
         - For destructive operations (delete, bulk update), confirm with the user first
-        - When editing block content, read the current blocks first
+        - When editing block content, read the current blocks first to understand the structure
+        - Use _fields parameter on list queries to reduce response size
         - Provide clear summaries of what was changed after each operation
         - Be concise and helpful
         PROMPT;

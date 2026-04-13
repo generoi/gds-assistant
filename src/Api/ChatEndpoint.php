@@ -3,8 +3,8 @@
 namespace GeneroWP\Assistant\Api;
 
 use GeneroWP\Assistant\Bridge\ToolRegistry;
-use GeneroWP\Assistant\Llm\AnthropicProvider;
 use GeneroWP\Assistant\Llm\MessageLoop;
+use GeneroWP\Assistant\Llm\ProviderRegistry;
 use GeneroWP\Assistant\Llm\SystemPrompt;
 use GeneroWP\Assistant\Plugin;
 use GeneroWP\Assistant\Storage\AuditLog;
@@ -37,7 +37,7 @@ class ChatEndpoint
                 'model' => [
                     'type' => 'string',
                     'default' => '',
-                    'enum' => ['', 'haiku', 'sonnet', 'opus', 'advisor', 'haiku-advisor'],
+                    'description' => 'Model key in "provider:model" format (e.g. "anthropic:sonnet", "openai:gpt-4.1-mini").',
                 ],
                 'max_tokens' => [
                     'type' => 'integer',
@@ -60,10 +60,9 @@ class ChatEndpoint
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
-        $apiKey = $this->getApiKey();
-        if (! $apiKey) {
+        if (! ProviderRegistry::hasAnyProvider()) {
             return new WP_REST_Response([
-                'error' => 'GDS_ASSISTANT_API_KEY not configured',
+                'error' => 'No AI provider configured. Set an API key in .env (e.g. GDS_ASSISTANT_ANTHROPIC_KEY).',
             ], 500);
         }
 
@@ -79,22 +78,24 @@ class ChatEndpoint
         $messages = $request->get_param('messages');
         $conversationId = $request->get_param('conversation_id');
 
-        // Normalize messages to Anthropic format
+        // Normalize messages
         $messages = $this->normalizeMessages($messages);
 
-        // Resolve model from request or env
-        $modelKey = $request->get_param('model') ?: '';
-        $useAdvisor = in_array($modelKey, ['advisor', 'haiku-advisor'], true);
+        // Resolve model and provider
+        $modelKey = $request->get_param('model') ?: ProviderRegistry::getDefaultModelKey();
+        $requestMaxTokens = (int) $request->get_param('max_tokens');
+        $envMaxTokens = (int) (env('GDS_ASSISTANT_MAX_TOKENS') ?: 0);
+        $maxTokens = $requestMaxTokens ?: $envMaxTokens ?: 4096;
 
-        if ($modelKey === 'haiku-advisor') {
-            $modelId = AnthropicProvider::MODELS['haiku'];
-        } elseif ($modelKey === 'advisor') {
-            $modelId = AnthropicProvider::MODELS['sonnet'];
-        } elseif ($modelKey && isset(AnthropicProvider::MODELS[$modelKey])) {
-            $modelId = AnthropicProvider::MODELS[$modelKey];
-        } else {
-            $modelId = env('GDS_ASSISTANT_MODEL') ?: AnthropicProvider::MODELS['sonnet'];
+        $resolved = ProviderRegistry::resolve($modelKey, $maxTokens);
+        if (! $resolved) {
+            return new WP_REST_Response([
+                'error' => "Model not available: {$modelKey}",
+            ], 400);
         }
+
+        $provider = $resolved['provider'];
+        $modelId = $resolved['modelId'];
 
         // Resolve or create conversation
         $store = new ConversationStore;
@@ -119,20 +120,13 @@ class ChatEndpoint
         $this->startSSE();
 
         // Send conversation ID to client
-        $this->sendSSE('conversation_start', ['conversation_id' => $conversationId]);
+        $this->sendSSE('conversation_start', [
+            'conversation_id' => $conversationId,
+            'model' => $modelKey,
+        ]);
 
-        // Max tokens: request > env > default
-        $requestMaxTokens = (int) $request->get_param('max_tokens');
-        $envMaxTokens = (int) (env('GDS_ASSISTANT_MAX_TOKENS') ?: 0);
-        $maxTokens = $requestMaxTokens ?: $envMaxTokens ?: 4096;
-
-        // Build provider
-        $provider = apply_filters('gds-assistant/provider', new AnthropicProvider(
-            apiKey: $apiKey,
-            model: $modelId,
-            maxTokens: $maxTokens,
-            useAdvisor: $useAdvisor,
-        ));
+        // Allow filter to override the provider
+        $provider = apply_filters('gds-assistant/provider', $provider);
 
         // Build tool registry
         $toolRegistry = new ToolRegistry;
@@ -159,7 +153,7 @@ class ChatEndpoint
                 'conversation' => $conversationId,
                 'user' => $userId,
                 'model' => $modelId,
-                'advisor' => $useAdvisor,
+                'provider' => $provider->name(),
                 'new_messages' => count($request->get_param('messages')),
                 'total_messages' => count($messages),
             ]);
@@ -218,22 +212,6 @@ class ChatEndpoint
         }
 
         exit;
-    }
-
-    private function getApiKey(): ?string
-    {
-        if (function_exists('env')) {
-            $key = env('GDS_ASSISTANT_API_KEY');
-            if ($key) {
-                return $key;
-            }
-        }
-
-        if (defined('GDS_ASSISTANT_API_KEY')) {
-            return GDS_ASSISTANT_API_KEY;
-        }
-
-        return null;
     }
 
     private function normalizeMessages(array $messages): array

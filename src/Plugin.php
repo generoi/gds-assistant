@@ -44,6 +44,11 @@ class Plugin
             return;
         }
 
+        // Don't load widget if no AI provider is configured
+        if (! Llm\ProviderRegistry::hasAnyProvider()) {
+            return;
+        }
+
         $assetFile = $this->path.'/build/admin-chat.asset.php';
         if (! file_exists($assetFile)) {
             return;
@@ -66,18 +71,15 @@ class Plugin
             $asset['version'],
         );
 
-        $defaultModel = env('GDS_ASSISTANT_MODEL') ?: 'claude-sonnet-4-6';
+        $modelConfig = Llm\ProviderRegistry::getModelsForFrontend();
         $defaultMaxTokens = (int) (env('GDS_ASSISTANT_MAX_TOKENS') ?: 4096);
-
-        // Resolve friendly name from model ID
-        $modelNames = array_flip(Llm\AnthropicProvider::MODELS);
-        $defaultModelName = $modelNames[$defaultModel] ?? $defaultModel;
 
         wp_localize_script('gds-assistant', 'gdsAssistant', [
             'restUrl' => rest_url('gds-assistant/v1/'),
             'restBase' => rest_url('wp/v2/'),
             'nonce' => wp_create_nonce('wp_rest'),
-            'defaultModel' => $defaultModelName,
+            'models' => $modelConfig,
+            'modelPricing' => $modelConfig['pricing'] ?? [],
             'defaultMaxTokens' => $defaultMaxTokens,
             'skills' => $this->getPublishedSkills(),
         ]);

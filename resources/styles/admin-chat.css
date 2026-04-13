@@ -803,7 +803,9 @@
 }
 
 /* Streamdown inner table container (the div wrapping the <table>) */
-.gds-assistant__message--assistant [data-streamdown='table-wrapper'] > div:last-child {
+.gds-assistant__message--assistant
+  [data-streamdown='table-wrapper']
+  > div:last-child {
   overflow-x: auto;
   overflow-y: auto;
   max-height: 300px;
