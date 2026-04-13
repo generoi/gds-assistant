@@ -26,6 +26,7 @@ class ConversationStore
             messages longtext NOT NULL,
             summary text DEFAULT '',
             model varchar(100) NOT NULL DEFAULT '',
+            archived tinyint(1) DEFAULT 0,
             total_input_tokens int unsigned DEFAULT 0,
             total_output_tokens int unsigned DEFAULT 0,
             created_at datetime NOT NULL,
@@ -102,6 +103,9 @@ class ConversationStore
         if (isset($data['summary'])) {
             $update['summary'] = $data['summary'];
         }
+        if (isset($data['archived'])) {
+            $update['archived'] = (int) $data['archived'];
+        }
 
         $update['updated_at'] = current_time('mysql', true);
 
@@ -112,20 +116,29 @@ class ConversationStore
         );
     }
 
-    public function listForUser(int $userId, int $limit = 20, int $offset = 0): array
+    public function listForUser(int $userId, int $limit = 50, int $offset = 0, ?bool $archived = null): array
     {
         global $wpdb;
 
+        $where = 'WHERE user_id = %d';
+        $params = [$userId];
+
+        if ($archived !== null) {
+            $where .= ' AND archived = %d';
+            $params[] = $archived ? 1 : 0;
+        }
+
+        $params[] = $limit;
+        $params[] = $offset;
+
         return $wpdb->get_results(
             $wpdb->prepare(
-                'SELECT uuid, title, model, total_input_tokens, total_output_tokens, created_at, updated_at
-                FROM '.self::tableName().'
-                WHERE user_id = %d
+                'SELECT uuid, title, model, total_input_tokens, total_output_tokens, archived, created_at, updated_at
+                FROM '.self::tableName()."
+                {$where}
                 ORDER BY updated_at DESC
-                LIMIT %d OFFSET %d',
-                $userId,
-                $limit,
-                $offset,
+                LIMIT %d OFFSET %d",
+                ...$params,
             ),
             ARRAY_A,
         ) ?: [];

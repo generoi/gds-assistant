@@ -1,7 +1,7 @@
 import {DataViews} from '@wordpress/dataviews';
 import {useState, useEffect, useCallback} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
-import {trash} from '@wordpress/icons';
+import {trash, backup, external} from '@wordpress/icons';
 import apiFetch from '@wordpress/api-fetch';
 
 /**
@@ -118,12 +118,13 @@ export function ConversationsDataView() {
     fetchData();
   }, [fetchData]);
 
-  const handleDelete = useCallback(
+  const handleArchive = useCallback(
     async (items) => {
       for (const item of items) {
         await apiFetch({
           path: `/gds-assistant/v1/conversations/${item.uuid}`,
-          method: 'DELETE',
+          method: 'POST',
+          data: {archived: true},
         });
       }
       fetchData();
@@ -133,12 +134,22 @@ export function ConversationsDataView() {
 
   const actions = [
     {
-      id: 'delete',
-      label: __('Delete', 'gds-assistant'),
-      icon: trash,
-      isDestructive: true,
+      id: 'resume',
+      label: __('Resume in chat', 'gds-assistant'),
+      icon: external,
+      isPrimary: true,
+      callback: ([item]) => {
+        // Store the conversation UUID so the chat widget picks it up
+        localStorage.setItem('gds-assistant-resume', item.uuid);
+        window.location.href = 'index.php'; // Go to dashboard where chat widget loads
+      },
+    },
+    {
+      id: 'archive',
+      label: __('Archive', 'gds-assistant'),
+      icon: backup,
       supportsBulk: true,
-      callback: handleDelete,
+      callback: handleArchive,
     },
   ];
 

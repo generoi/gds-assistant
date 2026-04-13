@@ -28,6 +28,11 @@ class ConversationEndpoint
                 'permission_callback' => [$this, 'checkPermission'],
             ],
             [
+                'methods' => 'POST',
+                'callback' => [$this, 'update'],
+                'permission_callback' => [$this, 'checkPermission'],
+            ],
+            [
                 'methods' => 'DELETE',
                 'callback' => [$this, 'delete'],
                 'permission_callback' => [$this, 'checkPermission'],
@@ -45,7 +50,8 @@ class ConversationEndpoint
     public function list(): WP_REST_Response
     {
         $store = new ConversationStore;
-        $conversations = $store->listForUser(get_current_user_id());
+        // Only show non-archived conversations
+        $conversations = $store->listForUser(get_current_user_id(), archived: false);
 
         return new WP_REST_Response($conversations);
     }
@@ -62,15 +68,41 @@ class ConversationEndpoint
         return new WP_REST_Response($conversation);
     }
 
-    public function delete(WP_REST_Request $request): WP_REST_Response
+    public function update(WP_REST_Request $request): WP_REST_Response
     {
         $store = new ConversationStore;
-        $deleted = $store->delete($request->get_param('uuid'), get_current_user_id());
+        $uuid = $request->get_param('uuid');
+        $conversation = $store->get($uuid);
 
-        if (! $deleted) {
+        if (! $conversation || (int) $conversation['user_id'] !== get_current_user_id()) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
 
-        return new WP_REST_Response(['deleted' => true]);
+        $data = [];
+        if ($request->has_param('archived')) {
+            $data['archived'] = (bool) $request->get_param('archived') ? 1 : 0;
+        }
+
+        if (! empty($data)) {
+            $store->update($uuid, $data);
+        }
+
+        return new WP_REST_Response(['updated' => true]);
+    }
+
+    public function delete(WP_REST_Request $request): WP_REST_Response
+    {
+        // Soft delete = archive (conversations should never be truly deleted)
+        $store = new ConversationStore;
+        $uuid = $request->get_param('uuid');
+        $conversation = $store->get($uuid);
+
+        if (! $conversation || (int) $conversation['user_id'] !== get_current_user_id()) {
+            return new WP_REST_Response(['error' => 'Not found'], 404);
+        }
+
+        $store->update($uuid, ['archived' => 1]);
+
+        return new WP_REST_Response(['archived' => true]);
     }
 }
