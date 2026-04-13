@@ -5,6 +5,7 @@ namespace GeneroWP\Assistant\Llm;
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Storage\AuditLog;
+use Illuminate\Support\Facades\Log;
 
 class MessageLoop
 {
@@ -89,6 +90,17 @@ class MessageLoop
                 // Check if this tool is destructive (for audit logging)
                 $abilityName = AbilitiesToolProvider::toAbilityName($toolUse['name']);
                 $isDestructive = $this->isDestructive($abilityName);
+
+                // Log the actual parsed input (not the empty initial from tool_use_start)
+                if (class_exists(Log::class)) {
+                    try {
+                        Log::info("[gds-assistant] Tool execute: {$abilityName}", [
+                            'conversation' => $this->conversationUuid,
+                            'input' => $toolInput,
+                        ]);
+                    } catch (\Throwable) {
+                    }
+                }
 
                 $result = $this->toolRegistry->executeTool(
                     $toolUse['name'],
