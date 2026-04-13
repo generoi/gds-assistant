@@ -4,8 +4,18 @@ namespace GeneroWP\Assistant\Llm;
 
 class SystemPrompt
 {
+    private const CACHE_KEY = 'gds_assistant_system_prompt';
+
+    private const CACHE_TTL = 5 * MINUTE_IN_SECONDS;
+
     public static function build(): string
     {
+        $cacheKey = self::CACHE_KEY.'_'.get_current_blog_id();
+        $cached = get_transient($cacheKey);
+        if ($cached !== false) {
+            return $cached;
+        }
+
         $siteName = get_bloginfo('name');
         $siteUrl = home_url();
         $wpVersion = get_bloginfo('version');
@@ -56,12 +66,24 @@ class SystemPrompt
             $prompt .= "\n\n## Custom instructions\n".$customPrompt;
         }
 
-        return apply_filters('gds-assistant/system_prompt', $prompt, [
+        $prompt = apply_filters('gds-assistant/system_prompt', $prompt, [
             'site_name' => $siteName,
             'site_url' => $siteUrl,
             'post_types' => $postTypeList,
             'languages' => $languages,
         ]);
+
+        set_transient($cacheKey, $prompt, self::CACHE_TTL);
+
+        return $prompt;
+    }
+
+    /**
+     * Bust the cached system prompt (called when settings or memory change).
+     */
+    public static function bustCache(): void
+    {
+        delete_transient(self::CACHE_KEY.'_'.get_current_blog_id());
     }
 
     /**

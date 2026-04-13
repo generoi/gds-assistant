@@ -28,11 +28,11 @@ class ProviderRegistry
             'label' => 'Anthropic',
             'env' => ['GDS_ASSISTANT_ANTHROPIC_KEY', 'GDS_ASSISTANT_API_KEY', 'ANTHROPIC_API_KEY'],
             'models' => [
-                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku', 'pricing' => [0.8, 4]],
-                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet', 'pricing' => [3, 15]],
-                'opus' => ['id' => 'claude-opus-4-6', 'label' => 'Opus', 'pricing' => [15, 75]],
-                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [0.8, 4]],
-                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15]],
+                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku', 'pricing' => [0.8, 4], 'tier' => 'read'],
+                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet', 'pricing' => [3, 15], 'tier' => 'standard'],
+                'opus' => ['id' => 'claude-opus-4-6', 'label' => 'Opus', 'pricing' => [15, 75], 'tier' => 'full'],
+                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [0.8, 4], 'tier' => 'standard'],
+                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15], 'tier' => 'standard'],
             ],
             'default' => 'sonnet',
         ]);
@@ -42,9 +42,9 @@ class ProviderRegistry
             'label' => 'OpenAI',
             'env' => ['GDS_ASSISTANT_OPENAI_KEY', 'OPENAI_API_KEY'],
             'models' => [
-                'gpt-4.1-mini' => ['id' => 'gpt-4.1-mini', 'label' => 'GPT-4.1 Mini', 'pricing' => [0.4, 1.6]],
-                'gpt-4.1' => ['id' => 'gpt-4.1', 'label' => 'GPT-4.1', 'pricing' => [2, 8]],
-                'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini', 'pricing' => [1.1, 4.4]],
+                'gpt-4.1-mini' => ['id' => 'gpt-4.1-mini', 'label' => 'GPT-4.1 Mini', 'pricing' => [0.4, 1.6], 'tier' => 'read'],
+                'gpt-4.1' => ['id' => 'gpt-4.1', 'label' => 'GPT-4.1', 'pricing' => [2, 8], 'tier' => 'standard'],
+                'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini', 'pricing' => [1.1, 4.4], 'tier' => 'standard'],
             ],
             'default' => 'gpt-4.1-mini',
             'base_url' => 'https://api.openai.com/v1',
@@ -55,8 +55,8 @@ class ProviderRegistry
             'label' => 'Gemini',
             'env' => ['GDS_ASSISTANT_GEMINI_KEY', 'GOOGLE_AI_API_KEY'],
             'models' => [
-                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.15, 0.6]],
-                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10]],
+                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.15, 0.6], 'tier' => 'read'],
+                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10], 'tier' => 'full'],
             ],
             'default' => 'gemini-flash',
         ]);
@@ -66,7 +66,7 @@ class ProviderRegistry
             'label' => 'Mistral',
             'env' => ['GDS_ASSISTANT_MISTRAL_KEY', 'MISTRAL_API_KEY'],
             'models' => [
-                'mistral-large' => ['id' => 'mistral-large-latest', 'label' => 'Large', 'pricing' => [2, 6]],
+                'mistral-large' => ['id' => 'mistral-large-latest', 'label' => 'Large', 'pricing' => [2, 6], 'tier' => 'standard'],
             ],
             'default' => 'mistral-large',
             'base_url' => 'https://api.mistral.ai/v1',
@@ -77,8 +77,8 @@ class ProviderRegistry
             'label' => 'Groq',
             'env' => ['GDS_ASSISTANT_GROQ_KEY', 'GROQ_API_KEY'],
             'models' => [
-                'llama-scout' => ['id' => 'meta-llama/llama-4-scout-17b-16e-instruct', 'label' => 'Llama Scout', 'pricing' => [0.11, 0.34]],
-                'llama-maverick' => ['id' => 'meta-llama/llama-4-maverick-17b-128e-instruct', 'label' => 'Llama Maverick', 'pricing' => [0.5, 0.77]],
+                'llama-scout' => ['id' => 'meta-llama/llama-4-scout-17b-16e-instruct', 'label' => 'Llama Scout', 'pricing' => [0.11, 0.34], 'tier' => 'read'],
+                'llama-maverick' => ['id' => 'meta-llama/llama-4-maverick-17b-128e-instruct', 'label' => 'Llama Maverick', 'pricing' => [0.5, 0.77], 'tier' => 'read'],
             ],
             'default' => 'llama-scout',
             'base_url' => 'https://api.groq.com/openai/v1',
@@ -89,8 +89,8 @@ class ProviderRegistry
             'label' => 'xAI',
             'env' => ['GDS_ASSISTANT_XAI_KEY', 'XAI_API_KEY'],
             'models' => [
-                'grok-3' => ['id' => 'grok-3', 'label' => 'Grok 3', 'pricing' => [3, 15]],
-                'grok-3-fast' => ['id' => 'grok-3-fast', 'label' => 'Grok 3 Fast', 'pricing' => [5, 25]],
+                'grok-3' => ['id' => 'grok-3', 'label' => 'Grok 3', 'pricing' => [3, 15], 'tier' => 'full'],
+                'grok-3-fast' => ['id' => 'grok-3-fast', 'label' => 'Grok 3 Fast', 'pricing' => [5, 25], 'tier' => 'full'],
             ],
             'default' => 'grok-3-fast',
             'base_url' => 'https://api.x.ai/v1',
@@ -101,7 +101,7 @@ class ProviderRegistry
             'label' => 'DeepSeek',
             'env' => ['GDS_ASSISTANT_DEEPSEEK_KEY', 'DEEPSEEK_API_KEY'],
             'models' => [
-                'deepseek-chat' => ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat', 'pricing' => [0.27, 1.1]],
+                'deepseek-chat' => ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat', 'pricing' => [0.27, 1.1], 'tier' => 'read'],
             ],
             'default' => 'deepseek-chat',
             'base_url' => 'https://api.deepseek.com/v1',
@@ -236,6 +236,7 @@ class ProviderRegistry
             'provider' => $provider,
             'modelId' => $modelId,
             'label' => $modelDef['label'],
+            'tier' => $modelDef['tier'] ?? 'standard',
         ];
     }
 
