@@ -26,11 +26,17 @@ export function App() {
 
   // Resume conversation from settings page or localStorage
   useEffect(() => {
-    // Check localStorage for resume request
+    // Check localStorage for resume request (cross-page)
     const resumeUuid = localStorage.getItem('gds-assistant-resume');
     if (resumeUuid) {
       localStorage.removeItem('gds-assistant-resume');
       loadConversation(resumeUuid);
+      // Open the modal after a short delay
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('gds-assistant-resume', {detail: {uuid: resumeUuid}}),
+        );
+      }, 200);
     }
 
     // Listen for resume events from the conversations DataView
