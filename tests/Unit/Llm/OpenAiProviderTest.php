@@ -196,6 +196,40 @@ class OpenAiProviderTest extends TestCase
         $this->assertSame('{"found":true}', $result['content']);
     }
 
+    public function test_convert_message_with_image(): void
+    {
+        $msg = [
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'What is this?'],
+                ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'iVBOR']],
+            ],
+        ];
+
+        $result = $this->convertMessage->invoke(null, $msg);
+        $this->assertSame('user', $result['role']);
+        $this->assertIsArray($result['content']);
+        $this->assertCount(2, $result['content']);
+        $this->assertSame('text', $result['content'][0]['type']);
+        $this->assertSame('image_url', $result['content'][1]['type']);
+        $this->assertStringStartsWith('data:image/png;base64,', $result['content'][1]['image_url']['url']);
+    }
+
+    public function test_convert_message_text_only_not_array(): void
+    {
+        // Text-only content should NOT return array format
+        $msg = [
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'Just text'],
+            ],
+        ];
+
+        $result = $this->convertMessage->invoke(null, $msg);
+        $this->assertSame('user', $result['role']);
+        $this->assertSame('Just text', $result['content']);
+    }
+
     public function test_unflushed_buffer_fallback(): void
     {
         $contentBlocks = [];
