@@ -51,17 +51,16 @@ class ToolRestrictor
             return 'safe';
         }
 
-        // Check description prefixes from AbilitiesToolProvider
+        // Determine risk from annotations first, then name patterns
         if (str_starts_with($desc, '[DESTRUCTIVE]')) {
-            return 'dangerous';
-        }
-        if (str_starts_with($desc, '[READ-ONLY]')) {
-            return 'safe';
+            $risk = 'dangerous';
+        } elseif (str_starts_with($desc, '[READ-ONLY]')) {
+            $risk = 'safe';
+        } else {
+            $risk = self::classifyByName($name);
         }
 
-        // Name-based classification for tools without clear annotations
-        $risk = self::classifyByName($name);
-
+        // Filter allows site owners to override any classification
         return apply_filters('gds-assistant/tool_risk_level', $risk, $tool);
     }
 

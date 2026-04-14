@@ -249,6 +249,10 @@ class ChatEndpoint
         exit;
     }
 
+    private const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB base64
+
+    private const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
     private function normalizeMessages(array $messages): array
     {
         return array_map(function ($msg) {
@@ -257,6 +261,30 @@ class ChatEndpoint
 
             if (is_string($content)) {
                 return ['role' => $role, 'content' => $content];
+            }
+
+            // Validate and filter image content blocks
+            if (is_array($content)) {
+                $content = array_values(array_filter($content, function ($block) {
+                    if (($block['type'] ?? '') !== 'image') {
+                        return true; // Keep non-image blocks
+                    }
+
+                    $mediaType = $block['source']['media_type'] ?? '';
+                    $data = $block['source']['data'] ?? '';
+
+                    // Validate media type
+                    if (! in_array($mediaType, self::ALLOWED_IMAGE_TYPES, true)) {
+                        return false;
+                    }
+
+                    // Validate size (base64 string length)
+                    if (strlen($data) > self::MAX_IMAGE_SIZE) {
+                        return false;
+                    }
+
+                    return true;
+                }));
             }
 
             return ['role' => $role, 'content' => $content];
