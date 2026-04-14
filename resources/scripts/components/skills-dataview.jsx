@@ -3,7 +3,7 @@ import {useEntityRecords} from '@wordpress/core-data';
 import {useState, useCallback, useRef} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
 import {edit, trash, plus, download, upload} from '@wordpress/icons';
-import {Button} from '@wordpress/components';
+import {Button, Modal, SelectControl} from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -120,6 +120,7 @@ const DEFAULT_VIEW = {
 
 export function SkillsDataView() {
   const [view, setView] = useState(DEFAULT_VIEW);
+  const [editingSkill, setEditingSkill] = useState(null);
   const fileInputRef = useRef(null);
 
   const queryArgs = {
@@ -222,7 +223,12 @@ export function SkillsDataView() {
       icon: edit,
       isPrimary: true,
       callback: ([item]) => {
-        window.location.href = `post.php?post=${item.id}&action=edit`;
+        setEditingSkill({
+          id: item.id,
+          title: item.title?.raw || item.title?.rendered || '',
+          model: item.meta?._assistant_model || '',
+          schedule: item.meta?._assistant_schedule || '',
+        });
       },
     },
     {
@@ -287,6 +293,90 @@ export function SkillsDataView() {
         getItemId={(item) => String(item.id)}
         defaultLayouts={{table: {}}}
       />
+      {editingSkill && (
+        <SkillEditModal
+          skill={editingSkill}
+          onClose={() => setEditingSkill(null)}
+          onSave={async (data) => {
+            await apiFetch({
+              path: `/wp/v2/assistant-skills/${data.id}`,
+              method: 'POST',
+              data: {
+                meta: {
+                  _assistant_model: data.model,
+                  _assistant_schedule: data.schedule,
+                },
+              },
+            });
+            setEditingSkill(null);
+            setView((v) => ({...v})); // Refresh
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function SkillEditModal({skill, onClose, onSave}) {
+  const [model, setModel] = useState(skill.model);
+  const [schedule, setSchedule] = useState(skill.schedule);
+  const [saving, setSaving] = useState(false);
+
+  const modelOptions = [
+    {label: __('Default (user selection)', 'gds-assistant'), value: ''},
+  ];
+  const providers = window.gdsAssistant?.models?.providers || [];
+  for (const provider of providers) {
+    for (const m of provider.models || []) {
+      modelOptions.push({
+        label: `${provider.label}: ${m.label}`,
+        value: m.value,
+      });
+    }
+  }
+
+  return (
+    <Modal title={`Edit: ${skill.title}`} onRequestClose={onClose}>
+      <SelectControl
+        label={__('Model', 'gds-assistant')}
+        value={model}
+        options={modelOptions}
+        onChange={setModel}
+      />
+      <SelectControl
+        label={__('Schedule', 'gds-assistant')}
+        value={schedule}
+        options={[
+          {label: __('None', 'gds-assistant'), value: ''},
+          {label: __('Hourly', 'gds-assistant'), value: 'hourly'},
+          {label: __('Daily', 'gds-assistant'), value: 'daily'},
+          {label: __('Weekly', 'gds-assistant'), value: 'weekly'},
+        ]}
+        onChange={setSchedule}
+      />
+      <div
+        style={{
+          marginTop: '16px',
+          display: 'flex',
+          gap: '8px',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <Button variant="secondary" onClick={onClose}>
+          {__('Cancel', 'gds-assistant')}
+        </Button>
+        <Button
+          variant="primary"
+          isBusy={saving}
+          onClick={async () => {
+            setSaving(true);
+            await onSave({id: skill.id, model, schedule});
+            setSaving(false);
+          }}
+        >
+          {__('Save', 'gds-assistant')}
+        </Button>
+      </div>
+    </Modal>
   );
 }
