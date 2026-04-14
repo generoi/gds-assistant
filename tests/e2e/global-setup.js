@@ -1,13 +1,13 @@
-import {chromium} from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
+const {chromium} = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 
 const WP_BASE_URL = process.env.WP_BASE_URL || 'http://localhost:8889';
 const WP_USERNAME = process.env.WP_USERNAME || 'admin';
 const WP_PASSWORD = process.env.WP_PASSWORD || 'password';
 
-export default async function globalSetup() {
-  const storageDir = path.join(import.meta.dirname, 'artifacts');
+module.exports = async function globalSetup() {
+  const storageDir = path.join(__dirname, 'artifacts');
   if (!fs.existsSync(storageDir)) {
     fs.mkdirSync(storageDir, {recursive: true});
   }
@@ -27,4 +27,4 @@ export default async function globalSetup() {
     .context()
     .storageState({path: path.join(storageDir, 'storage-state.json')});
   await browser.close();
-}
+};

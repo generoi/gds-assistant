@@ -1,8 +1,8 @@
-import {test, expect} from '@playwright/test';
-import {
+const {test, expect} = require('@playwright/test');
+const {
   SIMPLE_TEXT_RESPONSE,
   TOOL_CALL_RESPONSE,
-} from '../fixtures/mock-responses.js';
+} = require('../fixtures/mock-responses.js');
 
 test.describe('Chat Widget', () => {
   test.beforeEach(async ({page}) => {

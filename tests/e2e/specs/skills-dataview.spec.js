@@ -1,4 +1,4 @@
-import {test, expect} from '@playwright/test';
+const {test, expect} = require('@playwright/test');
 
 test.describe('Skills DataView', () => {
   test.beforeEach(async ({page}) => {
