@@ -261,11 +261,14 @@ export function useAssistantRuntime() {
             const idx = ensureTextPart();
             const status =
               event.data.is_error ? '**Error**' : '**Done** \u2713';
-            // Replace "Running..." with result status
-            turnParts[idx].text = turnParts[idx].text.replace(
-              /_Running\.\.\._$/,
-              status,
-            );
+            // Replace last "Running..." with result status
+            const lastRunning = turnParts[idx].text.lastIndexOf('_Running..._');
+            if (lastRunning !== -1) {
+              turnParts[idx].text =
+                turnParts[idx].text.slice(0, lastRunning) +
+                status +
+                turnParts[idx].text.slice(lastRunning + '_Running..._'.length);
+            }
             // Flush turn — next iteration starts a new assistant message
             flushTurn();
             break;

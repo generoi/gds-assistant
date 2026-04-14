@@ -57,7 +57,7 @@ class SystemPrompt
         // Auto-memory instruction
         $autoMemory = get_option('gds_assistant_auto_memory', true);
         if ($autoMemory) {
-            $prompt .= "\n\nIf you discover useful facts about this site (structure, preferences, key IDs, patterns), save them to memory using assistant__memory-save so future conversations have this context.";
+            $prompt .= "\n\nYou can save important facts to memory using assistant__memory-save, but do so VERY sparingly — only for critical, permanent site facts that would be hard to rediscover (e.g. a non-obvious ID mapping, a custom convention, a user preference). Never save audit results, summaries, lists, or anything that can be re-queried. Max 1 sentence per entry.";
         }
 
         // Custom prompt additions from settings
