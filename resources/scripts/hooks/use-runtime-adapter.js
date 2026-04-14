@@ -45,8 +45,7 @@ export function onUsageUpdate(callback) {
 function emitUsage(input, output) {
   sessionUsage.inputTokens += input;
   sessionUsage.outputTokens += output;
-  // Calculate cost delta based on current model's pricing
-  const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [3, 15]; // fallback to Sonnet
+  const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [3, 15];
   const costDelta =
     (input / 1_000_000) * pricing[0] + (output / 1_000_000) * pricing[1];
   sessionUsage.cost += costDelta;
@@ -102,7 +101,8 @@ export async function fetchConversation(uuid) {
 
 /**
  * Creates an ExternalStoreRuntime that we fully control.
- * Supports loading old conversations and streaming new ones.
+ * Messages use structured content parts (text, tool-call, image)
+ * so assistant-ui can render them with native components.
  *
  * @return {Object} assistant-ui runtime.
  */
@@ -117,7 +117,6 @@ export function useAssistantRuntime() {
     // Build content blocks from text + attachments
     const contentBlocks = [];
 
-    // Extract text
     const userText =
       typeof message.content === 'string' ?
         message.content
@@ -145,11 +144,9 @@ export function useAssistantRuntime() {
       }
     }
 
-    // Add user message to state (show text only in UI)
     const userMsg = {role: 'user', content: contentBlocks};
     setMessages((prev) => [...prev, userMsg]);
 
-    // Start streaming
     setIsRunning(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -177,62 +174,70 @@ export function useAssistantRuntime() {
         throw new Error(`Chat request failed: ${response.status} ${error}`);
       }
 
-      let text = '';
+      // Build structured content parts from SSE events
+      const parts = [];
+      let currentTextIdx = -1;
+
+      /**
+       * Ensure a text part exists at the end of `parts` to append to.
+       *
+       * @return {number} Index of the current text part.
+       */
+      const ensureTextPart = () => {
+        if (currentTextIdx < 0 || parts[currentTextIdx]?.type !== 'text') {
+          currentTextIdx = parts.length;
+          parts.push({type: 'text', text: ''});
+        }
+        return currentTextIdx;
+      };
 
       for await (const event of parseSSE(response.body)) {
         switch (event.type) {
-          case 'text_delta':
-            text += event.data.text;
-            break;
-          case 'tool_use_start': {
-            const toolLabel = event.data.name?.replace('__', '/');
-            text += `\n\n---\n**Tool:** \`${toolLabel}\` `;
-            if (event.data.input && Object.keys(event.data.input).length > 0) {
-              text += `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\`\n`;
-            }
-            // Use a unique marker per tool call so we can match results reliably
-            const marker = `<!--tool:${event.data.id || toolLabel}-->`;
-            text += `${marker}_Running..._\n`;
+          case 'text_delta': {
+            const idx = ensureTextPart();
+            parts[idx].text += event.data.text;
             break;
           }
-          case 'tool_result': {
-            // Find the matching marker or fall back to last "Running..."
-            const toolId = event.data.tool_use_id || '';
-            const marker = `<!--tool:${toolId}-->`;
-            const status =
-              event.data.is_error ?
-                `**Error:** ${JSON.stringify(event.data.result)}\n\n---\n\n`
-              : `**Done** \u2713\n\n---\n\n`;
 
-            const markerIdx = text.indexOf(marker);
-            if (markerIdx !== -1) {
-              const endIdx = text.indexOf('\n', markerIdx + marker.length + 1);
-              text =
-                text.slice(0, markerIdx) +
-                status +
-                (endIdx !== -1 ? text.slice(endIdx + 1) : '');
-            } else {
-              // Fallback: replace last Running...
-              const lastRunning = text.lastIndexOf('_Running..._\n');
-              if (lastRunning !== -1) {
-                text =
-                  text.slice(0, lastRunning) +
-                  status +
-                  text.slice(lastRunning + '_Running..._\n'.length);
-              }
-            }
+          case 'tool_use_start': {
+            // End any current text part — tool call is a separate part
+            currentTextIdx = -1;
+            parts.push({
+              type: 'tool-call',
+              toolCallId: event.data.id || `tool_${parts.length}`,
+              toolName: event.data.name?.replace('__', '/') || 'unknown',
+              args: event.data.input || {},
+              argsText: JSON.stringify(event.data.input || {}, null, 2),
+              // result will be set when tool_result arrives
+            });
             break;
           }
-          case 'tool_approval_required': {
-            const approvalTool =
-              event.data.tool_name?.replace('gds/', '') || 'unknown';
-            const approvalId = event.data.tool_use_id || '';
-            text += `\n\n---\n**Approval required:** \`${event.data.tool_name}\`\n`;
-            if (event.data.input && Object.keys(event.data.input).length > 0) {
-              text += `\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\`\n`;
+
+          case 'tool_result': {
+            const toolId = event.data.tool_use_id || '';
+            const toolPart = parts.find(
+              (p) => p.type === 'tool-call' && p.toolCallId === toolId,
+            );
+            if (toolPart) {
+              toolPart.result = event.data.result;
+              toolPart.isError = !!event.data.is_error;
             }
-            text += `<!--approval:${approvalId}:${approvalTool}-->\n`;
-            text += `_Waiting for approval..._\n`;
+            // Next text goes into a new text part
+            currentTextIdx = -1;
+            break;
+          }
+
+          case 'tool_approval_required': {
+            currentTextIdx = -1;
+            const approvalId = event.data.tool_use_id || '';
+            parts.push({
+              type: 'tool-call',
+              toolCallId: approvalId,
+              toolName: event.data.tool_name || 'unknown',
+              args: event.data.input || {},
+              argsText: JSON.stringify(event.data.input || {}, null, 2),
+              status: {type: 'requires-action', reason: 'tool-calls'},
+            });
             pendingApprovalRef.current = {
               toolUseId: approvalId,
               toolName: event.data.tool_name,
@@ -240,50 +245,55 @@ export function useAssistantRuntime() {
             };
             break;
           }
-          case 'ask_user':
-            // Server-side tool is asking user a question with options
-            text += `\n\n> **${event.data.question || 'Confirm?'}**\n`;
+
+          case 'ask_user': {
+            const idx = ensureTextPart();
+            parts[idx].text +=
+              `\n\n> **${event.data.question || 'Confirm?'}**\n`;
             if (event.data.options?.length) {
-              text += event.data.options.map((o) => `> - ${o}`).join('\n');
+              parts[idx].text += event.data.options
+                .map((o) => `> - ${o}`)
+                .join('\n');
             }
-            text += '\n\n_Reply below to continue._\n';
+            parts[idx].text += '\n\n_Reply below to continue._\n';
             break;
-          case 'error':
-            text += `\n\n**Error:** ${event.data.message}\n`;
+          }
+
+          case 'error': {
+            const idx = ensureTextPart();
+            parts[idx].text += `\n\n**Error:** ${event.data.message}\n`;
             break;
+          }
+
           case 'conversation_start':
             if (event.data.conversation_id) {
               currentConversationId = event.data.conversation_id;
             }
-            // Server confirms which model is actually being used — update for pricing
             if (event.data.model) {
               currentModel = event.data.model;
             }
             break;
+
           case 'usage':
             emitUsage(
               event.data.input_tokens || 0,
               event.data.output_tokens || 0,
             );
             break;
+
           case 'message_stop':
             break;
         }
 
-        // Update the assistant message in-place
+        // Update the assistant message with structured parts
+        const contentParts = parts.map((p) => ({...p}));
         setMessages((prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
           if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-            updated[lastIdx] = {
-              role: 'assistant',
-              content: [{type: 'text', text}],
-            };
+            updated[lastIdx] = {role: 'assistant', content: contentParts};
           } else {
-            updated.push({
-              role: 'assistant',
-              content: [{type: 'text', text}],
-            });
+            updated.push({role: 'assistant', content: contentParts});
           }
           return updated;
         });
@@ -327,10 +337,9 @@ export function useAssistantRuntime() {
       return;
     }
 
-    // Restore token usage from the stored conversation
+    // Restore token usage
     sessionUsage.inputTokens = Number(conv.total_input_tokens) || 0;
     sessionUsage.outputTokens = Number(conv.total_output_tokens) || 0;
-    // Estimate cost from stored tokens using default pricing (model may have changed)
     const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [
       3, 15,
     ];
@@ -344,7 +353,8 @@ export function useAssistantRuntime() {
         cost: sessionUsage.cost,
       });
     }
-    // Convert stored messages to UI format, skipping tool-only messages
+
+    // Convert stored messages to structured UI format
     const uiMessages = conv.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .reduce((acc, m) => {
@@ -356,36 +366,45 @@ export function useAssistantRuntime() {
                 .filter((p) => p.type === 'text')
                 .map((p) => p.text)
                 .join('');
-          // Skip tool_result-only user messages (no visible text)
           if (!text) return acc;
           acc.push({role: 'user', content: [{type: 'text', text}]});
           return acc;
         }
-        // Assistant: extract text blocks (content can be string or array)
-        const text =
-          typeof m.content === 'string' ? m.content
-          : Array.isArray(m.content) ?
-            m.content
-              .filter((p) => p.type === 'text')
-              .map((p) => p.text)
-              .join('')
-          : '';
-        // Skip assistant messages with no text (tool-use-only turns)
-        if (!text) return acc;
 
-        // Merge consecutive assistant messages (agentic loop produces multiple)
+        // Assistant: build structured parts from stored content
+        const parts = [];
+        const blocks =
+          typeof m.content === 'string' ? [{type: 'text', text: m.content}]
+          : Array.isArray(m.content) ? m.content
+          : [];
+
+        for (const block of blocks) {
+          if (block.type === 'text' && block.text) {
+            parts.push({type: 'text', text: block.text});
+          } else if (block.type === 'tool_use') {
+            parts.push({
+              type: 'tool-call',
+              toolCallId: block.id || `tool_${parts.length}`,
+              toolName: (block.name || '').replace('__', '/'),
+              args: block.input || {},
+              argsText: JSON.stringify(block.input || {}, null, 2),
+            });
+          }
+        }
+
+        if (!parts.length) return acc;
+
+        // Merge consecutive assistant messages
         const last = acc[acc.length - 1];
         if (last?.role === 'assistant') {
-          last.content[0].text += '\n\n' + text;
+          last.content = [...last.content, ...parts];
           return acc;
         }
 
-        acc.push({
-          role: 'assistant',
-          content: [{type: 'text', text}],
-        });
+        acc.push({role: 'assistant', content: parts});
         return acc;
       }, []);
+
     setMessages(uiMessages);
   }, []);
 
@@ -401,11 +420,9 @@ export function useAssistantRuntime() {
     (message) => {
       const parentId = message.parentId;
       setMessages((prev) => {
-        // Find the parent message index and truncate after it
         const idx = prev.findIndex((m) => m.id === parentId);
         return idx >= 0 ? prev.slice(0, idx) : prev;
       });
-      // Re-send with edited content
       onNew(message);
     },
     [onNew],
@@ -418,7 +435,6 @@ export function useAssistantRuntime() {
         if (!parentId) return [];
         const idx = prev.findIndex((m) => m.id === parentId);
         const truncated = idx >= 0 ? prev.slice(0, idx + 1) : prev;
-        // Find the last user message to re-send
         const lastUser = [...truncated]
           .reverse()
           .find((m) => m.role === 'user');
