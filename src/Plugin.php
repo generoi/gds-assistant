@@ -12,6 +12,27 @@ class Plugin
 
     public readonly string $url;
 
+    /**
+     * Get an environment variable with fallback to wp-config.php constants.
+     */
+    public static function env(string $key, mixed $default = null): mixed
+    {
+        if (function_exists('env')) {
+            return env($key, $default);
+        }
+
+        $value = getenv($key);
+        if ($value !== false) {
+            return $value;
+        }
+
+        if (defined($key)) {
+            return constant($key);
+        }
+
+        return $default;
+    }
+
     public static function getInstance(): static
     {
         if (! isset(self::$instance)) {
@@ -86,7 +107,7 @@ class Plugin
         );
 
         $modelConfig = Llm\ProviderRegistry::getModelsForFrontend();
-        $defaultMaxTokens = (int) (env('GDS_ASSISTANT_MAX_TOKENS') ?: 4096);
+        $defaultMaxTokens = (int) (self::env('GDS_ASSISTANT_MAX_TOKENS') ?: 4096);
 
         wp_localize_script('gds-assistant', 'gdsAssistant', [
             'restUrl' => rest_url('gds-assistant/v1/'),

@@ -2,6 +2,8 @@
 
 namespace GeneroWP\Assistant\Llm;
 
+use GeneroWP\Assistant\Plugin;
+
 /**
  * Discovers available LLM providers based on configured API keys.
  * Each provider defines its env var, models, and factory method.
@@ -127,11 +129,7 @@ class ProviderRegistry
 
         $envVars = (array) ($config['env'] ?? []);
         foreach ($envVars as $envVar) {
-            // Check Acorn env(), PHP getenv(), and wp-config.php constants
-            $key = function_exists('env') ? env($envVar) : (getenv($envVar) ?: null);
-            if (! $key && defined($envVar)) {
-                $key = constant($envVar);
-            }
+            $key = Plugin::env($envVar);
             if ($key) {
                 return $key;
             }
@@ -252,7 +250,7 @@ class ProviderRegistry
 
     public static function getDefaultModelKey(): ?string
     {
-        $defaultProvider = env('GDS_ASSISTANT_DEFAULT_PROVIDER') ?: null;
+        $defaultProvider = Plugin::env('GDS_ASSISTANT_DEFAULT_PROVIDER') ?: null;
         $available = self::getAvailable();
 
         // Explicit default
