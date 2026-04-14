@@ -493,11 +493,9 @@ export function useAssistantRuntime() {
         const {nonce, restBase} = window.gdsAssistant || {};
         const formData = new FormData();
         formData.append('file', attachment.file);
-        formData.append('title', `AI Chat: ${attachment.name}`);
-        formData.append('description', 'Uploaded via AI Assistant chat');
 
         try {
-          const response = await fetch(`${restBase}media`, {
+          const response = await fetch(`${restBase}media?gds_assistant=1`, {
             method: 'POST',
             headers: {'X-WP-Nonce': nonce},
             body: formData,
