@@ -56,6 +56,13 @@ class Plugin
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
         add_action('gds_assistant_run_scheduled_skills', [Cron\SkillScheduler::class, 'run']);
 
+        // Tag media uploads from the assistant chat
+        add_action('rest_insert_attachment', function (\WP_Post $attachment) {
+            if (! empty($_GET['gds_assistant'])) {
+                update_post_meta($attachment->ID, '_gds_assistant_upload', '1');
+            }
+        });
+
         // Bust system prompt cache when relevant data changes
         add_action('update_option_gds_assistant_custom_prompt', [Llm\SystemPrompt::class, 'bustCache']);
         add_action('update_option_gds_assistant_auto_memory', [Llm\SystemPrompt::class, 'bustCache']);
