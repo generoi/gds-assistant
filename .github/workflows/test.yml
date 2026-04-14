@@ -86,7 +86,9 @@ jobs:
         run: npx @wordpress/env start
 
       - name: Set test API key so widget loads
-        run: npx @wordpress/env run tests-cli wp config set GDS_ASSISTANT_ANTHROPIC_KEY test-key --type=constant
+        run: |
+          npx @wordpress/env run tests-cli wp config set GDS_ASSISTANT_ANTHROPIC_KEY test-key --type=constant
+          npx @wordpress/env run cli wp config set GDS_ASSISTANT_ANTHROPIC_KEY test-key --type=constant
 
       - name: Activate plugin
         run: npx @wordpress/env run tests-cli wp plugin activate gds-assistant
