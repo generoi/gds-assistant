@@ -145,8 +145,14 @@ export function useAssistantRuntime() {
           contentBlocks.push({
             type: 'image',
             source: {type: 'url', url: imageUrl},
-            ...(mediaId ? {mediaId} : {}),
           });
+          // Tell the LLM about the media ID in text so it can reference it
+          if (mediaId) {
+            contentBlocks.push({
+              type: 'text',
+              text: `(Uploaded as media ID: ${mediaId})`,
+            });
+          }
         } else {
           // Fallback: data URL → extract base64
           const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
