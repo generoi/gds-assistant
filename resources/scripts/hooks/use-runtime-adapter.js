@@ -397,9 +397,11 @@ export function useAssistantRuntime() {
           if (block.type === 'text' && block.text) {
             parts.push({type: 'text', text: block.text});
           } else if (block.type === 'tool_use') {
+            // Append message index to ensure uniqueness across turns
+            const uniqueId = `${block.id || 'tool'}_msg${acc.length}`;
             parts.push({
               type: 'tool-call',
-              toolCallId: block.id || `tool_${parts.length}`,
+              toolCallId: uniqueId,
               toolName: (block.name || '').replace('__', '/'),
               args: block.input || {},
               argsText: JSON.stringify(block.input || {}, null, 2),
