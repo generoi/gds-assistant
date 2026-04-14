@@ -215,6 +215,21 @@ class OpenAiProviderTest extends TestCase
         $this->assertStringStartsWith('data:image/png;base64,', $result['content'][1]['image_url']['url']);
     }
 
+    public function test_convert_message_with_url_image(): void
+    {
+        $msg = [
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'Describe this'],
+                ['type' => 'image', 'source' => ['type' => 'url', 'url' => 'https://example.com/photo.jpg']],
+            ],
+        ];
+
+        $result = $this->convertMessage->invoke(null, $msg);
+        $this->assertSame('image_url', $result['content'][1]['type']);
+        $this->assertSame('https://example.com/photo.jpg', $result['content'][1]['image_url']['url']);
+    }
+
     public function test_convert_message_text_only_not_array(): void
     {
         // Text-only content should NOT return array format

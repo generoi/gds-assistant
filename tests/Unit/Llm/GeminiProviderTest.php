@@ -161,6 +161,27 @@ class GeminiProviderTest extends TestCase
         $this->assertSame('/9j/4AAQ', $result[0]['parts'][1]['inlineData']['data']);
     }
 
+    public function test_convert_messages_with_url_image_unreachable(): void
+    {
+        // URL images that can't be fetched should be silently skipped
+        $messages = [
+            [
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => 'Describe this'],
+                    ['type' => 'image', 'source' => ['type' => 'url', 'url' => 'https://nonexistent.invalid/photo.jpg']],
+                ],
+            ],
+        ];
+
+        $result = $this->convertMessages->invoke(null, $messages);
+
+        $this->assertCount(1, $result);
+        // Text part should still be there, image silently dropped
+        $textParts = array_filter($result[0]['parts'], fn ($p) => isset($p['text']));
+        $this->assertNotEmpty($textParts);
+    }
+
     public function test_convert_messages_tool_result(): void
     {
         $messages = [
