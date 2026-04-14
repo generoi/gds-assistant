@@ -146,13 +146,6 @@ export function useAssistantRuntime() {
             type: 'image',
             source: {type: 'url', url: imageUrl},
           });
-          // Tell the LLM about the media ID in text so it can reference it
-          if (mediaId) {
-            contentBlocks.push({
-              type: 'text',
-              text: `(Uploaded as media ID: ${mediaId})`,
-            });
-          }
         } else {
           // Fallback: data URL → extract base64
           const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -475,47 +468,58 @@ export function useAssistantRuntime() {
     [onNew],
   );
 
+  // Background upload promises keyed by attachment ID
+  const uploadPromises = useRef({});
+
   const attachmentAdapter = useMemo(
     () => ({
       accept: 'image/png,image/jpeg,image/gif,image/webp',
       async add({file}) {
-        const {nonce, restBase} = window.gdsAssistant || {};
+        const id = Math.random().toString(36).slice(2);
         const previewUrl = URL.createObjectURL(file);
 
-        // Upload immediately so send() is instant
-        let mediaUrl = previewUrl;
-        let mediaId = null;
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          const response = await fetch(`${restBase}media?gds_assistant=1`, {
-            method: 'POST',
-            headers: {'X-WP-Nonce': nonce},
-            body: formData,
-          });
-          const media = await response.json();
-          mediaUrl = media.source_url;
-          mediaId = media.id;
-        } catch {
-          // Falls back to base64 in send()
-        }
+        // Start upload in background — don't await
+        const {nonce, restBase} = window.gdsAssistant || {};
+        const formData = new FormData();
+        formData.append('file', file);
+        uploadPromises.current[id] = fetch(`${restBase}media?gds_assistant=1`, {
+          method: 'POST',
+          headers: {'X-WP-Nonce': nonce},
+          body: formData,
+        }).then((r) => r.json());
 
+        // Return immediately with local preview
         return {
-          id: Math.random().toString(36).slice(2),
+          id,
           type: 'image',
           name: file.name,
           contentType: file.type,
           file,
-          status: {type: 'complete'},
-          content: [{type: 'image', image: mediaUrl, mediaId}],
+          status: {type: 'requires-action', reason: 'composer-send'},
+          content: [{type: 'image', image: previewUrl}],
         };
       },
       async send(attachment) {
-        // Already uploaded in add() — just pass through
-        if (attachment.content?.[0]?.image) {
-          return attachment;
+        // Wait for background upload to finish
+        const uploadResult = uploadPromises.current[attachment.id];
+        delete uploadPromises.current[attachment.id];
+
+        if (uploadResult) {
+          try {
+            const media = await uploadResult;
+            return {
+              ...attachment,
+              status: {type: 'complete'},
+              content: [
+                {type: 'image', image: media.source_url, mediaId: media.id},
+              ],
+            };
+          } catch {
+            // Fall through to base64
+          }
         }
-        // Fallback to base64 if add() upload failed
+
+        // Fallback to base64
         const base64 = await fileToBase64(attachment.file);
         return {
           ...attachment,
@@ -528,7 +532,9 @@ export function useAssistantRuntime() {
           ],
         };
       },
-      async remove() {},
+      async remove(attachment) {
+        delete uploadPromises.current[attachment.id];
+      },
     }),
     [],
   );

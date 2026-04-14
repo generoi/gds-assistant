@@ -897,6 +897,15 @@
   position: relative;
 }
 
+/* Inline images in messages */
+.gds-assistant__message-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  margin: 4px 0;
+  display: block;
+}
+
 /* Attachment chips in composer */
 .gds-assistant__attachments {
   width: 100%;
