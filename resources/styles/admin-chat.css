@@ -896,8 +896,35 @@
   position: relative;
 }
 
+/* Attachment chips in composer */
+.gds-assistant__attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #e7f0f9;
+  border: 1px solid #c5d9ed;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #2271b1;
+}
+
+.gds-assistant__attachment-remove {
+  background: none;
+  border: none;
+  color: #757575;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+
+  &:hover {
+    color: #d63638;
+  }
+}
+
 /* Responsive — smaller screens */
-/* Tool call cards */
+/* Override tool call cards for new structured rendering */
 .gds-assistant__tool-call {
   margin: 8px 0;
   border: 1px solid #ddd;

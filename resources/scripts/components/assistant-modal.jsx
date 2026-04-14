@@ -3,6 +3,7 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  AttachmentPrimitive,
   useThreadRuntime,
 } from '@assistant-ui/react';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
@@ -863,6 +864,11 @@ function Composer() {
           onDismiss={() => setSlashQuery(null)}
         />
       )}
+      <ComposerPrimitive.Attachments
+        components={{
+          Attachment: ComposerAttachment,
+        }}
+      />
       <ComposerPrimitive.AddAttachment
         className="gds-assistant__attach"
         title="Attach image"
@@ -918,6 +924,19 @@ function Composer() {
         <span className="gds-assistant__stopped">Stopped</span>
       )}
     </ComposerPrimitive.Root>
+  );
+}
+
+// ── Composer attachment chip ─────────────────────────────────
+
+function ComposerAttachment() {
+  return (
+    <AttachmentPrimitive.Root className="gds-assistant__attachment-chip">
+      <AttachmentPrimitive.Name />
+      <AttachmentPrimitive.Remove className="gds-assistant__attachment-remove">
+        &times;
+      </AttachmentPrimitive.Remove>
+    </AttachmentPrimitive.Root>
   );
 }
 
