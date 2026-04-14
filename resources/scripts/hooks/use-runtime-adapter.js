@@ -189,72 +189,96 @@ export function useAssistantRuntime() {
         throw new Error(`Chat request failed: ${response.status} ${error}`);
       }
 
-      // Build structured content parts from SSE events
-      const parts = [];
+      // Build structured content parts from SSE events.
+      // Each agentic turn gets its own assistant message to avoid
+      // duplicate toolCallId keys across turns.
+      let turnParts = [];
       let currentTextIdx = -1;
+      let turnCount = 0;
 
-      /**
-       * Ensure a text part exists at the end of `parts` to append to.
-       *
-       * @return {number} Index of the current text part.
-       */
       const ensureTextPart = () => {
-        if (currentTextIdx < 0 || parts[currentTextIdx]?.type !== 'text') {
-          currentTextIdx = parts.length;
-          parts.push({type: 'text', text: ''});
+        if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== 'text') {
+          currentTextIdx = turnParts.length;
+          turnParts.push({type: 'text', text: ''});
         }
         return currentTextIdx;
+      };
+
+      /** Flush current turn as an assistant message and start a new turn. */
+      const flushTurn = () => {
+        if (!turnParts.length) return;
+        const contentParts = turnParts.map((p) => ({...p}));
+        setMessages((prev) => [
+          ...prev,
+          {role: 'assistant', content: contentParts},
+        ]);
+        turnParts = [];
+        currentTextIdx = -1;
+        turnCount++;
+      };
+
+      /** Update the current turn's assistant message in-place (for streaming). */
+      const updateCurrentTurn = () => {
+        const contentParts = turnParts.map((p) => ({...p}));
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+            updated[lastIdx] = {role: 'assistant', content: contentParts};
+          } else {
+            updated.push({role: 'assistant', content: contentParts});
+          }
+          return updated;
+        });
       };
 
       for await (const event of parseSSE(response.body)) {
         switch (event.type) {
           case 'text_delta': {
             const idx = ensureTextPart();
-            parts[idx].text += event.data.text;
+            turnParts[idx].text += event.data.text;
             break;
           }
 
           case 'tool_use_start': {
-            // End any current text part — tool call is a separate part
             currentTextIdx = -1;
-            parts.push({
+            turnParts.push({
               type: 'tool-call',
-              toolCallId: event.data.id || `tool_${parts.length}`,
+              toolCallId:
+                event.data.id || `tool_${turnCount}_${turnParts.length}`,
               toolName: event.data.name?.replace('__', '/') || 'unknown',
               args: event.data.input || {},
               argsText: JSON.stringify(event.data.input || {}, null, 2),
-              // result will be set when tool_result arrives
             });
             break;
           }
 
           case 'tool_result': {
             const toolId = event.data.tool_use_id || '';
-            const toolPart = parts.find(
+            const toolPart = turnParts.find(
               (p) => p.type === 'tool-call' && p.toolCallId === toolId,
             );
             if (toolPart) {
               toolPart.result = event.data.result;
               toolPart.isError = !!event.data.is_error;
             }
-            // Next text goes into a new text part
-            currentTextIdx = -1;
+            // This turn is complete — flush and start new turn
+            flushTurn();
             break;
           }
 
           case 'tool_approval_required': {
             currentTextIdx = -1;
-            const approvalId = event.data.tool_use_id || '';
-            parts.push({
+            turnParts.push({
               type: 'tool-call',
-              toolCallId: approvalId,
+              toolCallId: event.data.tool_use_id || `approval_${turnCount}`,
               toolName: event.data.tool_name || 'unknown',
               args: event.data.input || {},
               argsText: JSON.stringify(event.data.input || {}, null, 2),
               status: {type: 'requires-action', reason: 'tool-calls'},
             });
             pendingApprovalRef.current = {
-              toolUseId: approvalId,
+              toolUseId: event.data.tool_use_id,
               toolName: event.data.tool_name,
               input: event.data.input,
             };
@@ -263,20 +287,20 @@ export function useAssistantRuntime() {
 
           case 'ask_user': {
             const idx = ensureTextPart();
-            parts[idx].text +=
+            turnParts[idx].text +=
               `\n\n> **${event.data.question || 'Confirm?'}**\n`;
             if (event.data.options?.length) {
-              parts[idx].text += event.data.options
+              turnParts[idx].text += event.data.options
                 .map((o) => `> - ${o}`)
                 .join('\n');
             }
-            parts[idx].text += '\n\n_Reply below to continue._\n';
+            turnParts[idx].text += '\n\n_Reply below to continue._\n';
             break;
           }
 
           case 'error': {
             const idx = ensureTextPart();
-            parts[idx].text += `\n\n**Error:** ${event.data.message}\n`;
+            turnParts[idx].text += `\n\n**Error:** ${event.data.message}\n`;
             break;
           }
 
@@ -300,18 +324,10 @@ export function useAssistantRuntime() {
             break;
         }
 
-        // Update the assistant message with structured parts
-        const contentParts = parts.map((p) => ({...p}));
-        setMessages((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-            updated[lastIdx] = {role: 'assistant', content: contentParts};
-          } else {
-            updated.push({role: 'assistant', content: contentParts});
-          }
-          return updated;
-        });
+        // Update current turn's message in-place for streaming
+        if (turnParts.length) {
+          updateCurrentTurn();
+        }
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
