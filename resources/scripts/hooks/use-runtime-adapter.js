@@ -470,6 +470,38 @@ export function useAssistantRuntime() {
     [onNew],
   );
 
+  const attachmentAdapter = useMemo(
+    () => ({
+      accept: 'image/png,image/jpeg,image/gif,image/webp',
+      async add({file}) {
+        return {
+          id: Math.random().toString(36).slice(2),
+          type: 'image',
+          name: file.name,
+          contentType: file.type,
+          file,
+          status: {type: 'requires-action', reason: 'composer-send'},
+        };
+      },
+      async send(attachment) {
+        // Convert file to base64 for the API
+        const base64 = await fileToBase64(attachment.file);
+        return {
+          ...attachment,
+          status: {type: 'complete'},
+          content: [
+            {
+              type: 'image',
+              image: `data:${attachment.contentType};base64,${base64}`,
+            },
+          ],
+        };
+      },
+      async remove() {},
+    }),
+    [],
+  );
+
   const adapter = useMemo(
     () => ({
       messages,
@@ -479,8 +511,20 @@ export function useAssistantRuntime() {
       onReload,
       onCancel,
       convertMessage,
+      adapters: {
+        attachments: attachmentAdapter,
+      },
     }),
-    [messages, isRunning, onNew, onEdit, onReload, onCancel, convertMessage],
+    [
+      messages,
+      isRunning,
+      onNew,
+      onEdit,
+      onReload,
+      onCancel,
+      convertMessage,
+      attachmentAdapter,
+    ],
   );
 
   // Keep ref to onNew for approval callbacks
