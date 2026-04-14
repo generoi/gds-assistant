@@ -223,6 +223,13 @@ export function SkillsDataView() {
       icon: edit,
       isPrimary: true,
       callback: ([item]) => {
+        window.location.href = `post.php?post=${item.id}&action=edit`;
+      },
+    },
+    {
+      id: 'settings',
+      label: __('Model & Schedule', 'gds-assistant'),
+      callback: ([item]) => {
         setEditingSkill({
           id: item.id,
           title: item.title?.raw || item.title?.rendered || '',
