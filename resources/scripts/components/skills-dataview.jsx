@@ -1,5 +1,6 @@
 import {DataViews} from '@wordpress/dataviews';
 import {useEntityRecords} from '@wordpress/core-data';
+import {useDispatch} from '@wordpress/data';
 import {useState, useCallback, useRef} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
 import {edit, trash, plus, download, upload} from '@wordpress/icons';
@@ -122,6 +123,7 @@ export function SkillsDataView() {
   const [view, setView] = useState(DEFAULT_VIEW);
   const [editingSkill, setEditingSkill] = useState(null);
   const fileInputRef = useRef(null);
+  const {invalidateResolution} = useDispatch('core');
 
   const queryArgs = {
     per_page: view.perPage,
@@ -139,15 +141,18 @@ export function SkillsDataView() {
     queryArgs,
   );
 
-  const handleDelete = useCallback(async (items) => {
-    for (const item of items) {
-      await apiFetch({
-        path: `/wp/v2/assistant-skills/${item.id}?force=true`,
-        method: 'DELETE',
-      });
-    }
-    setView((v) => ({...v}));
-  }, []);
+  const handleDelete = useCallback(
+    async (items) => {
+      for (const item of items) {
+        await apiFetch({
+          path: `/wp/v2/assistant-skills/${item.id}?force=true`,
+          method: 'DELETE',
+        });
+      }
+      invalidateResolution('getEntityRecords', ['postType', 'assistant_skill']);
+    },
+    [invalidateResolution],
+  );
 
   // Export all skills
   const handleExportAll = useCallback(async () => {
@@ -173,48 +178,54 @@ export function SkillsDataView() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileChange = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    try {
-      const text = await file.text();
-      let skills = JSON.parse(text);
+      try {
+        const text = await file.text();
+        let skills = JSON.parse(text);
 
-      // Support both single skill and array
-      if (!Array.isArray(skills)) {
-        skills = [skills];
+        // Support both single skill and array
+        if (!Array.isArray(skills)) {
+          skills = [skills];
+        }
+
+        let imported = 0;
+        for (const skill of skills) {
+          if (!skill.title || !skill.prompt) continue;
+
+          await apiFetch({
+            path: '/wp/v2/assistant-skills',
+            method: 'POST',
+            data: {
+              title: skill.title,
+              slug: skill.slug || '',
+              content: skill.prompt,
+              excerpt: skill.description || '',
+              status: 'publish',
+            },
+          });
+          imported++;
+        }
+
+        // eslint-disable-next-line no-alert
+        window.alert(`Imported ${imported} skill${imported !== 1 ? 's' : ''}.`);
+        invalidateResolution('getEntityRecords', [
+          'postType',
+          'assistant_skill',
+        ]);
+      } catch (err) {
+        // eslint-disable-next-line no-alert
+        window.alert(`Import failed: ${err.message}`);
       }
 
-      let imported = 0;
-      for (const skill of skills) {
-        if (!skill.title || !skill.prompt) continue;
-
-        await apiFetch({
-          path: '/wp/v2/assistant-skills',
-          method: 'POST',
-          data: {
-            title: skill.title,
-            slug: skill.slug || '',
-            content: skill.prompt,
-            excerpt: skill.description || '',
-            status: 'publish',
-          },
-        });
-        imported++;
-      }
-
-      // eslint-disable-next-line no-alert
-      window.alert(`Imported ${imported} skill${imported !== 1 ? 's' : ''}.`);
-      setView((v) => ({...v})); // Refresh
-    } catch (err) {
-      // eslint-disable-next-line no-alert
-      window.alert(`Import failed: ${err.message}`);
-    }
-
-    // Reset file input
-    e.target.value = '';
-  }, []);
+      // Reset file input
+      e.target.value = '';
+    },
+    [invalidateResolution],
+  );
 
   const actions = [
     {
@@ -316,7 +327,10 @@ export function SkillsDataView() {
               },
             });
             setEditingSkill(null);
-            setView((v) => ({...v})); // Refresh
+            invalidateResolution('getEntityRecords', [
+              'postType',
+              'assistant_skill',
+            ]);
           }}
         />
       )}
