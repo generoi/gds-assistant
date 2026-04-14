@@ -3,7 +3,7 @@
  * These simulate LLM responses without calling real APIs.
  */
 
-export const SIMPLE_TEXT_RESPONSE = [
+const SIMPLE_TEXT_RESPONSE = [
   'event: conversation_start',
   'data: {"conversation_id":"test-conv-1","model":"anthropic:sonnet"}',
   '',
@@ -21,7 +21,7 @@ export const SIMPLE_TEXT_RESPONSE = [
   '',
 ].join('\n');
 
-export const TOOL_CALL_RESPONSE = [
+const TOOL_CALL_RESPONSE = [
   'event: conversation_start',
   'data: {"conversation_id":"test-conv-2","model":"anthropic:sonnet"}',
   '',
@@ -45,7 +45,7 @@ export const TOOL_CALL_RESPONSE = [
   '',
 ].join('\n');
 
-export const ERROR_RESPONSE = [
+const ERROR_RESPONSE = [
   'event: conversation_start',
   'data: {"conversation_id":"test-conv-3","model":"anthropic:sonnet"}',
   '',
@@ -53,3 +53,5 @@ export const ERROR_RESPONSE = [
   'data: {"message":"API returned HTTP 500: Internal server error"}',
   '',
 ].join('\n');
+
+module.exports = {SIMPLE_TEXT_RESPONSE, TOOL_CALL_RESPONSE, ERROR_RESPONSE};
