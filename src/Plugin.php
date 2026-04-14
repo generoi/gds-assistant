@@ -200,32 +200,16 @@ class Plugin
 
     public function renderSkillMetaBox(\WP_Post $post): void
     {
-        $model = get_post_meta($post->ID, '_assistant_model', true) ?: '';
-        $schedule = get_post_meta($post->ID, '_assistant_schedule', true) ?: '';
+        $model = esc_attr(get_post_meta($post->ID, '_assistant_model', true) ?: '');
+        $schedule = esc_attr(get_post_meta($post->ID, '_assistant_schedule', true) ?: '');
 
         wp_nonce_field('gds_assistant_skill_meta', '_gds_assistant_nonce');
 
         echo '<p><label for="gds-skill-model"><strong>Model</strong></label><br>';
-        echo '<select id="gds-skill-model" name="_assistant_model" style="width:100%">';
-        echo '<option value="">Default (user selection)</option>';
-
-        Llm\ProviderRegistry::registerDefaults();
-        foreach (Llm\ProviderRegistry::getAvailable() as $name => $config) {
-            foreach ($config['models'] as $key => $def) {
-                $value = $name.':'.$key;
-                $selected = selected($model, $value, false);
-                echo "<option value=\"{$value}\" {$selected}>{$config['label']}: {$def['label']}</option>";
-            }
-        }
-        echo '</select></p>';
+        echo "<input type=\"text\" id=\"gds-skill-model\" name=\"_assistant_model\" value=\"{$model}\" style=\"width:100%\" placeholder=\"e.g. anthropic:sonnet\" /></p>";
 
         echo '<p><label for="gds-skill-schedule"><strong>Schedule</strong></label><br>';
-        echo '<select id="gds-skill-schedule" name="_assistant_schedule" style="width:100%">';
-        foreach (['' => 'None', 'hourly' => 'Hourly', 'daily' => 'Daily', 'weekly' => 'Weekly'] as $val => $label) {
-            $selected = selected($schedule, $val, false);
-            echo "<option value=\"{$val}\" {$selected}>{$label}</option>";
-        }
-        echo '</select></p>';
+        echo "<input type=\"text\" id=\"gds-skill-schedule\" name=\"_assistant_schedule\" value=\"{$schedule}\" style=\"width:100%\" placeholder=\"hourly, daily, or weekly\" /></p>";
     }
 
     public function saveSkillMeta(int $postId): void
