@@ -955,6 +955,13 @@ function ComposerAttachment({attachment}) {
 
 // ── Message components ──────────────────────────────────────
 
+function MessageImage({image}) {
+  if (!image) return null;
+  return (
+    <img src={image} alt="Attached" className="gds-assistant__message-image" />
+  );
+}
+
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--user">
@@ -962,13 +969,6 @@ function UserMessage() {
         components={{Text: UserMessageText, Image: MessageImage}}
       />
     </MessagePrimitive.Root>
-  );
-}
-
-function MessageImage({image}) {
-  if (!image) return null;
-  return (
-    <img src={image} alt="Attached" className="gds-assistant__message-image" />
   );
 }
 
