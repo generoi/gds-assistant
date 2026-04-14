@@ -153,6 +153,25 @@
 }
 
 /* History list */
+.gds-assistant__history-search {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: #2271b1;
+  }
+
+  &::placeholder {
+    color: #999;
+  }
+}
+
 .gds-assistant__history-list {
   max-height: 300px;
   overflow-y: auto;
