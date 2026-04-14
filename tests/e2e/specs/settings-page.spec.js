@@ -6,7 +6,7 @@ test.describe('Settings Page', () => {
   });
 
   test('settings page loads', async ({page}) => {
-    await expect(page.locator('h1, .wrap h2')).toContainText(/AI Assistant/i);
+    await expect(page.locator('h1').first()).toContainText(/AI Assistant/i);
   });
 
   test('shows provider status section', async ({page}) => {

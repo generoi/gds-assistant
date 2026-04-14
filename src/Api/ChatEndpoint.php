@@ -4,6 +4,7 @@ namespace GeneroWP\Assistant\Api;
 
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
+use GeneroWP\Assistant\Llm\ContextCompressor;
 use GeneroWP\Assistant\Llm\MessageLoop;
 use GeneroWP\Assistant\Llm\ProviderRegistry;
 use GeneroWP\Assistant\Llm\SystemPrompt;
@@ -85,7 +86,7 @@ class ChatEndpoint
         // Resolve model and provider
         $modelKey = $request->get_param('model') ?: ProviderRegistry::getDefaultModelKey();
         $requestMaxTokens = (int) $request->get_param('max_tokens');
-        $envMaxTokens = (int) (env('GDS_ASSISTANT_MAX_TOKENS') ?: 0);
+        $envMaxTokens = (int) (Plugin::env('GDS_ASSISTANT_MAX_TOKENS') ?: 0);
         $maxTokens = $requestMaxTokens ?: $envMaxTokens ?: 4096;
 
         $resolved = ProviderRegistry::resolve($modelKey, $maxTokens);
