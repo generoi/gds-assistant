@@ -479,54 +479,54 @@ export function useAssistantRuntime() {
     () => ({
       accept: 'image/png,image/jpeg,image/gif,image/webp',
       async add({file}) {
-        return {
-          id: Math.random().toString(36).slice(2),
-          type: 'image',
-          name: file.name,
-          contentType: file.type,
-          file,
-          status: {type: 'requires-action', reason: 'composer-send'},
-        };
-      },
-      async send(attachment) {
-        // Upload to WP Media Library — returns URL instead of base64
         const {nonce, restBase} = window.gdsAssistant || {};
-        const formData = new FormData();
-        formData.append('file', attachment.file);
+        const previewUrl = URL.createObjectURL(file);
 
+        // Upload immediately so send() is instant
+        let mediaUrl = previewUrl;
+        let mediaId = null;
         try {
+          const formData = new FormData();
+          formData.append('file', file);
           const response = await fetch(`${restBase}media?gds_assistant=1`, {
             method: 'POST',
             headers: {'X-WP-Nonce': nonce},
             body: formData,
           });
           const media = await response.json();
-
-          return {
-            ...attachment,
-            status: {type: 'complete'},
-            content: [
-              {
-                type: 'image',
-                image: media.source_url,
-                mediaId: media.id,
-              },
-            ],
-          };
+          mediaUrl = media.source_url;
+          mediaId = media.id;
         } catch {
-          // Fallback to base64 if upload fails
-          const base64 = await fileToBase64(attachment.file);
-          return {
-            ...attachment,
-            status: {type: 'complete'},
-            content: [
-              {
-                type: 'image',
-                image: `data:${attachment.contentType};base64,${base64}`,
-              },
-            ],
-          };
+          // Falls back to base64 in send()
         }
+
+        return {
+          id: Math.random().toString(36).slice(2),
+          type: 'image',
+          name: file.name,
+          contentType: file.type,
+          file,
+          status: {type: 'complete'},
+          content: [{type: 'image', image: mediaUrl, mediaId}],
+        };
+      },
+      async send(attachment) {
+        // Already uploaded in add() — just pass through
+        if (attachment.content?.[0]?.image) {
+          return attachment;
+        }
+        // Fallback to base64 if add() upload failed
+        const base64 = await fileToBase64(attachment.file);
+        return {
+          ...attachment,
+          status: {type: 'complete'},
+          content: [
+            {
+              type: 'image',
+              image: `data:${attachment.contentType};base64,${base64}`,
+            },
+          ],
+        };
       },
       async remove() {},
     }),
