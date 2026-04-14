@@ -864,11 +864,13 @@ function Composer() {
           onDismiss={() => setSlashQuery(null)}
         />
       )}
-      <ComposerPrimitive.Attachments
-        components={{
-          Attachment: ComposerAttachment,
-        }}
-      />
+      <div className="gds-assistant__attachments">
+        <ComposerPrimitive.Attachments
+          components={{
+            Attachment: ComposerAttachment,
+          }}
+        />
+      </div>
       <ComposerPrimitive.AddAttachment
         className="gds-assistant__attach"
         title="Attach image"

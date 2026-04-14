@@ -151,6 +151,19 @@ class Plugin
             'rewrite' => false,
         ]);
 
+        register_post_meta('assistant_skill', '_assistant_model', [
+            'show_in_rest' => true,
+            'single' => true,
+            'type' => 'string',
+            'default' => '',
+        ]);
+        register_post_meta('assistant_skill', '_assistant_schedule', [
+            'show_in_rest' => true,
+            'single' => true,
+            'type' => 'string',
+            'default' => '',
+        ]);
+
         register_post_type('assistant_memory', [
             'labels' => [
                 'name' => 'Memory',

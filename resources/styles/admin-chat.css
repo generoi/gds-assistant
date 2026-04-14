@@ -571,6 +571,7 @@
 .gds-assistant__composer {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
   padding: 12px 16px;
@@ -897,6 +898,13 @@
 }
 
 /* Attachment chips in composer */
+.gds-assistant__attachments {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .gds-assistant__attachment-chip {
   display: inline-flex;
   align-items: center;
