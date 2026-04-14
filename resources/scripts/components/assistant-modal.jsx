@@ -733,6 +733,8 @@ function ModelSelector() {
           {provider.models.map((m) => (
             <option key={m.value} value={m.value}>
               {m.label} {m.tier || ''}
+              {m.capabilityTier === 'read' ? ' (read-only)' : ''}
+              {m.capabilityTier === 'full' ? ' (full access)' : ''}
             </option>
           ))}
         </optgroup>
