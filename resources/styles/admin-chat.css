@@ -908,13 +908,20 @@
 .gds-assistant__attachment-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 6px;
+  padding: 4px 8px;
   background: #e7f0f9;
   border: 1px solid #c5d9ed;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12px;
   color: #2271b1;
+}
+
+.gds-assistant__attachment-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
 }
 
 .gds-assistant__attachment-remove {
