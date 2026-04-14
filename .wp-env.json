@@ -6,6 +6,7 @@
     "WP_TESTS_DOMAIN": "localhost",
     "WP_TESTS_EMAIL": "test@genero.fi",
     "WP_TESTS_TITLE": "GDS Assistant Tests",
-    "WP_PHP_BINARY": "php"
+    "WP_PHP_BINARY": "php",
+    "GDS_ASSISTANT_ANTHROPIC_KEY": "test-key-for-e2e"
   }
 }
