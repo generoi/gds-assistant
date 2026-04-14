@@ -194,7 +194,6 @@ export function useAssistantRuntime() {
       // duplicate toolCallId keys across turns.
       let turnParts = [];
       let currentTextIdx = -1;
-      let turnCount = 0;
 
       const ensureTextPart = () => {
         if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== 'text') {
@@ -214,7 +213,6 @@ export function useAssistantRuntime() {
         ]);
         turnParts = [];
         currentTextIdx = -1;
-        turnCount++;
       };
 
       /** Update the current turn's assistant message in-place (for streaming). */
@@ -241,42 +239,40 @@ export function useAssistantRuntime() {
           }
 
           case 'tool_use_start': {
-            currentTextIdx = -1;
-            turnParts.push({
-              type: 'tool-call',
-              toolCallId:
-                event.data.id || `tool_${turnCount}_${turnParts.length}`,
-              toolName: event.data.name?.replace('__', '/') || 'unknown',
-              args: event.data.input || {},
-              argsText: JSON.stringify(event.data.input || {}, null, 2),
-            });
+            const idx = ensureTextPart();
+            const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
+            turnParts[idx].text += `\n\n**Tool:** \`${toolLabel}\``;
+            if (event.data.input && Object.keys(event.data.input).length > 0) {
+              turnParts[idx].text +=
+                `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
+            }
+            turnParts[idx].text += '\n_Running..._';
             break;
           }
 
           case 'tool_result': {
-            const toolId = event.data.tool_use_id || '';
-            const toolPart = turnParts.find(
-              (p) => p.type === 'tool-call' && p.toolCallId === toolId,
+            const idx = ensureTextPart();
+            const status =
+              event.data.is_error ? '**Error**' : '**Done** \u2713';
+            // Replace "Running..." with result status
+            turnParts[idx].text = turnParts[idx].text.replace(
+              /_Running\.\.\._$/,
+              status,
             );
-            if (toolPart) {
-              toolPart.result = event.data.result;
-              toolPart.isError = !!event.data.is_error;
-            }
-            // This turn is complete — flush and start new turn
+            // Flush turn — next iteration starts a new assistant message
             flushTurn();
             break;
           }
 
           case 'tool_approval_required': {
-            currentTextIdx = -1;
-            turnParts.push({
-              type: 'tool-call',
-              toolCallId: event.data.tool_use_id || `approval_${turnCount}`,
-              toolName: event.data.tool_name || 'unknown',
-              args: event.data.input || {},
-              argsText: JSON.stringify(event.data.input || {}, null, 2),
-              status: {type: 'requires-action', reason: 'tool-calls'},
-            });
+            const idx = ensureTextPart();
+            turnParts[idx].text +=
+              `\n\n**Approval required:** \`${event.data.tool_name}\``;
+            if (event.data.input && Object.keys(event.data.input).length > 0) {
+              turnParts[idx].text +=
+                `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
+            }
+            turnParts[idx].text += '\n_Waiting for approval..._';
             pendingApprovalRef.current = {
               toolUseId: event.data.tool_use_id,
               toolName: event.data.tool_name,
@@ -413,15 +409,10 @@ export function useAssistantRuntime() {
           if (block.type === 'text' && block.text) {
             parts.push({type: 'text', text: block.text});
           } else if (block.type === 'tool_use') {
-            // Append message index to ensure uniqueness across turns
-            const uniqueId = `${block.id || 'tool'}_msg${acc.length}`;
-            parts.push({
-              type: 'tool-call',
-              toolCallId: uniqueId,
-              toolName: (block.name || '').replace('__', '/'),
-              args: block.input || {},
-              argsText: JSON.stringify(block.input || {}, null, 2),
-            });
+            // Render tool calls as text to avoid duplicate key issues
+            const toolLabel = (block.name || '').replace('__', '/');
+            const toolText = `\n**Tool:** \`${toolLabel}\` **Done** \u2713`;
+            parts.push({type: 'text', text: toolText});
           }
         }
 
