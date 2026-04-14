@@ -92,8 +92,8 @@ test.describe('Chat Widget', () => {
     const assistantMsg = page.locator('.gds-assistant__message--assistant');
     await expect(assistantMsg.first()).toBeVisible({timeout: 5000});
 
-    // Should show the text response (tool calls render as structured parts)
-    await expect(assistantMsg.first()).toContainText('Found 1 page');
+    // First message has tool call text, second has the response
+    await expect(assistantMsg.last()).toContainText('Found 1 page');
   });
 
   test('new chat button clears conversation', async ({page}) => {
