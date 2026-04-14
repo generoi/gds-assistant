@@ -160,4 +160,72 @@ class ContextCompressorTest extends WP_UnitTestCase
         $this->assertStringContainsString('content-create', $summary);
         $this->assertStringContainsString('Created page', $summary);
     }
+
+    public function test_estimate_tokens_strips_image_data(): void
+    {
+        $withImage = [
+            [
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => 'What is this?'],
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => str_repeat('A', 100000)]],
+                ],
+            ],
+        ];
+
+        $withoutImage = [
+            [
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => 'What is this?'],
+                ],
+            ],
+        ];
+
+        $tokensWithImage = ContextCompressor::estimateTokens($withImage);
+        $tokensWithoutImage = ContextCompressor::estimateTokens($withoutImage);
+
+        // Image should add ~1500 tokens, not 25000 (100KB/4)
+        $diff = $tokensWithImage - $tokensWithoutImage;
+        $this->assertGreaterThan(1000, $diff); // At least the image token estimate
+        $this->assertLessThan(5000, $diff); // But not the raw base64 size
+    }
+
+    public function test_strip_old_images(): void
+    {
+        $messages = [
+            ['role' => 'user', 'content' => [
+                ['type' => 'text', 'text' => 'Old message'],
+                ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'old_data']],
+            ]],
+            ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'I see the image.']]],
+            ['role' => 'user', 'content' => [
+                ['type' => 'text', 'text' => 'Recent message'],
+                ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'new_data']],
+            ]],
+            ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'Got it.']]],
+        ];
+
+        $stripped = ContextCompressor::stripOldImages($messages, 2);
+
+        // Old image (index 0) should be replaced with placeholder text
+        $oldContent = $stripped[0]['content'];
+        $hasImage = false;
+        foreach ($oldContent as $block) {
+            if (($block['type'] ?? '') === 'image') {
+                $hasImage = true;
+            }
+        }
+        $this->assertFalse($hasImage, 'Old image should be stripped');
+
+        // Recent image (index 2) should be preserved (within keepRecent)
+        $newContent = $stripped[2]['content'];
+        $hasImage = false;
+        foreach ($newContent as $block) {
+            if (($block['type'] ?? '') === 'image') {
+                $hasImage = true;
+            }
+        }
+        $this->assertTrue($hasImage, 'Recent image should be preserved');
+    }
 }

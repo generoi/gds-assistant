@@ -138,6 +138,29 @@ class GeminiProviderTest extends TestCase
         $this->assertSame('search', $result[0]['parts'][1]['functionCall']['name']);
     }
 
+    public function test_convert_messages_with_image(): void
+    {
+        $messages = [
+            [
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => 'Describe this image'],
+                    ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => '/9j/4AAQ']],
+                ],
+            ],
+        ];
+
+        $result = $this->convertMessages->invoke(null, $messages);
+
+        $this->assertCount(1, $result);
+        $this->assertSame('user', $result[0]['role']);
+        $this->assertCount(2, $result[0]['parts']);
+        $this->assertSame('Describe this image', $result[0]['parts'][0]['text']);
+        $this->assertArrayHasKey('inlineData', $result[0]['parts'][1]);
+        $this->assertSame('image/jpeg', $result[0]['parts'][1]['inlineData']['mimeType']);
+        $this->assertSame('/9j/4AAQ', $result[0]['parts'][1]['inlineData']['data']);
+    }
+
     public function test_convert_messages_tool_result(): void
     {
         $messages = [
