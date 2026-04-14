@@ -934,6 +934,7 @@ function Composer() {
 function ComposerAttachment() {
   return (
     <AttachmentPrimitive.Root className="gds-assistant__attachment-chip">
+      <AttachmentPrimitive.unstable_Thumb className="gds-assistant__attachment-thumb" />
       <AttachmentPrimitive.Name />
       <AttachmentPrimitive.Remove className="gds-assistant__attachment-remove">
         &times;
