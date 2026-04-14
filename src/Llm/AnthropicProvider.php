@@ -37,7 +37,7 @@ class AnthropicProvider implements LlmProviderInterface
             'model' => $this->model,
             'max_tokens' => $this->maxTokens,
             'stream' => true,
-            'messages' => $messages,
+            'messages' => self::convertUrlImages($messages),
         ];
 
         if ($systemPrompt) {
@@ -254,5 +254,49 @@ class AnthropicProvider implements LlmProviderInterface
                 ]);
                 break;
         }
+    }
+
+    /**
+     * Convert URL-based image blocks to base64 for the Anthropic API.
+     * Anthropic can't fetch arbitrary URLs (especially local/private ones).
+     */
+    private static function convertUrlImages(array $messages): array
+    {
+        return array_map(function (array $msg) {
+            if (! is_array($msg['content'] ?? null)) {
+                return $msg;
+            }
+
+            $msg['content'] = array_map(function ($block) {
+                if (($block['type'] ?? '') !== 'image') {
+                    return $block;
+                }
+
+                $source = $block['source'] ?? [];
+                if (($source['type'] ?? '') !== 'url') {
+                    return $block;
+                }
+
+                $url = $source['url'] ?? '';
+                $imageData = @file_get_contents($url);
+                if (! $imageData) {
+                    return $block;
+                }
+
+                $finfo = new \finfo(FILEINFO_MIME_TYPE);
+                $mediaType = $finfo->buffer($imageData) ?: 'image/jpeg';
+
+                return [
+                    'type' => 'image',
+                    'source' => [
+                        'type' => 'base64',
+                        'media_type' => $mediaType,
+                        'data' => base64_encode($imageData),
+                    ],
+                ];
+            }, $msg['content']);
+
+            return $msg;
+        }, $messages);
     }
 }
