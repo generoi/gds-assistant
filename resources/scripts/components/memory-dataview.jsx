@@ -1,5 +1,6 @@
 import {DataViews} from '@wordpress/dataviews';
 import {useEntityRecords} from '@wordpress/core-data';
+import {useDispatch} from '@wordpress/data';
 import {useState, useCallback} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
 import {edit, trash, plus} from '@wordpress/icons';
@@ -66,6 +67,7 @@ const DEFAULT_VIEW = {
 
 export function MemoryDataView() {
   const [view, setView] = useState(DEFAULT_VIEW);
+  const {invalidateResolution} = useDispatch('core');
 
   const queryArgs = {
     per_page: view.perPage,
@@ -83,16 +85,21 @@ export function MemoryDataView() {
     queryArgs,
   );
 
-  const handleDelete = useCallback(async (items) => {
-    for (const item of items) {
-      await apiFetch({
-        path: `/wp/v2/assistant-memory/${item.id}?force=true`,
-        method: 'DELETE',
-      });
-    }
-    // Trigger re-fetch
-    setView((v) => ({...v}));
-  }, []);
+  const handleDelete = useCallback(
+    async (items) => {
+      for (const item of items) {
+        await apiFetch({
+          path: `/wp/v2/assistant-memory/${item.id}?force=true`,
+          method: 'DELETE',
+        });
+      }
+      invalidateResolution('getEntityRecords', [
+        'postType',
+        'assistant_memory',
+      ]);
+    },
+    [invalidateResolution],
+  );
 
   const actions = [
     {
