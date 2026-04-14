@@ -381,11 +381,17 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
                     if (($block['type'] ?? '') === 'text') {
                         $parts[] = ['type' => 'text', 'text' => $block['text'] ?? ''];
                     } elseif (($block['type'] ?? '') === 'image') {
-                        $mediaType = $block['source']['media_type'] ?? 'image/png';
-                        $data = $block['source']['data'] ?? '';
+                        $source = $block['source'] ?? [];
+                        if (($source['type'] ?? '') === 'url') {
+                            $url = $source['url'];
+                        } else {
+                            $mediaType = $source['media_type'] ?? 'image/png';
+                            $data = $source['data'] ?? '';
+                            $url = "data:{$mediaType};base64,{$data}";
+                        }
                         $parts[] = [
                             'type' => 'image_url',
-                            'image_url' => ['url' => "data:{$mediaType};base64,{$data}"],
+                            'image_url' => ['url' => $url],
                         ];
                     }
                 }

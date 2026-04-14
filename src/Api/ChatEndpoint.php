@@ -267,18 +267,36 @@ class ChatEndpoint
             if (is_array($content)) {
                 $content = array_values(array_filter($content, function ($block) {
                     if (($block['type'] ?? '') !== 'image') {
-                        return true; // Keep non-image blocks
+                        return true;
                     }
 
-                    $mediaType = $block['source']['media_type'] ?? '';
-                    $data = $block['source']['data'] ?? '';
+                    $source = $block['source'] ?? [];
+                    $sourceType = $source['type'] ?? '';
 
-                    // Validate media type
+                    // URL-type images: validate it's a real URL on our domain
+                    if ($sourceType === 'url') {
+                        $url = $source['url'] ?? '';
+                        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+                            return false;
+                        }
+                        // Only allow same-origin or https URLs
+                        $siteHost = parse_url(home_url(), PHP_URL_HOST);
+                        $imageHost = parse_url($url, PHP_URL_HOST);
+                        if ($imageHost !== $siteHost && ! str_starts_with($url, 'https://')) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    // Base64-type images: validate media type and size
+                    $mediaType = $source['media_type'] ?? '';
+                    $data = $source['data'] ?? '';
+
                     if (! in_array($mediaType, self::ALLOWED_IMAGE_TYPES, true)) {
                         return false;
                     }
 
-                    // Validate size (base64 string length)
                     if (strlen($data) > self::MAX_IMAGE_SIZE) {
                         return false;
                     }

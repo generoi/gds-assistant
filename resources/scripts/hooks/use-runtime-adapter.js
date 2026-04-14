@@ -128,29 +128,28 @@ export function useAssistantRuntime() {
       contentBlocks.push({type: 'text', text: userText});
     }
 
-    // Convert image attachments to base64 content blocks
+    // Process image attachments — prefer URL (uploaded to media library) over base64
     if (message.attachments?.length) {
       for (const attachment of message.attachments) {
         const contentType = attachment.contentType || '';
         if (!contentType.startsWith('image/')) continue;
 
-        // Read the File object as base64
-        if (attachment.file instanceof File) {
-          const base64 = await fileToBase64(attachment.file);
-          if (base64) {
-            contentBlocks.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: contentType,
-                data: base64,
-              },
-            });
-          }
-        } else if (attachment.content?.[0]?.image) {
-          // Fallback: already-converted data URL
-          const dataUrl = attachment.content[0].image;
-          const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        const imageContent = attachment.content?.[0];
+        if (!imageContent?.image) continue;
+
+        const imageUrl = imageContent.image;
+        const mediaId = imageContent.mediaId;
+
+        if (mediaId || !imageUrl.startsWith('data:')) {
+          // Uploaded to media library — use URL (saves context tokens)
+          contentBlocks.push({
+            type: 'image',
+            source: {type: 'url', url: imageUrl},
+            ...(mediaId ? {mediaId} : {}),
+          });
+        } else {
+          // Fallback: data URL → extract base64
+          const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
             contentBlocks.push({
               type: 'image',
@@ -484,18 +483,44 @@ export function useAssistantRuntime() {
         };
       },
       async send(attachment) {
-        // Convert file to base64 for the API
-        const base64 = await fileToBase64(attachment.file);
-        return {
-          ...attachment,
-          status: {type: 'complete'},
-          content: [
-            {
-              type: 'image',
-              image: `data:${attachment.contentType};base64,${base64}`,
-            },
-          ],
-        };
+        // Upload to WP Media Library — returns URL instead of base64
+        const {nonce, restBase} = window.gdsAssistant || {};
+        const formData = new FormData();
+        formData.append('file', attachment.file);
+
+        try {
+          const response = await fetch(`${restBase}media`, {
+            method: 'POST',
+            headers: {'X-WP-Nonce': nonce},
+            body: formData,
+          });
+          const media = await response.json();
+
+          return {
+            ...attachment,
+            status: {type: 'complete'},
+            content: [
+              {
+                type: 'image',
+                image: media.source_url,
+                mediaId: media.id,
+              },
+            ],
+          };
+        } catch {
+          // Fallback to base64 if upload fails
+          const base64 = await fileToBase64(attachment.file);
+          return {
+            ...attachment,
+            status: {type: 'complete'},
+            content: [
+              {
+                type: 'image',
+                image: `data:${attachment.contentType};base64,${base64}`,
+              },
+            ],
+          };
+        }
       },
       async remove() {},
     }),
