@@ -47,6 +47,11 @@ const FIELDS = [
     render: ({item}) => <strong>{item.title || 'Untitled'}</strong>,
   },
   {
+    id: 'user_name',
+    label: __('User', 'gds-assistant'),
+    render: ({item}) => item.user_name || '—',
+  },
+  {
     id: 'model',
     label: __('Model', 'gds-assistant'),
     render: ({item}) => <code>{item.model || '—'}</code>,
@@ -87,7 +92,7 @@ const DEFAULT_VIEW = {
   perPage: 25,
   sort: {field: 'updated_at', direction: 'desc'},
   filters: [],
-  fields: ['title', 'model', 'tokens', 'cost', 'updated_at'],
+  fields: ['title', 'user_name', 'model', 'tokens', 'cost', 'updated_at'],
 };
 
 export function ConversationsDataView() {
@@ -100,7 +105,7 @@ export function ConversationsDataView() {
     setIsLoading(true);
     try {
       const response = await apiFetch({
-        path: '/gds-assistant/v1/conversations',
+        path: '/gds-assistant/v1/conversations?all=1',
         parse: false,
       });
       const items = await response.json();

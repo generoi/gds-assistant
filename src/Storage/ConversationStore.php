@@ -133,7 +133,38 @@ class ConversationStore
 
         return $wpdb->get_results(
             $wpdb->prepare(
-                'SELECT uuid, title, model, total_input_tokens, total_output_tokens, archived, created_at, updated_at
+                'SELECT uuid, user_id, title, model, total_input_tokens, total_output_tokens, archived, created_at, updated_at
+                FROM '.self::tableName()."
+                {$where}
+                ORDER BY updated_at DESC
+                LIMIT %d OFFSET %d",
+                ...$params,
+            ),
+            ARRAY_A,
+        ) ?: [];
+    }
+
+    /**
+     * List all conversations (admin view).
+     */
+    public function listAll(int $limit = 100, int $offset = 0, ?bool $archived = null): array
+    {
+        global $wpdb;
+
+        $where = 'WHERE 1=1';
+        $params = [];
+
+        if ($archived !== null) {
+            $where .= ' AND archived = %d';
+            $params[] = $archived ? 1 : 0;
+        }
+
+        $params[] = $limit;
+        $params[] = $offset;
+
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT uuid, user_id, title, model, total_input_tokens, total_output_tokens, archived, created_at, updated_at
                 FROM '.self::tableName()."
                 {$where}
                 ORDER BY updated_at DESC
