@@ -30,11 +30,11 @@ class ProviderRegistry
             'label' => 'Anthropic',
             'env' => ['GDS_ASSISTANT_ANTHROPIC_KEY', 'GDS_ASSISTANT_API_KEY', 'ANTHROPIC_API_KEY'],
             'models' => [
-                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku', 'pricing' => [0.8, 4], 'tier' => 'read'],
-                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet', 'pricing' => [3, 15], 'tier' => 'standard'],
+                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku', 'pricing' => [0.8, 4], 'tier' => 'standard'],
+                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet', 'pricing' => [3, 15], 'tier' => 'full'],
                 'opus' => ['id' => 'claude-opus-4-6', 'label' => 'Opus', 'pricing' => [15, 75], 'tier' => 'full'],
-                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [0.8, 4], 'tier' => 'standard'],
-                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15], 'tier' => 'standard'],
+                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [0.8, 4], 'tier' => 'full'],
+                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15], 'tier' => 'full'],
             ],
             'default' => 'sonnet',
         ]);
@@ -45,7 +45,7 @@ class ProviderRegistry
             'env' => ['GDS_ASSISTANT_OPENAI_KEY', 'OPENAI_API_KEY'],
             'models' => [
                 'gpt-4.1-mini' => ['id' => 'gpt-4.1-mini', 'label' => 'GPT-4.1 Mini', 'pricing' => [0.4, 1.6], 'tier' => 'read'],
-                'gpt-4.1' => ['id' => 'gpt-4.1', 'label' => 'GPT-4.1', 'pricing' => [2, 8], 'tier' => 'standard'],
+                'gpt-4.1' => ['id' => 'gpt-4.1', 'label' => 'GPT-4.1', 'pricing' => [2, 8], 'tier' => 'full'],
                 'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini', 'pricing' => [1.1, 4.4], 'tier' => 'standard'],
             ],
             'default' => 'gpt-4.1-mini',

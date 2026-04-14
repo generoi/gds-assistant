@@ -44,7 +44,26 @@ const FIELDS = [
     label: __('Title', 'gds-assistant'),
     enableGlobalSearch: true,
     enableSorting: true,
-    render: ({item}) => <strong>{item.title || 'Untitled'}</strong>,
+    render: ({item}) => (
+      <button
+        type="button"
+        style={{
+          all: 'unset',
+          cursor: 'pointer',
+          fontWeight: 600,
+        }}
+        onClick={() => {
+          localStorage.setItem('gds-assistant-resume', item.uuid);
+          window.dispatchEvent(
+            new CustomEvent('gds-assistant-resume', {
+              detail: {uuid: item.uuid},
+            }),
+          );
+        }}
+      >
+        {item.title || 'Untitled'}
+      </button>
+    ),
   },
   {
     id: 'user_name',
