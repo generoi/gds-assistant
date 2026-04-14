@@ -210,12 +210,27 @@ class GeminiProvider implements LlmProviderInterface
                             ],
                         ];
                     } elseif ($type === 'image') {
-                        $parts[] = [
-                            'inlineData' => [
-                                'mimeType' => $block['source']['media_type'] ?? 'image/png',
-                                'data' => $block['source']['data'] ?? '',
-                            ],
-                        ];
+                        $source = $block['source'] ?? [];
+                        if (($source['type'] ?? '') === 'url') {
+                            // Download and inline — Gemini can't fetch arbitrary URLs
+                            $imageData = @file_get_contents($source['url']);
+                            if ($imageData) {
+                                $mimeType = 'image/'.pathinfo(parse_url($source['url'], PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpeg';
+                                $parts[] = [
+                                    'inlineData' => [
+                                        'mimeType' => $mimeType,
+                                        'data' => base64_encode($imageData),
+                                    ],
+                                ];
+                            }
+                        } else {
+                            $parts[] = [
+                                'inlineData' => [
+                                    'mimeType' => $source['media_type'] ?? 'image/png',
+                                    'data' => $source['data'] ?? '',
+                                ],
+                            ];
+                        }
                     } elseif ($type === 'tool_result') {
                         $parts[] = [
                             'functionResponse' => [
