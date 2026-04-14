@@ -2,6 +2,7 @@ const {test, expect} = require('@playwright/test');
 const {
   SIMPLE_TEXT_RESPONSE,
   TOOL_CALL_RESPONSE,
+  TOOL_APPROVAL_RESPONSE,
 } = require('../fixtures/mock-responses.js');
 
 test.describe('Chat Widget', () => {
@@ -171,5 +172,53 @@ test.describe('Chat Widget', () => {
       const toolName = toolCall.locator('.gds-assistant__tool-call-name');
       await expect(toolName.first()).toBeVisible();
     }
+  });
+
+  test('tool approval shows approve/deny buttons', async ({page}) => {
+    await page.unrouteAll({behavior: 'ignoreErrors'});
+    await page.route('**/gds-assistant/v1/chat', (route) => {
+      route.fulfill({
+        status: 200,
+        headers: {'Content-Type': 'text/event-stream'},
+        body: TOOL_APPROVAL_RESPONSE,
+      });
+    });
+
+    await page.click('.gds-assistant__trigger');
+    const input = page.locator('.gds-assistant__input');
+    await input.fill('Clear the cache');
+    await page.click('.gds-assistant__send');
+
+    // Should show approval bar
+    const approvalBar = page.locator('.gds-assistant__approval-bar');
+    await expect(approvalBar).toBeVisible({timeout: 5000});
+
+    // Should have approve and deny buttons
+    const approveBtn = approvalBar.locator(
+      '.gds-assistant__approval-btn--approve',
+    );
+    const denyBtn = approvalBar.locator('.gds-assistant__approval-btn--deny');
+    await expect(approveBtn).toBeVisible();
+    await expect(denyBtn).toBeVisible();
+  });
+
+  test('export downloads a markdown file', async ({page}) => {
+    await page.click('.gds-assistant__trigger');
+
+    // Send a message first so there's content to export
+    const input = page.locator('.gds-assistant__input');
+    await input.fill('Hello');
+    await page.click('.gds-assistant__send');
+
+    const assistantMsg = page.locator('.gds-assistant__message--assistant');
+    await expect(assistantMsg.first()).toBeVisible({timeout: 5000});
+
+    // Click export and verify download starts
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('[title="Export as Markdown"]').click({force: true});
+    const download = await downloadPromise;
+
+    // Should be a .md file
+    expect(download.suggestedFilename()).toMatch(/^conversation-.*\.md$/);
   });
 });

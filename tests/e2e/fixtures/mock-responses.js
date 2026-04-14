@@ -54,4 +54,24 @@ const ERROR_RESPONSE = [
   '',
 ].join('\n');
 
-module.exports = {SIMPLE_TEXT_RESPONSE, TOOL_CALL_RESPONSE, ERROR_RESPONSE};
+const TOOL_APPROVAL_RESPONSE = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-4","model":"anthropic:sonnet"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"I will clear the cache."}',
+  '',
+  'event: tool_approval_required',
+  'data: {"tool_use_id":"toolu_approve1","tool_name":"gds/cache-clear","input":{}}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
+module.exports = {
+  SIMPLE_TEXT_RESPONSE,
+  TOOL_CALL_RESPONSE,
+  ERROR_RESPONSE,
+  TOOL_APPROVAL_RESPONSE,
+};
