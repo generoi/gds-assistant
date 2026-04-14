@@ -45,6 +45,10 @@ export default {
       __dirname,
       'resources/scripts/admin-settings.jsx',
     ),
+    'skill-editor': path.resolve(
+      __dirname,
+      'resources/scripts/skill-editor.jsx',
+    ),
   },
   output: {
     ...defaultConfig.output,

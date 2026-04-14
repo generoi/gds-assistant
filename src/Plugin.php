@@ -51,8 +51,7 @@ class Plugin
         add_action('init', [$this, 'registerPostTypes']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAdminAssets']);
         add_action('rest_api_init', [$this, 'registerRestRoutes']);
-        add_action('add_meta_boxes', [$this, 'addSkillMetaBoxes']);
-        add_action('save_post_assistant_skill', [$this, 'saveSkillMeta']);
+        add_action('enqueue_block_editor_assets', [$this, 'enqueueSkillEditorAssets']);
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
         add_action('gds_assistant_run_scheduled_skills', [Cron\SkillScheduler::class, 'run']);
@@ -187,48 +186,32 @@ class Plugin
         ]);
     }
 
-    public function addSkillMetaBoxes(): void
+    public function enqueueSkillEditorAssets(): void
     {
-        add_meta_box(
-            'gds-assistant-skill-settings',
-            'Skill Settings',
-            [$this, 'renderSkillMetaBox'],
-            'assistant_skill',
-            'side',
+        $screen = get_current_screen();
+        if (! $screen || $screen->post_type !== 'assistant_skill') {
+            return;
+        }
+
+        $assetFile = $this->path.'/build/skill-editor.asset.php';
+        if (! file_exists($assetFile)) {
+            return;
+        }
+
+        $asset = require $assetFile;
+        wp_enqueue_script(
+            'gds-assistant-skill-editor',
+            $this->url.'/build/skill-editor.js',
+            $asset['dependencies'],
+            $asset['version'],
+            true,
         );
-    }
 
-    public function renderSkillMetaBox(\WP_Post $post): void
-    {
-        $model = esc_attr(get_post_meta($post->ID, '_assistant_model', true) ?: '');
-        $schedule = esc_attr(get_post_meta($post->ID, '_assistant_schedule', true) ?: '');
-
-        wp_nonce_field('gds_assistant_skill_meta', '_gds_assistant_nonce');
-
-        echo '<p><label for="gds-skill-model"><strong>Model</strong></label><br>';
-        echo "<input type=\"text\" id=\"gds-skill-model\" name=\"_assistant_model\" value=\"{$model}\" style=\"width:100%\" placeholder=\"e.g. anthropic:sonnet\" /></p>";
-
-        echo '<p><label for="gds-skill-schedule"><strong>Schedule</strong></label><br>';
-        echo "<input type=\"text\" id=\"gds-skill-schedule\" name=\"_assistant_schedule\" value=\"{$schedule}\" style=\"width:100%\" placeholder=\"hourly, daily, or weekly\" /></p>";
-    }
-
-    public function saveSkillMeta(int $postId): void
-    {
-        if (! isset($_POST['_gds_assistant_nonce']) || ! wp_verify_nonce($_POST['_gds_assistant_nonce'], 'gds_assistant_skill_meta')) {
-            return;
-        }
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
-            return;
-        }
-
-        if (isset($_POST['_assistant_model'])) {
-            update_post_meta($postId, '_assistant_model', sanitize_text_field($_POST['_assistant_model']));
-        }
-        if (isset($_POST['_assistant_schedule'])) {
-            $schedule = sanitize_text_field($_POST['_assistant_schedule']);
-            $valid = ['', 'hourly', 'daily', 'weekly'];
-            update_post_meta($postId, '_assistant_schedule', in_array($schedule, $valid, true) ? $schedule : '');
-        }
+        // Pass model options to JS
+        $modelConfig = Llm\ProviderRegistry::getModelsForFrontend();
+        wp_localize_script('gds-assistant-skill-editor', 'gdsAssistantSkill', [
+            'models' => $modelConfig['providers'] ?? [],
+        ]);
     }
 
     public function registerToolProviders(Bridge\ToolRegistry $registry): void
