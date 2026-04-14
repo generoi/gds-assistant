@@ -124,7 +124,12 @@ export function useAssistantRuntime() {
           ?.map((p) => (p.type === 'text' ? p.text : ''))
           .join('') || '';
 
-    if (userText) {
+    // Control messages (approval/denial) — don't show in chat
+    const isControlMsg =
+      userText.startsWith('__tool_approved__:') ||
+      userText.startsWith('__tool_denied__:');
+
+    if (userText && !isControlMsg) {
       contentBlocks.push({type: 'text', text: userText});
     }
 
@@ -159,8 +164,10 @@ export function useAssistantRuntime() {
       }
     }
 
-    const userMsg = {role: 'user', content: contentBlocks};
-    setMessages((prev) => [...prev, userMsg]);
+    if (!isControlMsg) {
+      const userMsg = {role: 'user', content: contentBlocks};
+      setMessages((prev) => [...prev, userMsg]);
+    }
 
     setIsRunning(true);
     const controller = new AbortController();
