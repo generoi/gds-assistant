@@ -409,13 +409,6 @@ export function useAssistantRuntime() {
 
         if (!parts.length) return acc;
 
-        // Merge consecutive assistant messages
-        const last = acc[acc.length - 1];
-        if (last?.role === 'assistant') {
-          last.content = [...last.content, ...parts];
-          return acc;
-        }
-
         acc.push({role: 'assistant', content: parts});
         return acc;
       }, []);
@@ -424,10 +417,19 @@ export function useAssistantRuntime() {
   }, []);
 
   const convertMessage = useCallback((msg) => {
-    return {
-      role: msg.role,
-      content: msg.content,
-    };
+    // Convert our server format to assistant-ui's expected format
+    const content = (msg.content || []).map((part) => {
+      if (part.type === 'image' && part.source) {
+        // Our format: {type:'image', source:{type:'url',url}} or {type:'base64',data}
+        const url =
+          part.source.type === 'url' ?
+            part.source.url
+          : `data:${part.source.media_type};base64,${part.source.data}`;
+        return {type: 'image', image: url};
+      }
+      return part;
+    });
+    return {role: msg.role, content};
   }, []);
 
   // Edit: truncate conversation to the edited message and re-send
