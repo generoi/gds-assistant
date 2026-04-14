@@ -294,10 +294,12 @@ class ProviderRegistry
                     default => '$$$$',
                 };
 
+                $capTier = $def['tier'] ?? 'standard';
                 $models[] = [
                     'value' => $name.':'.$key,
                     'label' => $def['label'],
                     'tier' => $tier,
+                    'capabilityTier' => $capTier,
                 ];
             }
             $providers[] = [
