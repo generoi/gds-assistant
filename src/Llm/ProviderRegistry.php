@@ -127,7 +127,11 @@ class ProviderRegistry
 
         $envVars = (array) ($config['env'] ?? []);
         foreach ($envVars as $envVar) {
+            // Check Acorn env(), PHP getenv(), and wp-config.php constants
             $key = function_exists('env') ? env($envVar) : (getenv($envVar) ?: null);
+            if (! $key && defined($envVar)) {
+                $key = constant($envVar);
+            }
             if ($key) {
                 return $key;
             }
