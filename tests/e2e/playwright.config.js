@@ -1,18 +1,23 @@
 const {defineConfig} = require('@playwright/test');
+const path = require('path');
+
+const e2eDir = __dirname;
 
 module.exports = defineConfig({
-  testDir: './specs',
+  testDir: path.join(e2eDir, 'specs'),
   fullyParallel: false, // WordPress shares state, run sequentially
   workers: 1,
   retries: 0,
   reporter:
-    process.env.CI ? [['html', {outputFolder: './artifacts/report'}]] : 'html',
+    process.env.CI ?
+      [['html', {outputFolder: path.join(e2eDir, 'artifacts', 'report')}]]
+    : 'html',
   use: {
     baseURL: process.env.WP_BASE_URL || 'http://localhost:8889',
-    storageState: './artifacts/storage-state.json',
+    storageState: path.join(e2eDir, 'artifacts', 'storage-state.json'),
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  globalSetup: './global-setup.js',
-  outputDir: './artifacts/test-results',
+  globalSetup: path.join(e2eDir, 'global-setup.js'),
+  outputDir: path.join(e2eDir, 'artifacts', 'test-results'),
 });
