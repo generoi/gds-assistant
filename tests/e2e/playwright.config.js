@@ -5,8 +5,8 @@ const e2eDir = __dirname;
 
 module.exports = defineConfig({
   testDir: path.join(e2eDir, 'specs'),
-  fullyParallel: false, // WordPress shares state, run sequentially
-  workers: 1,
+  fullyParallel: false, // Tests within a file run sequentially
+  workers: process.env.CI ? 2 : 3, // Parallel across spec files
   retries: 0,
   reporter:
     process.env.CI ?
