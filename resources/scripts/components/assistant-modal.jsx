@@ -931,10 +931,18 @@ function Composer() {
 
 // ── Composer attachment chip ─────────────────────────────────
 
-function ComposerAttachment() {
+function ComposerAttachment({attachment}) {
+  const thumbSrc = attachment?.content?.[0]?.image || '';
+
   return (
     <AttachmentPrimitive.Root className="gds-assistant__attachment-chip">
-      <AttachmentPrimitive.unstable_Thumb className="gds-assistant__attachment-thumb" />
+      {thumbSrc && (
+        <img
+          src={thumbSrc}
+          alt=""
+          className="gds-assistant__attachment-thumb"
+        />
+      )}
       <AttachmentPrimitive.Name />
       <AttachmentPrimitive.Remove className="gds-assistant__attachment-remove">
         &times;
