@@ -51,6 +51,8 @@ class Plugin
         add_action('init', [$this, 'registerPostTypes']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAdminAssets']);
         add_action('rest_api_init', [$this, 'registerRestRoutes']);
+        add_action('add_meta_boxes', [$this, 'addSkillMetaBoxes']);
+        add_action('save_post_assistant_skill', [$this, 'saveSkillMeta']);
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
         add_action('gds_assistant_run_scheduled_skills', [Cron\SkillScheduler::class, 'run']);
@@ -183,6 +185,66 @@ class Plugin
             'has_archive' => false,
             'rewrite' => false,
         ]);
+    }
+
+    public function addSkillMetaBoxes(): void
+    {
+        add_meta_box(
+            'gds-assistant-skill-settings',
+            'Skill Settings',
+            [$this, 'renderSkillMetaBox'],
+            'assistant_skill',
+            'side',
+        );
+    }
+
+    public function renderSkillMetaBox(\WP_Post $post): void
+    {
+        $model = get_post_meta($post->ID, '_assistant_model', true) ?: '';
+        $schedule = get_post_meta($post->ID, '_assistant_schedule', true) ?: '';
+
+        wp_nonce_field('gds_assistant_skill_meta', '_gds_assistant_nonce');
+
+        echo '<p><label for="gds-skill-model"><strong>Model</strong></label><br>';
+        echo '<select id="gds-skill-model" name="_assistant_model" style="width:100%">';
+        echo '<option value="">Default (user selection)</option>';
+
+        Llm\ProviderRegistry::registerDefaults();
+        foreach (Llm\ProviderRegistry::getAvailable() as $name => $config) {
+            foreach ($config['models'] as $key => $def) {
+                $value = $name.':'.$key;
+                $selected = selected($model, $value, false);
+                echo "<option value=\"{$value}\" {$selected}>{$config['label']}: {$def['label']}</option>";
+            }
+        }
+        echo '</select></p>';
+
+        echo '<p><label for="gds-skill-schedule"><strong>Schedule</strong></label><br>';
+        echo '<select id="gds-skill-schedule" name="_assistant_schedule" style="width:100%">';
+        foreach (['' => 'None', 'hourly' => 'Hourly', 'daily' => 'Daily', 'weekly' => 'Weekly'] as $val => $label) {
+            $selected = selected($schedule, $val, false);
+            echo "<option value=\"{$val}\" {$selected}>{$label}</option>";
+        }
+        echo '</select></p>';
+    }
+
+    public function saveSkillMeta(int $postId): void
+    {
+        if (! isset($_POST['_gds_assistant_nonce']) || ! wp_verify_nonce($_POST['_gds_assistant_nonce'], 'gds_assistant_skill_meta')) {
+            return;
+        }
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+
+        if (isset($_POST['_assistant_model'])) {
+            update_post_meta($postId, '_assistant_model', sanitize_text_field($_POST['_assistant_model']));
+        }
+        if (isset($_POST['_assistant_schedule'])) {
+            $schedule = sanitize_text_field($_POST['_assistant_schedule']);
+            $valid = ['', 'hourly', 'daily', 'weekly'];
+            update_post_meta($postId, '_assistant_schedule', in_array($schedule, $valid, true) ? $schedule : '');
+        }
     }
 
     public function registerToolProviders(Bridge\ToolRegistry $registry): void
