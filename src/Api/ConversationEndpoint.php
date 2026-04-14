@@ -47,11 +47,27 @@ class ConversationEndpoint
         return current_user_can($capability);
     }
 
-    public function list(): WP_REST_Response
+    public function list(WP_REST_Request $request): WP_REST_Response
     {
         $store = new ConversationStore;
-        // Only show non-archived conversations
-        $conversations = $store->listForUser(get_current_user_id(), archived: false);
+        $showAll = $request->get_param('all') && current_user_can('manage_options');
+
+        if ($showAll) {
+            $conversations = $store->listAll(archived: false);
+        } else {
+            $conversations = $store->listForUser(get_current_user_id(), archived: false);
+        }
+
+        // Enrich with user display names
+        $userCache = [];
+        foreach ($conversations as &$conv) {
+            $uid = (int) ($conv['user_id'] ?? 0);
+            if ($uid && ! isset($userCache[$uid])) {
+                $user = get_userdata($uid);
+                $userCache[$uid] = $user ? $user->display_name : "User #{$uid}";
+            }
+            $conv['user_name'] = $userCache[$uid] ?? '';
+        }
 
         return new WP_REST_Response($conversations);
     }
@@ -64,7 +80,7 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
@@ -80,7 +96,7 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
@@ -106,7 +122,7 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id()) {
+        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
