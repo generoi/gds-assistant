@@ -128,10 +128,27 @@ export function useAssistantRuntime() {
       contentBlocks.push({type: 'text', text: userText});
     }
 
-    // Extract image attachments (from SimpleImageAttachmentAdapter)
+    // Convert image attachments to base64 content blocks
     if (message.attachments?.length) {
       for (const attachment of message.attachments) {
-        if (attachment.type === 'image' && attachment.content?.[0]?.image) {
+        const contentType = attachment.contentType || '';
+        if (!contentType.startsWith('image/')) continue;
+
+        // Read the File object as base64
+        if (attachment.file instanceof File) {
+          const base64 = await fileToBase64(attachment.file);
+          if (base64) {
+            contentBlocks.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: contentType,
+                data: base64,
+              },
+            });
+          }
+        } else if (attachment.content?.[0]?.image) {
+          // Fallback: already-converted data URL
           const dataUrl = attachment.content[0].image;
           const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
@@ -496,6 +513,27 @@ export function useAssistantRuntime() {
     denyToolCall,
     pendingApprovalRef,
   };
+}
+
+// ── Helpers ─────────────────────────────────────────────────
+
+/**
+ * Read a File object as base64 string (without the data: prefix).
+ *
+ * @param {File} file File to read.
+ * @return {Promise<string|null>} Base64 string or null on error.
+ */
+function fileToBase64(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl?.split(',')[1] || null;
+      resolve(base64);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── SSE parser ──────────────────────────────────────────────
