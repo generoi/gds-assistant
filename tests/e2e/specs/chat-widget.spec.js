@@ -46,8 +46,7 @@ test.describe('Chat Widget', () => {
     await expect(optgroups.first()).toBeAttached();
   });
 
-  // Keyboard shortcuts unreliable in headless Chromium
-  test.skip('Ctrl+K toggles modal', async ({page}) => {
+  test('Ctrl+K toggles modal', async ({page}) => {
     await page.keyboard.press('Control+k');
     const panel = page.locator('.gds-assistant__panel');
     await expect(panel).toBeVisible();
@@ -96,8 +95,7 @@ test.describe('Chat Widget', () => {
     await expect(assistantMsg.first()).toContainText('Found 1 page');
   });
 
-  // TODO: button is outside viewport in modal — needs viewport resize or scroll
-  test.skip('new chat button clears conversation', async ({page}) => {
+  test('new chat button clears conversation', async ({page}) => {
     await page.click('.gds-assistant__trigger');
 
     // Send a message first
@@ -202,8 +200,7 @@ test.describe('Chat Widget', () => {
     await expect(denyBtn).toBeVisible();
   });
 
-  // TODO: header buttons outside viewport in CI's default window size
-  test.skip('export button works after sending message', async ({page}) => {
+  test('export button works after sending message', async ({page}) => {
     await page.click('.gds-assistant__trigger');
 
     // Send a message first so there's content to export

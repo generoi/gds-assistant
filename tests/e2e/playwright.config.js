@@ -15,6 +15,7 @@ module.exports = defineConfig({
   use: {
     baseURL: process.env.WP_BASE_URL || 'http://localhost:8889',
     storageState: path.join(e2eDir, 'artifacts', 'storage-state.json'),
+    viewport: {width: 1280, height: 900},
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
