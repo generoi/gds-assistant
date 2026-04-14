@@ -198,15 +198,23 @@ function Thread({
       const parts = msg.content || [];
       for (const part of parts) {
         if (part.type === 'text') {
-          // Strip tool markers
-          const clean = (part.text || '')
-            .replace(/<!--[^>]+-->/g, '')
-            .replace(/_Running\.\.\._/g, '');
-          lines.push(clean);
+          lines.push(part.text || '');
         } else if (part.type === 'image') {
           lines.push('\n[Image attached]\n');
         } else if (part.type === 'tool-call') {
-          lines.push(`\n**Tool:** \`${part.toolName}\`\n`);
+          lines.push(`\n**Tool:** \`${part.toolName}\``);
+          if (part.args && Object.keys(part.args).length > 0) {
+            lines.push(
+              `\n\`\`\`json\n${JSON.stringify(part.args, null, 2)}\n\`\`\``,
+            );
+          }
+          if (part.result !== undefined) {
+            const status = part.isError ? 'Error' : 'Result';
+            lines.push(
+              `\n_${status}:_ ${typeof part.result === 'string' ? part.result : JSON.stringify(part.result)}`,
+            );
+          }
+          lines.push('\n');
         }
       }
       lines.push('\n\n---\n');
@@ -981,31 +989,36 @@ function CopyMessageButton() {
 
 // ── Tool call fallback UI ───────────────────────────────────
 
-function ToolCallFallback({toolName, args, result, isError}) {
+function ToolCallFallback({toolName, args, result, isError, status}) {
+  const needsApproval = status?.type === 'requires-action';
+
   return (
     <div
-      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''}`}
+      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
     >
-      <details>
+      <details open={needsApproval}>
         <summary className="gds-assistant__tool-call-summary">
-          <span className="gds-assistant__tool-call-name">
-            {toolName?.replace('__', '/')}
-          </span>
-          {result === undefined && (
+          <span className="gds-assistant__tool-call-name">{toolName}</span>
+          {needsApproval && (
+            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--approval">
+              Approval required
+            </span>
+          )}
+          {!needsApproval && result === undefined && (
             <span className="gds-assistant__tool-call-status">Running...</span>
           )}
-          {result !== undefined && !isError && (
+          {!needsApproval && result !== undefined && !isError && (
             <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--done">
               Done
             </span>
           )}
-          {isError && (
+          {!needsApproval && isError && (
             <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--error">
               Error
             </span>
           )}
         </summary>
-        {args && (
+        {args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">
             {JSON.stringify(args, null, 2)}
           </pre>
