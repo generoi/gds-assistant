@@ -9,7 +9,7 @@ namespace GeneroWP\Assistant\Llm;
  */
 class VertexExpressProvider extends GeminiProvider
 {
-    private const API_BASE = 'https://aiplatform.googleapis.com/v1beta1/publishers/google/models';
+    private const API_BASE = 'https://aiplatform.googleapis.com/v1/publishers/google/models';
 
     public function name(): string
     {

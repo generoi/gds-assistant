@@ -149,12 +149,21 @@ class GeminiProvider implements LlmProviderInterface
                 $name = $part['functionCall']['name'];
                 $args = $part['functionCall']['args'] ?? [];
 
-                $contentBlocks[$currentIndex] = [
+                $block = [
                     'type' => 'tool_use',
                     'id' => 'gemini_'.uniqid(),
                     'name' => $name,
                     'input' => $args ?: new \stdClass,
                 ];
+
+                // Gemini 2.5+/3 thinking models attach a thoughtSignature to
+                // functionCall parts. We must echo it back verbatim in the
+                // conversation history or the API rejects with 400.
+                if (isset($part['thoughtSignature'])) {
+                    $block['_thought_signature'] = $part['thoughtSignature'];
+                }
+
+                $contentBlocks[$currentIndex] = $block;
 
                 $onEvent('tool_use_start', [
                     'id' => $contentBlocks[$currentIndex]['id'],
@@ -211,12 +220,17 @@ class GeminiProvider implements LlmProviderInterface
                     if ($type === 'text') {
                         $parts[] = ['text' => $block['text'] ?? ''];
                     } elseif ($type === 'tool_use') {
-                        $parts[] = [
+                        $part = [
                             'functionCall' => [
                                 'name' => $block['name'] ?? '',
                                 'args' => $block['input'] ?? new \stdClass,
                             ],
                         ];
+                        // Echo back thoughtSignature for Gemini thinking models
+                        if (! empty($block['_thought_signature'])) {
+                            $part['thoughtSignature'] = $block['_thought_signature'];
+                        }
+                        $parts[] = $part;
                     } elseif ($type === 'image') {
                         $source = $block['source'] ?? [];
                         if (($source['type'] ?? '') === 'url') {

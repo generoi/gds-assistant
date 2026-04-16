@@ -577,6 +577,8 @@ class ChatEndpoint
                 if (($block['type'] ?? '') === 'server_tool_use' && isset($block['input']) && $block['input'] === []) {
                     $block['input'] = new \stdClass;
                 }
+                // Strip provider-specific metadata that other providers reject
+                unset($block['_thought_signature']);
 
                 return $block;
             }, $msg['content']);
@@ -590,6 +592,7 @@ class ChatEndpoint
         //      message" for an assistant tool_use.
         //   2. Then patch dangling tool_uses — any now-unpaired tool_use
         //      gets a synthetic skipped-result user message injected.
+        $messages = self::stripEmptyTextBlocks($messages);
         $messages = self::dropEmptyContentMessages($messages);
         $messages = self::patchDanglingToolUses($messages);
 
@@ -633,6 +636,36 @@ class ChatEndpoint
 
             return false;
         }));
+    }
+
+    /**
+     * Strip empty text blocks from within messages. Anthropic rejects with
+     * "text content blocks must be non-empty" when a message has an empty
+     * text block alongside other valid blocks (e.g. tool_use). This can
+     * happen when the LLM emits tool calls with an empty text prefix.
+     */
+    private static function stripEmptyTextBlocks(array $messages): array
+    {
+        return array_map(function ($msg) {
+            $content = $msg['content'] ?? null;
+            if (! is_array($content)) {
+                return $msg;
+            }
+
+            $msg['content'] = array_values(array_filter($content, function ($block) {
+                if (! is_array($block)) {
+                    return true;
+                }
+                // Remove text blocks that are empty/whitespace-only
+                if (($block['type'] ?? '') === 'text' && trim((string) ($block['text'] ?? '')) === '') {
+                    return false;
+                }
+
+                return true;
+            }));
+
+            return $msg;
+        }, $messages);
     }
 
     /**
