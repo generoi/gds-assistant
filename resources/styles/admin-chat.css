@@ -1,5 +1,12 @@
-@import 'tailwindcss/utilities' layer(gds-assistant);
-@import 'tailwindcss/theme' layer(gds-assistant);
+/*
+ * Tailwind utilities are imported WITHOUT a cascade layer. Unlayered styles
+ * have higher precedence than layered ones, which is what we need to beat
+ * WordPress admin's unlayered resets like `ul { list-style: none }`. The
+ * utility set is already scoped by @source below — only classnames actually
+ * used by streamdown get generated, so there's no risk of polluting WP admin.
+ */
+@import 'tailwindcss/utilities';
+@import 'tailwindcss/theme';
 
 /* Scan streamdown for Tailwind utility classes.
    Local node_modules, hoisted workspace root, and btb-transformers root. */
@@ -560,10 +567,22 @@
   font-family: monospace;
 }
 
+.gds-assistant__tool-call-args-hint {
+  font-family: monospace;
+  font-size: 12px;
+  color: #757575;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .gds-assistant__tool-call-status {
   font-size: 12px;
   color: #757575;
   margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .gds-assistant__tool-call-status--done {
@@ -997,11 +1016,25 @@
 .gds-assistant__tool-call-name {
   font-family: monospace;
   font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.gds-assistant__tool-call-args-hint {
+  font-family: monospace;
+  font-size: 11px;
+  color: #757575;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .gds-assistant__tool-call-status {
   font-size: 11px;
   color: #757575;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .gds-assistant__tool-call-status--done {
