@@ -60,6 +60,16 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         // Request usage stats in streaming mode (OpenAI-specific, ignored by others)
         $payload['stream_options'] = ['include_usage' => true];
 
+        // Prompt caching: improve cache hit rate via a routing hint and extend
+        // TTL from the default 5-10min to 24h. Only applies to OpenAI proper
+        // (ignored by Mistral/Groq/xAI). Cached input tokens are 50-90%
+        // cheaper depending on model. Zero-config — happens automatically on
+        // the OpenAI side; these params just improve hit rates.
+        if (str_contains($this->baseUrl, 'openai.com')) {
+            $payload['prompt_cache_key'] = 'gds-assistant';
+            $payload['prompt_cache_retention'] = '24h';
+        }
+
         $contentBlocks = [];
         $currentIndex = -1;
         $toolCallBuffers = []; // id => {name, arguments_json}
@@ -252,9 +262,12 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         }
 
         if ($usage) {
+            $cachedTokens = $usage['prompt_tokens_details']['cached_tokens'] ?? 0;
             $onEvent('usage', [
                 'input_tokens' => $usage['prompt_tokens'] ?? 0,
                 'output_tokens' => $usage['completion_tokens'] ?? 0,
+                'cache_read_tokens' => $cachedTokens,
+                'cache_write_tokens' => 0,
             ]);
         }
     }
