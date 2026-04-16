@@ -2,6 +2,7 @@
 
 namespace GeneroWP\Assistant\Api;
 
+use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Llm\ContextCompressor;
@@ -142,13 +143,14 @@ class ChatEndpoint
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
             );
         } else {
-            // User sent a regular message while approvals were pending — treat
-            // it as an implicit denial so the conversation can continue. The
-            // approval UI may have been dismissed (tab reload, new message
-            // typed, etc.); without this the next LLM call sees lingering
-            // pending_approval stubs and refuses to proceed, and the user
-            // would have to start a fresh conversation.
-            $messages = $this->autoDenyPendingApprovals(
+            // User sent a regular message (not an approval click). If the
+            // conversation still has pending_approval stubs — e.g. from an
+            // earlier turn where the Approve UI was dismissed without being
+            // clicked — re-emit the approval_required events so the buttons
+            // come back. We do NOT alter message content here: the LLM will
+            // see the pending state and can respond ("please click Approve")
+            // while the UI simultaneously surfaces the buttons.
+            $this->resurfacePendingApprovals(
                 $messages,
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
             );
@@ -467,38 +469,56 @@ class ChatEndpoint
     }
 
     /**
-     * Find any tool_result blocks still in `pending_approval` state and
-     * convert them into denials. Called when the user sends a regular
-     * (non-approval) message — their new message implicitly cancels any
-     * pending approval prompts the UI may no longer be surfacing.
+     * Re-emit tool_approval_required events for every pending_approval
+     * tool_result still in the conversation. Called on each regular user
+     * message so the Approve/Deny UI comes back if it was dismissed (tab
+     * reload, new message typed, etc.). The LLM still sees the actual
+     * pending state and can narrate it; this call just makes sure the user
+     * has functional buttons to resolve it.
      */
-    private function autoDenyPendingApprovals(array $messages, callable $onEvent): array
+    private function resurfacePendingApprovals(array $messages, callable $onEvent): void
     {
-        $converted = 0;
-        foreach ($messages as &$msg) {
+        $toolInfo = [];
+        $pendingIds = [];
+
+        foreach ($messages as $msg) {
             if (! is_array($msg['content'] ?? null)) {
                 continue;
             }
-            foreach ($msg['content'] as &$block) {
-                if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
-                    continue;
+            if (($msg['role'] ?? '') === 'assistant') {
+                foreach ($msg['content'] as $block) {
+                    if (is_array($block) && ($block['type'] ?? '') === 'tool_use' && ! empty($block['id'])) {
+                        $toolInfo[$block['id']] = [
+                            'name' => $block['name'] ?? '',
+                            'input' => json_decode(json_encode($block['input'] ?? []), true) ?: [],
+                        ];
+                    }
                 }
-                $content = is_string($block['content'] ?? null) ? $block['content'] : '';
-                $decoded = json_decode($content, true);
-                if (is_array($decoded) && ($decoded['status'] ?? '') === 'pending_approval') {
-                    $block['content'] = json_encode(['error' => 'User denied this action (implicit, new message sent)']);
-                    $block['is_error'] = true;
-                    $onEvent('tool_result', [
-                        'tool_use_id' => $block['tool_use_id'] ?? '',
-                        'result' => ['error' => 'User denied this action (implicit, new message sent)'],
-                        'is_error' => true,
-                    ]);
-                    $converted++;
+            }
+            if (($msg['role'] ?? '') === 'user') {
+                foreach ($msg['content'] as $block) {
+                    if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
+                        continue;
+                    }
+                    $id = $block['tool_use_id'] ?? '';
+                    $content = is_string($block['content'] ?? null) ? $block['content'] : '';
+                    $decoded = json_decode($content, true);
+                    if (is_array($decoded) && ($decoded['status'] ?? '') === 'pending_approval' && isset($toolInfo[$id])) {
+                        $pendingIds[] = $id;
+                    }
                 }
             }
         }
 
-        return $messages;
+        foreach ($pendingIds as $id) {
+            $info = $toolInfo[$id];
+            $abilityName = AbilitiesToolProvider::toAbilityName($info['name']);
+            $onEvent('tool_approval_required', [
+                'tool_use_id' => $id,
+                'tool_name' => $abilityName,
+                'input' => $info['input'],
+            ]);
+        }
     }
 
     private function generateTitle(array $messages): string
