@@ -1,9 +1,13 @@
 /*
- * Tailwind utilities are imported WITHOUT a cascade layer. Unlayered styles
- * have higher precedence than layered ones, which is what we need to beat
- * WordPress admin's unlayered resets like `ul { list-style: none }`. The
- * utility set is already scoped by @source below — only classnames actually
- * used by streamdown get generated, so there's no risk of polluting WP admin.
+ * All Tailwind utilities get prefixed with `.gds-assistant` at build time
+ * via postcss-prefix-selector (see webpack.config.js). That gives us:
+ *   - Bleed prevention: utility classes like `.inline` or `.list-disc`
+ *     can't accidentally affect WP admin elements outside our container.
+ *   - Higher specificity than unlayered WP admin resets (`.gds-assistant ul`
+ *     beats `ul { list-style: none }`), so we don't need cascade-layer
+ *     gymnastics to get bullets back on lists.
+ *
+ * `@theme` tokens stay un-prefixed so CSS variables remain referenceable.
  */
 @import 'tailwindcss/utilities';
 @import 'tailwindcss/theme';

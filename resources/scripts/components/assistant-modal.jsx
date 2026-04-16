@@ -119,13 +119,13 @@ export function AssistantModal({
     <AssistantModalPrimitive.Root>
       <AssistantModalPrimitive.Trigger
         ref={triggerRef}
-        className="gds-assistant__trigger"
+        className="gds-assistant gds-assistant__trigger"
       >
         <span className="gds-assistant__trigger-icon">✦</span>
       </AssistantModalPrimitive.Trigger>
 
       <AssistantModalPrimitive.Content
-        className="gds-assistant__panel"
+        className="gds-assistant gds-assistant__panel"
         sideOffset={16}
       >
         <Thread
