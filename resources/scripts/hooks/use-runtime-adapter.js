@@ -248,12 +248,17 @@ export function useAssistantRuntime() {
           case 'tool_use_start': {
             const idx = ensureTextPart();
             const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
+            const toolId = event.data.id || '';
             turnParts[idx].text += `\n\n**Tool:** \`${toolLabel}\``;
             if (event.data.input && Object.keys(event.data.input).length > 0) {
               turnParts[idx].text +=
                 `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
             }
-            turnParts[idx].text += '\n_Running..._';
+            // Tag the Running marker with its tool_use_id so a later
+            // `tool_result` event can replace the CORRECT marker, even when
+            // multiple tools are in flight at once. HTML comments are
+            // invisible in rendered markdown.
+            turnParts[idx].text += `\n_Running..._<!--t:${toolId}-->`;
             break;
           }
 
@@ -261,13 +266,28 @@ export function useAssistantRuntime() {
             const idx = ensureTextPart();
             const status =
               event.data.is_error ? '**Error**' : '**Done** \u2713';
-            // Replace last "Running..." with result status
-            const lastRunning = turnParts[idx].text.lastIndexOf('_Running..._');
-            if (lastRunning !== -1) {
+            const toolId = event.data.tool_use_id || '';
+            const marker = `_Running..._<!--t:${toolId}-->`;
+            const pos = toolId ? turnParts[idx].text.indexOf(marker) : -1;
+            if (pos !== -1) {
               turnParts[idx].text =
-                turnParts[idx].text.slice(0, lastRunning) +
+                turnParts[idx].text.slice(0, pos) +
                 status +
-                turnParts[idx].text.slice(lastRunning + '_Running..._'.length);
+                turnParts[idx].text.slice(pos + marker.length);
+            } else {
+              // Fallback for events without an id — replace the last Running
+              // and strip any trailing tag.
+              const fallback = turnParts[idx].text.lastIndexOf('_Running..._');
+              if (fallback !== -1) {
+                const after = turnParts[idx].text.slice(fallback);
+                const endOfMarker = after.indexOf('-->');
+                const markerLen =
+                  endOfMarker !== -1 ? endOfMarker + 3 : '_Running..._'.length;
+                turnParts[idx].text =
+                  turnParts[idx].text.slice(0, fallback) +
+                  status +
+                  turnParts[idx].text.slice(fallback + markerLen);
+              }
             }
             // Flush turn — next iteration starts a new assistant message
             flushTurn();
