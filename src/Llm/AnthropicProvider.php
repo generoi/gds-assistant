@@ -37,7 +37,7 @@ class AnthropicProvider implements LlmProviderInterface
             'model' => $this->model,
             'max_tokens' => $this->maxTokens,
             'stream' => true,
-            'messages' => self::convertUrlImages($messages),
+            'messages' => self::cacheControlLastMessage(self::convertUrlImages($messages)),
         ];
 
         if ($systemPrompt) {
@@ -244,6 +244,8 @@ class AnthropicProvider implements LlmProviderInterface
                     $onEvent('usage', [
                         'input_tokens' => $event['usage']['input_tokens'] ?? 0,
                         'output_tokens' => $event['usage']['output_tokens'] ?? 0,
+                        'cache_creation_input_tokens' => $event['usage']['cache_creation_input_tokens'] ?? 0,
+                        'cache_read_input_tokens' => $event['usage']['cache_read_input_tokens'] ?? 0,
                     ]);
                 }
                 break;
@@ -260,6 +262,50 @@ class AnthropicProvider implements LlmProviderInterface
      * Convert URL-based image blocks to base64 for the Anthropic API.
      * Anthropic can't fetch arbitrary URLs (especially local/private ones).
      */
+    /**
+     * Mark the last content block of the last message with cache_control so
+     * Anthropic caches the full conversation history up to that point. Every
+     * subsequent request in the same session pays ~10% input cost for the
+     * cached portion instead of full price.
+     *
+     * Skipped on very short conversations (<3 messages) where caching the
+     * first-message prefix isn't worth the 5-minute TTL overhead.
+     */
+    private static function cacheControlLastMessage(array $messages): array
+    {
+        if (count($messages) < 3) {
+            return $messages;
+        }
+
+        // Find the last message with array content and add cache_control to
+        // its last block. If content is a string, wrap it into a text block
+        // first so cache_control has somewhere to live.
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            $content = $messages[$i]['content'] ?? null;
+
+            if (is_string($content)) {
+                $messages[$i]['content'] = [[
+                    'type' => 'text',
+                    'text' => $content,
+                    'cache_control' => ['type' => 'ephemeral'],
+                ]];
+
+                return $messages;
+            }
+
+            if (is_array($content) && $content) {
+                $lastBlock = &$messages[$i]['content'][count($content) - 1];
+                if (is_array($lastBlock)) {
+                    $lastBlock['cache_control'] = ['type' => 'ephemeral'];
+                }
+
+                return $messages;
+            }
+        }
+
+        return $messages;
+    }
+
     private static function convertUrlImages(array $messages): array
     {
         return array_map(function (array $msg) {

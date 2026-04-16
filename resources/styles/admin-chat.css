@@ -332,6 +332,66 @@
   overflow: hidden;
 }
 
+.gds-assistant__message-time {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.gds-assistant__message--user .gds-assistant__message-time {
+  color: rgba(255, 255, 255, 0.7);
+  text-align: right;
+}
+
+/* Typing indicator (three dots) shown while the assistant is streaming
+   instead of a premature timestamp on an empty/partial bubble. */
+.gds-assistant__message-time--running {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  height: 12px;
+}
+
+.gds-assistant__message-time--running > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: gds-assistant-typing 1.2s infinite ease-in-out;
+}
+
+.gds-assistant__message-time--running > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.gds-assistant__message-time--running > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes gds-assistant-typing {
+  0%, 60%, 100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+/* Tool call names — wrapped in <abbr> so the browser shows a native
+   tooltip on hover with the full input JSON. The dotted underline makes
+   it discoverable as hoverable. */
+abbr.gds-tool {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
 .gds-assistant__message--user {
   margin-left: auto;
   background: #2271b1;
@@ -726,11 +786,10 @@
 /* Scroll to bottom button */
 .gds-assistant__scroll-btn {
   position: absolute;
-  bottom: 72px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 32px;
+  bottom: 80px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: #fff;
   border: 1px solid #ddd;
@@ -739,10 +798,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.85;
+  transition: opacity 0.15s;
 
   &:hover {
     background: #f0f0f0;
+    opacity: 1;
+  }
+
+  /* Assistant-ui auto-disables the button when we're already scrolled to
+     the bottom. Hide it in that state so it doesn't overlap the input. */
+  &:disabled {
+    display: none;
   }
 }
 

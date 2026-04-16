@@ -5,6 +5,7 @@ import {
   MessagePrimitive,
   AttachmentPrimitive,
   useThreadRuntime,
+  useMessage,
 } from '@assistant-ui/react';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {useState, useEffect, useCallback, useRef} from '@wordpress/element';
@@ -15,6 +16,7 @@ import {
   setMaxTokens,
   getMaxTokens,
   fetchConversations,
+  formatMessageTime,
 } from '../hooks/use-runtime-adapter';
 
 // ── Skills ───────────────────────────────────────────────────
@@ -974,7 +976,40 @@ function UserMessage() {
       <MessagePrimitive.Content
         components={{Text: UserMessageText, Image: MessageImage}}
       />
+      <MessageTimestamp />
     </MessagePrimitive.Root>
+  );
+}
+
+/**
+ * Tiny timestamp rendered at the bottom of a message. We rely on the
+ * thread-level <TypingIndicator/> for "assistant is typing" feedback
+ * instead of per-message dots — otherwise both indicators show at once.
+ *
+ * Messages with the epoch sentinel `createdAt` (our "unknown timestamp"
+ * marker for older DB rows without per-message timing) render nothing.
+ * We also hide the timestamp on messages that haven't finished streaming,
+ * so the empty/partial assistant bubble doesn't display a misleading
+ * timestamp before the content has arrived.
+ */
+function MessageTimestamp() {
+  const createdAt = useMessage((s) => s.createdAt);
+  const isRunning = useMessage((s) => s.status?.type === 'running');
+  const isLast = useMessage((s) => s.isLast);
+  const role = useMessage((s) => s.role);
+
+  // Streaming assistant message: no time yet — TypingIndicator covers it.
+  if (isRunning && isLast && role === 'assistant') return null;
+
+  if (!createdAt || new Date(createdAt).getTime() < 100000) return null;
+  const date = new Date(createdAt);
+  return (
+    <span
+      className="gds-assistant__message-time"
+      title={date.toLocaleString('sv-SE')}
+    >
+      {formatMessageTime(date.getTime())}
+    </span>
   );
 }
 
@@ -1013,12 +1048,26 @@ function AssistantMessage() {
           ToolCallUI: ToolCallFallback,
         }}
       />
+      <MessageTimestamp />
     </MessagePrimitive.Root>
   );
 }
 
+// Extra HTML tags we emit inside assistant messages. Streamdown's default
+// sanitize schema strips these, so we need to permit them explicitly with
+// the attributes we use. We hover-style the tool-call `<abbr>` via CSS so
+// the native browser tooltip still appears on the title attribute.
+const STREAMDOWN_ALLOWED_TAGS = {
+  abbr: ['class', 'title'],
+};
+
 function AssistantMessageText({text}) {
-  return <StreamdownTextPrimitive text={text} />;
+  return (
+    <StreamdownTextPrimitive
+      text={text}
+      allowedTags={STREAMDOWN_ALLOWED_TAGS}
+    />
+  );
 }
 
 // ── Copy message button ─────────────────────────────────────

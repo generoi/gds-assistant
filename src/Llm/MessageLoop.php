@@ -12,7 +12,21 @@ class MessageLoop
 {
     private int $inputTokens = 0;
 
+    private int $cacheCreationTokens = 0;
+
+    private int $cacheReadTokens = 0;
+
     private int $outputTokens = 0;
+
+    public function getCacheCreationTokens(): int
+    {
+        return $this->cacheCreationTokens;
+    }
+
+    public function getCacheReadTokens(): int
+    {
+        return $this->cacheReadTokens;
+    }
 
     private string $updatedSummary = '';
 
@@ -62,6 +76,8 @@ class MessageLoop
             if ($type === 'usage') {
                 $this->inputTokens += $data['input_tokens'] ?? 0;
                 $this->outputTokens += $data['output_tokens'] ?? 0;
+                $this->cacheCreationTokens += $data['cache_creation_input_tokens'] ?? 0;
+                $this->cacheReadTokens += $data['cache_read_input_tokens'] ?? 0;
             }
             $onEvent($type, $data);
         };
@@ -75,7 +91,14 @@ class MessageLoop
             if (! empty($compressed['summary'])) {
                 $this->updatedSummary = $compressed['summary'];
             }
-            if ($tokensAfter < $tokensBefore) {
+            // Only notify the user about compression when it's actually
+            // meaningful — >30% reduction. Tiny compressions fire every turn
+            // as the stored history grows past the L2 threshold, but they're
+            // noise from the user's POV.
+            $reductionPct = $tokensBefore > 0
+                ? (($tokensBefore - $tokensAfter) / $tokensBefore) * 100
+                : 0;
+            if ($reductionPct >= 30) {
                 $onEvent('text_delta', ['text' => "\n_Context compressed: {$tokensBefore} → {$tokensAfter} tokens_\n"]);
             }
 
@@ -189,19 +212,16 @@ class MessageLoop
                     'is_error' => $isError,
                 ]);
 
-                // Truncate large results to avoid exceeding context limits.
-                $resultJson = json_encode($resultContent);
-                $maxResultSize = 20000; // ~5K tokens
-                if (strlen($resultJson) > $maxResultSize) {
-                    $resultJson = substr($resultJson, 0, $maxResultSize)
-                        .'... [truncated, '
-                        .strlen($resultJson).' bytes total]';
-                }
-
+                // Keep the full result — ContextCompressor handles
+                // oversized tool results with structure-aware summarization
+                // (see ContextCompressor::summarizeToolResult). The previous
+                // blunt substring truncation at 20k chars produced INVALID
+                // JSON, which made Gemini's functionResponse decode fail
+                // and the LLM report "error retrieving the list".
                 $toolResults[] = [
                     'type' => 'tool_result',
                     'tool_use_id' => $toolUse['id'],
-                    'content' => $resultJson,
+                    'content' => json_encode($resultContent),
                     'is_error' => $isError,
                 ];
             }
