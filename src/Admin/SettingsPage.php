@@ -169,21 +169,21 @@ class SettingsPage
 
     public function renderMemoryPage(): void
     {
-        echo '<div class="wrap"><h1>'.__('AI Assistant Memory', 'gds-assistant').'</h1>';
+        echo '<div class="wrap gds-assistant"><h1>'.__('AI Assistant Memory', 'gds-assistant').'</h1>';
         echo '<div id="gds-assistant-memory-dataview"></div>';
         echo '</div>';
     }
 
     public function renderSkillsPage(): void
     {
-        echo '<div class="wrap"><h1>'.__('AI Assistant Skills', 'gds-assistant').'</h1>';
+        echo '<div class="wrap gds-assistant"><h1>'.__('AI Assistant Skills', 'gds-assistant').'</h1>';
         echo '<div id="gds-assistant-skills-dataview"></div>';
         echo '</div>';
     }
 
     public function renderConversationsPage(): void
     {
-        echo '<div class="wrap"><h1>'.__('Conversations', 'gds-assistant').'</h1>';
+        echo '<div class="wrap gds-assistant"><h1>'.__('Conversations', 'gds-assistant').'</h1>';
         echo '<div id="gds-assistant-conversations-dataview"></div>';
         echo '</div>';
     }
