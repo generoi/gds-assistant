@@ -197,10 +197,15 @@ export function useAssistantRuntime() {
       }
 
       // Build structured content parts from SSE events.
-      // Each agentic turn gets its own assistant message to avoid
-      // duplicate toolCallId keys across turns.
+      // Each agentic turn gets its own assistant message. A "turn" here is
+      // one LLM-response cycle: zero-or-more text deltas, zero-or-more tool
+      // uses, all their results, then the turn is considered complete when
+      // the LLM comes back with NEW text (meaning it's reasoning on the
+      // results). We don't flush on every tool_result because the LLM may
+      // be running multiple tools in parallel — we'd orphan later results.
       let turnParts = [];
       let currentTextIdx = -1;
+      let sawToolResultInTurn = false;
 
       const ensureTextPart = () => {
         if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== 'text') {
@@ -240,12 +245,26 @@ export function useAssistantRuntime() {
       for await (const event of parseSSE(response.body)) {
         switch (event.type) {
           case 'text_delta': {
+            // If we saw tool results and now text is coming in, the LLM is
+            // starting a new reasoning round. Flush the previous turn so the
+            // next message is fresh.
+            if (sawToolResultInTurn) {
+              flushTurn();
+              sawToolResultInTurn = false;
+            }
             const idx = ensureTextPart();
             turnParts[idx].text += event.data.text;
             break;
           }
 
           case 'tool_use_start': {
+            // If the previous round already produced results and the LLM is
+            // now invoking another tool (even without text in between), flush
+            // so the new round is its own assistant message.
+            if (sawToolResultInTurn) {
+              flushTurn();
+              sawToolResultInTurn = false;
+            }
             const idx = ensureTextPart();
             const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
             const toolId = event.data.id || '';
@@ -289,8 +308,10 @@ export function useAssistantRuntime() {
                   turnParts[idx].text.slice(fallback + markerLen);
               }
             }
-            // Flush turn — next iteration starts a new assistant message
-            flushTurn();
+            // Don't flush here — the LLM may be running multiple tools in
+            // parallel. Flush only when the LLM continues with new text
+            // (handled in `text_delta`) or when the whole response ends.
+            sawToolResultInTurn = true;
             break;
           }
 
