@@ -71,13 +71,14 @@ class MessageLoop
         $tools = $this->toolRegistry->getAllTools();
         $tools = apply_filters('gds-assistant/tools', $tools);
 
-        // Track token usage across iterations
+        // Track token usage across iterations. All providers now emit
+        // unified field names: cache_read_tokens / cache_write_tokens.
         $wrappedOnEvent = function (string $type, array $data) use ($onEvent) {
             if ($type === 'usage') {
                 $this->inputTokens += $data['input_tokens'] ?? 0;
                 $this->outputTokens += $data['output_tokens'] ?? 0;
-                $this->cacheCreationTokens += $data['cache_creation_input_tokens'] ?? 0;
-                $this->cacheReadTokens += $data['cache_read_input_tokens'] ?? 0;
+                $this->cacheCreationTokens += $data['cache_write_tokens'] ?? 0;
+                $this->cacheReadTokens += $data['cache_read_tokens'] ?? 0;
             }
             $onEvent($type, $data);
         };

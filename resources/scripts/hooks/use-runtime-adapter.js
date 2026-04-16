@@ -1,12 +1,12 @@
-import {useExternalStoreRuntime} from '@assistant-ui/react';
-import {useState, useRef, useCallback, useMemo} from '@wordpress/element';
+import { useExternalStoreRuntime } from "@assistant-ui/react";
+import { useState, useRef, useCallback, useMemo } from "@wordpress/element";
 
 // Session state
 let currentConversationId = null;
-let currentModel = localStorage.getItem('gds-assistant-model') || '';
+let currentModel = localStorage.getItem("gds-assistant-model") || "";
 let currentMaxTokens =
-  parseInt(localStorage.getItem('gds-assistant-max-tokens'), 10) || 0;
-let currentSystemContext = '';
+  parseInt(localStorage.getItem("gds-assistant-max-tokens"), 10) || 0;
+let currentSystemContext = "";
 
 const sessionUsage = {
   inputTokens: 0,
@@ -19,14 +19,14 @@ const sessionUsage = {
 
 export function setModel(model) {
   currentModel = model;
-  localStorage.setItem('gds-assistant-model', model);
+  localStorage.setItem("gds-assistant-model", model);
 }
 export function getModel() {
   return currentModel;
 }
 export function setMaxTokens(tokens) {
   currentMaxTokens = tokens;
-  localStorage.setItem('gds-assistant-max-tokens', String(tokens));
+  localStorage.setItem("gds-assistant-max-tokens", String(tokens));
 }
 export function getMaxTokens() {
   return currentMaxTokens;
@@ -38,16 +38,41 @@ export function setSystemContext(ctx) {
 
 export function onUsageUpdate(callback) {
   sessionUsage.listeners.add(callback);
-  callback({...sessionUsage});
+  callback({ ...sessionUsage });
   return () => sessionUsage.listeners.delete(callback);
 }
 
-function emitUsage(input, output) {
+/**
+ * Emit usage update with cache-aware cost calculation.
+ *
+ * pricing array: [input, output, cache_read, cache_write] — all $/M tokens.
+ * All providers now emit unified fields: input_tokens (total),
+ * cache_read_tokens (subset), cache_write_tokens (subset).
+ *
+ * @param {number} input   Total input tokens (includes cached)
+ * @param {number} output  Output tokens
+ * @param {number} cacheRead  Tokens served from cache (subset of input)
+ * @param {number} cacheWrite Tokens written to cache (subset of input, Anthropic only)
+ */
+function emitUsage(input, output, cacheRead = 0, cacheWrite = 0) {
   sessionUsage.inputTokens += input;
   sessionUsage.outputTokens += output;
+
+  // pricing: [input, output, cache_read, cache_write]
+  // cache_read/cache_write default to input price when not specified.
   const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [3, 15];
+  const inputPrice = pricing[0];
+  const outputPrice = pricing[1];
+  const cacheReadPrice = pricing[2] ?? inputPrice;
+  const cacheWritePrice = pricing[3] ?? inputPrice;
+
+  const uncached = Math.max(0, input - cacheRead - cacheWrite);
   const costDelta =
-    (input / 1_000_000) * pricing[0] + (output / 1_000_000) * pricing[1];
+    (uncached / 1_000_000) * inputPrice +
+    (cacheRead / 1_000_000) * cacheReadPrice +
+    (cacheWrite / 1_000_000) * cacheWritePrice +
+    (output / 1_000_000) * outputPrice;
+
   sessionUsage.cost += costDelta;
   for (const fn of sessionUsage.listeners) {
     fn({
@@ -64,7 +89,7 @@ export function newChat() {
   sessionUsage.outputTokens = 0;
   sessionUsage.cost = 0;
   for (const fn of sessionUsage.listeners) {
-    fn({inputTokens: 0, outputTokens: 0, cost: 0});
+    fn({ inputTokens: 0, outputTokens: 0, cost: 0 });
   }
 }
 
@@ -74,9 +99,9 @@ export function newChat() {
  * @return {Promise<Array>} Array of conversation objects.
  */
 export async function fetchConversations() {
-  const {restUrl, nonce} = window.gdsAssistant || {};
+  const { restUrl, nonce } = window.gdsAssistant || {};
   const response = await fetch(`${restUrl}conversations`, {
-    headers: {'X-WP-Nonce': nonce},
+    headers: { "X-WP-Nonce": nonce },
   });
   if (!response.ok) return [];
   return response.json();
@@ -89,9 +114,9 @@ export async function fetchConversations() {
  * @return {Promise<Object|null>} Conversation object with messages.
  */
 export async function fetchConversation(uuid) {
-  const {restUrl, nonce} = window.gdsAssistant || {};
+  const { restUrl, nonce } = window.gdsAssistant || {};
   const response = await fetch(`${restUrl}conversations/${uuid}`, {
-    headers: {'X-WP-Nonce': nonce},
+    headers: { "X-WP-Nonce": nonce },
   });
   if (!response.ok) return null;
   return response.json();
@@ -122,26 +147,26 @@ export function useAssistantRuntime() {
     const contentBlocks = [];
 
     const userText =
-      typeof message.content === 'string' ?
-        message.content
-      : message.content
-          ?.map((p) => (p.type === 'text' ? p.text : ''))
-          .join('') || '';
+      typeof message.content === "string"
+        ? message.content
+        : message.content
+            ?.map((p) => (p.type === "text" ? p.text : ""))
+            .join("") || "";
 
     // Control messages (approval/denial) — don't show in chat
     const isControlMsg =
-      userText.startsWith('__tool_approved__:') ||
-      userText.startsWith('__tool_denied__:');
+      userText.startsWith("__tool_approved__:") ||
+      userText.startsWith("__tool_denied__:");
 
     if (userText && !isControlMsg) {
-      contentBlocks.push({type: 'text', text: userText});
+      contentBlocks.push({ type: "text", text: userText });
     }
 
     // Process image attachments — prefer URL (uploaded to media library) over base64
     if (message.attachments?.length) {
       for (const attachment of message.attachments) {
-        const contentType = attachment.contentType || '';
-        if (!contentType.startsWith('image/')) continue;
+        const contentType = attachment.contentType || "";
+        if (!contentType.startsWith("image/")) continue;
 
         const imageContent = attachment.content?.[0];
         if (!imageContent?.image) continue;
@@ -149,19 +174,19 @@ export function useAssistantRuntime() {
         const imageUrl = imageContent.image;
         const mediaId = imageContent.mediaId;
 
-        if (mediaId || !imageUrl.startsWith('data:')) {
+        if (mediaId || !imageUrl.startsWith("data:")) {
           // Uploaded to media library — use URL (saves context tokens)
           contentBlocks.push({
-            type: 'image',
-            source: {type: 'url', url: imageUrl},
+            type: "image",
+            source: { type: "url", url: imageUrl },
           });
         } else {
           // Fallback: data URL → extract base64
           const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
             contentBlocks.push({
-              type: 'image',
-              source: {type: 'base64', media_type: match[1], data: match[2]},
+              type: "image",
+              source: { type: "base64", media_type: match[1], data: match[2] },
             });
           }
         }
@@ -170,7 +195,7 @@ export function useAssistantRuntime() {
 
     if (!isControlMsg) {
       const userMsg = {
-        role: 'user',
+        role: "user",
         content: contentBlocks,
         timestamp: Date.now(),
       };
@@ -182,7 +207,7 @@ export function useAssistantRuntime() {
     abortRef.current = controller;
 
     try {
-      const {restUrl, nonce} = window.gdsAssistant || {};
+      const { restUrl, nonce } = window.gdsAssistant || {};
       // For control messages (approval/denial) the server's detectToolApproval
       // expects the LAST message's content to be a STRING. Don't wrap it in a
       // content-block array — that would make the content non-string and the
@@ -190,15 +215,15 @@ export function useAssistantRuntime() {
       // and call the LLM again (adding MORE pending approvals to the queue).
       const requestContent = isControlMsg ? userText : contentBlocks;
       const response = await fetch(`${restUrl}chat`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'X-WP-Nonce': nonce,
+          "Content-Type": "application/json",
+          "X-WP-Nonce": nonce,
         },
         body: JSON.stringify({
-          messages: [{role: 'user', content: requestContent}],
-          conversation_id: currentConversationId || '',
-          model: currentModel || '',
+          messages: [{ role: "user", content: requestContent }],
+          conversation_id: currentConversationId || "",
+          model: currentModel || "",
           max_tokens: currentMaxTokens || undefined,
           system_context: currentSystemContext || undefined,
         }),
@@ -222,9 +247,9 @@ export function useAssistantRuntime() {
       let sawToolResultInTurn = false;
 
       const ensureTextPart = () => {
-        if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== 'text') {
+        if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== "text") {
           currentTextIdx = turnParts.length;
-          turnParts.push({type: 'text', text: ''});
+          turnParts.push({ type: "text", text: "" });
         }
         return currentTextIdx;
       };
@@ -241,11 +266,11 @@ export function useAssistantRuntime() {
       /** Flush current turn as an assistant message and start a new turn. */
       const flushTurn = () => {
         if (!turnParts.length) return;
-        const contentParts = turnParts.map((p) => ({...p}));
+        const contentParts = turnParts.map((p) => ({ ...p }));
         setMessages((prev) => [
           ...prev,
           {
-            role: 'assistant',
+            role: "assistant",
             content: contentParts,
             timestamp: turnTimestamp ?? Date.now(),
           },
@@ -258,19 +283,23 @@ export function useAssistantRuntime() {
       /** Update the current turn's assistant message in-place (for streaming). */
       const updateCurrentTurn = () => {
         touchTurnTimestamp();
-        const contentParts = turnParts.map((p) => ({...p}));
+        const contentParts = turnParts.map((p) => ({ ...p }));
         const timestamp = turnTimestamp;
         setMessages((prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+          if (lastIdx >= 0 && updated[lastIdx].role === "assistant") {
             updated[lastIdx] = {
-              role: 'assistant',
+              role: "assistant",
               content: contentParts,
               timestamp: updated[lastIdx].timestamp ?? timestamp,
             };
           } else {
-            updated.push({role: 'assistant', content: contentParts, timestamp});
+            updated.push({
+              role: "assistant",
+              content: contentParts,
+              timestamp,
+            });
           }
           return updated;
         });
@@ -278,7 +307,7 @@ export function useAssistantRuntime() {
 
       for await (const event of parseSSE(response.body)) {
         switch (event.type) {
-          case 'text_delta': {
+          case "text_delta": {
             // If we saw tool results and now text is coming in, the LLM is
             // starting a new reasoning round. Flush the previous turn so the
             // next message is fresh.
@@ -291,7 +320,7 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case 'tool_use_start': {
+          case "tool_use_start": {
             // If the previous round already produced results and the LLM is
             // now invoking another tool (even without text in between), flush
             // so the new round is its own assistant message.
@@ -300,8 +329,8 @@ export function useAssistantRuntime() {
               sawToolResultInTurn = false;
             }
             const idx = ensureTextPart();
-            const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
-            const toolId = event.data.id || '';
+            const toolLabel = event.data.name?.replace("__", "/") || "unknown";
+            const toolId = event.data.id || "";
             // Compact one-liner — full input in an <abbr title=…> so the
             // browser shows a native tooltip on hover. Markdown processors
             // don't parse markdown inside raw HTML blocks, so we keep the
@@ -311,22 +340,24 @@ export function useAssistantRuntime() {
             const inputForTitle =
               event.data.input && Object.keys(event.data.input).length > 0
                 ? JSON.stringify(event.data.input, null, 2)
-                : '(no arguments)';
+                : "(no arguments)";
             // Escape for the attribute: &quot; and newlines as literal \n
             // survive the HTML sanitizer, which is enough for a tooltip.
             const titleSafe = inputForTitle
-              .replace(/&/g, '&amp;')
-              .replace(/"/g, '&quot;');
-            turnParts[idx].text +=
-              `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._<!--t:${toolId}-->`;
+              .replace(/&/g, "&amp;")
+              .replace(/"/g, "&quot;");
+            turnParts[
+              idx
+            ].text += `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._<!--t:${toolId}-->`;
             break;
           }
 
-          case 'tool_result': {
+          case "tool_result": {
             const idx = ensureTextPart();
-            const status =
-              event.data.is_error ? '**Error**' : '**Done** \u2713';
-            const toolId = event.data.tool_use_id || '';
+            const status = event.data.is_error
+              ? "**Error**"
+              : "**Done** \u2713";
+            const toolId = event.data.tool_use_id || "";
             const marker = `_Running..._<!--t:${toolId}-->`;
             const pos = toolId ? turnParts[idx].text.indexOf(marker) : -1;
             if (pos !== -1) {
@@ -336,12 +367,12 @@ export function useAssistantRuntime() {
                 turnParts[idx].text.slice(pos + marker.length);
             } else {
               // Fallback for events without an id
-              const fallback = turnParts[idx].text.lastIndexOf('_Running..._');
+              const fallback = turnParts[idx].text.lastIndexOf("_Running..._");
               if (fallback !== -1) {
                 const after = turnParts[idx].text.slice(fallback);
-                const endOfMarker = after.indexOf('-->');
+                const endOfMarker = after.indexOf("-->");
                 const markerLen =
-                  endOfMarker !== -1 ? endOfMarker + 3 : '_Running..._'.length;
+                  endOfMarker !== -1 ? endOfMarker + 3 : "_Running..._".length;
                 turnParts[idx].text =
                   turnParts[idx].text.slice(0, fallback) +
                   status +
@@ -363,15 +394,19 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case 'tool_approval_required': {
+          case "tool_approval_required": {
             const idx = ensureTextPart();
-            turnParts[idx].text +=
-              `\n\n**Approval required:** \`${event.data.tool_name}\``;
+            turnParts[
+              idx
+            ].text += `\n\n**Approval required:** \`${event.data.tool_name}\``;
             if (event.data.input && Object.keys(event.data.input).length > 0) {
-              turnParts[idx].text +=
-                `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
+              turnParts[idx].text += `\n\`\`\`json\n${JSON.stringify(
+                event.data.input,
+                null,
+                2,
+              )}\n\`\`\``;
             }
-            turnParts[idx].text += '\n_Waiting for approval..._';
+            turnParts[idx].text += "\n_Waiting for approval..._";
             // Enqueue unless we already have this id (dedupe on resurface).
             setPendingApprovals((q) => {
               if (q.some((p) => p.toolUseId === event.data.tool_use_id)) {
@@ -389,26 +424,27 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case 'ask_user': {
+          case "ask_user": {
             const idx = ensureTextPart();
-            turnParts[idx].text +=
-              `\n\n> **${event.data.question || 'Confirm?'}**\n`;
+            turnParts[idx].text += `\n\n> **${
+              event.data.question || "Confirm?"
+            }**\n`;
             if (event.data.options?.length) {
               turnParts[idx].text += event.data.options
                 .map((o) => `> - ${o}`)
-                .join('\n');
+                .join("\n");
             }
-            turnParts[idx].text += '\n\n_Reply below to continue._\n';
+            turnParts[idx].text += "\n\n_Reply below to continue._\n";
             break;
           }
 
-          case 'error': {
+          case "error": {
             const idx = ensureTextPart();
             turnParts[idx].text += `\n\n**Error:** ${event.data.message}\n`;
             break;
           }
 
-          case 'conversation_start':
+          case "conversation_start":
             if (event.data.conversation_id) {
               currentConversationId = event.data.conversation_id;
             }
@@ -417,14 +453,16 @@ export function useAssistantRuntime() {
             }
             break;
 
-          case 'usage':
+          case "usage":
             emitUsage(
               event.data.input_tokens || 0,
               event.data.output_tokens || 0,
+              event.data.cache_read_tokens || 0,
+              event.data.cache_write_tokens || 0,
             );
             break;
 
-          case 'message_stop':
+          case "message_stop":
             break;
         }
 
@@ -434,12 +472,12 @@ export function useAssistantRuntime() {
         }
       }
     } catch (err) {
-      if (err.name !== 'AbortError') {
+      if (err.name !== "AbortError") {
         setMessages((prev) => [
           ...prev,
           {
-            role: 'assistant',
-            content: [{type: 'text', text: `**Error:** ${err.message}`}],
+            role: "assistant",
+            content: [{ type: "text", text: `**Error:** ${err.message}` }],
           },
         ]);
       }
@@ -475,6 +513,9 @@ export function useAssistantRuntime() {
     // Restore token usage
     sessionUsage.inputTokens = Number(conv.total_input_tokens) || 0;
     sessionUsage.outputTokens = Number(conv.total_output_tokens) || 0;
+    // Historical conversations don't have per-turn cache breakdowns, so
+    // estimate using full input price. This over-estimates slightly vs real
+    // cost (which had cache discounts) but is the safest approximation.
     const pricing = window.gdsAssistant?.modelPricing?.[currentModel] || [
       3, 15,
     ];
@@ -491,42 +532,44 @@ export function useAssistantRuntime() {
 
     // Convert stored messages to structured UI format
     const uiMessages = conv.messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .filter((m) => m.role === "user" || m.role === "assistant")
       .reduce((acc, m) => {
-        if (m.role === 'user') {
+        if (m.role === "user") {
           const text =
-            typeof m.content === 'string' ?
-              m.content
-            : (m.content || [])
-                .filter((p) => p.type === 'text')
-                .map((p) => p.text)
-                .join('');
+            typeof m.content === "string"
+              ? m.content
+              : (m.content || [])
+                  .filter((p) => p.type === "text")
+                  .map((p) => p.text)
+                  .join("");
           if (!text) return acc;
-          acc.push({role: 'user', content: [{type: 'text', text}]});
+          acc.push({ role: "user", content: [{ type: "text", text }] });
           return acc;
         }
 
         // Assistant: build structured parts from stored content
         const parts = [];
         const blocks =
-          typeof m.content === 'string' ? [{type: 'text', text: m.content}]
-          : Array.isArray(m.content) ? m.content
-          : [];
+          typeof m.content === "string"
+            ? [{ type: "text", text: m.content }]
+            : Array.isArray(m.content)
+            ? m.content
+            : [];
 
         for (const block of blocks) {
-          if (block.type === 'text' && block.text) {
-            parts.push({type: 'text', text: block.text});
-          } else if (block.type === 'tool_use') {
+          if (block.type === "text" && block.text) {
+            parts.push({ type: "text", text: block.text });
+          } else if (block.type === "tool_use") {
             // Render tool calls as text to avoid duplicate key issues
-            const toolLabel = (block.name || '').replace('__', '/');
+            const toolLabel = (block.name || "").replace("__", "/");
             const toolText = `\n**Tool:** \`${toolLabel}\` **Done** \u2713`;
-            parts.push({type: 'text', text: toolText});
+            parts.push({ type: "text", text: toolText });
           }
         }
 
         if (!parts.length) return acc;
 
-        acc.push({role: 'assistant', content: parts});
+        acc.push({ role: "assistant", content: parts });
         return acc;
       }, []);
 
@@ -543,13 +586,13 @@ export function useAssistantRuntime() {
   const convertMessage = useCallback((msg) => {
     // Convert our server format to assistant-ui's expected format
     const content = (msg.content || []).map((part) => {
-      if (part.type === 'image' && part.source) {
+      if (part.type === "image" && part.source) {
         // Our format: {type:'image', source:{type:'url',url}} or {type:'base64',data}
         const url =
-          part.source.type === 'url' ?
-            part.source.url
-          : `data:${part.source.media_type};base64,${part.source.data}`;
-        return {type: 'image', image: url};
+          part.source.type === "url"
+            ? part.source.url
+            : `data:${part.source.media_type};base64,${part.source.data}`;
+        return { type: "image", image: url };
       }
       return part;
     });
@@ -587,14 +630,14 @@ export function useAssistantRuntime() {
         const truncated = idx >= 0 ? prev.slice(0, idx + 1) : prev;
         const lastUser = [...truncated]
           .reverse()
-          .find((m) => m.role === 'user');
+          .find((m) => m.role === "user");
         if (lastUser) {
           const text =
             lastUser.content
-              ?.map((p) => (p.type === 'text' ? p.text : ''))
-              .join('') || '';
+              ?.map((p) => (p.type === "text" ? p.text : ""))
+              .join("") || "";
           if (text) {
-            setTimeout(() => onNew({content: text}), 0);
+            setTimeout(() => onNew({ content: text }), 0);
           }
         }
         return truncated;
@@ -608,30 +651,30 @@ export function useAssistantRuntime() {
 
   const attachmentAdapter = useMemo(
     () => ({
-      accept: 'image/png,image/jpeg,image/gif,image/webp',
-      async add({file}) {
+      accept: "image/png,image/jpeg,image/gif,image/webp",
+      async add({ file }) {
         const id = Math.random().toString(36).slice(2);
         const previewUrl = URL.createObjectURL(file);
 
         // Start upload in background — don't await
-        const {nonce, restBase} = window.gdsAssistant || {};
+        const { nonce, restBase } = window.gdsAssistant || {};
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append("file", file);
         uploadPromises.current[id] = fetch(`${restBase}media?gds_assistant=1`, {
-          method: 'POST',
-          headers: {'X-WP-Nonce': nonce},
+          method: "POST",
+          headers: { "X-WP-Nonce": nonce },
           body: formData,
         }).then((r) => r.json());
 
         // Return immediately with local preview
         return {
           id,
-          type: 'image',
+          type: "image",
           name: file.name,
           contentType: file.type,
           file,
-          status: {type: 'requires-action', reason: 'composer-send'},
-          content: [{type: 'image', image: previewUrl}],
+          status: { type: "requires-action", reason: "composer-send" },
+          content: [{ type: "image", image: previewUrl }],
         };
       },
       async send(attachment) {
@@ -644,9 +687,9 @@ export function useAssistantRuntime() {
             const media = await uploadResult;
             return {
               ...attachment,
-              status: {type: 'complete'},
+              status: { type: "complete" },
               content: [
-                {type: 'image', image: media.source_url, mediaId: media.id},
+                { type: "image", image: media.source_url, mediaId: media.id },
               ],
             };
           } catch {
@@ -658,10 +701,10 @@ export function useAssistantRuntime() {
         const base64 = await fileToBase64(attachment.file);
         return {
           ...attachment,
-          status: {type: 'complete'},
+          status: { type: "complete" },
           content: [
             {
-              type: 'image',
+              type: "image",
               image: `data:${attachment.contentType};base64,${base64}`,
             },
           ],
@@ -754,13 +797,16 @@ export function formatMessageTime(ts) {
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString('sv-SE', {
-    hour: '2-digit',
-    minute: '2-digit',
+  const time = d.toLocaleTimeString("sv-SE", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
   return sameDay
     ? time
-    : `${d.toLocaleDateString('sv-SE', {month: '2-digit', day: '2-digit'})} ${time}`;
+    : `${d.toLocaleDateString("sv-SE", {
+        month: "2-digit",
+        day: "2-digit",
+      })} ${time}`;
 }
 
 /**
@@ -782,15 +828,15 @@ export function restorePendingApprovalsFromHistory(rawMessages) {
   const out = [];
   for (let i = 0; i < rawMessages.length; i++) {
     const msg = rawMessages[i];
-    if (msg?.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
 
     // Collect tool_use blocks (id → {name, input}) from this assistant msg.
     const toolUses = [];
     for (const block of msg.content) {
-      if (block?.type === 'tool_use' && block.id) {
+      if (block?.type === "tool_use" && block.id) {
         toolUses.push({
           id: block.id,
-          name: block.name || '',
+          name: block.name || "",
           input: block.input || {},
         });
       }
@@ -800,25 +846,25 @@ export function restorePendingApprovalsFromHistory(rawMessages) {
     // The corresponding tool_result blocks should be in the next user msg.
     const next = rawMessages[i + 1];
     const nextBlocks =
-      next?.role === 'user' && Array.isArray(next.content) ? next.content : [];
+      next?.role === "user" && Array.isArray(next.content) ? next.content : [];
 
     for (const tu of toolUses) {
       const resultBlock = nextBlocks.find(
-        (b) => b?.type === 'tool_result' && b.tool_use_id === tu.id,
+        (b) => b?.type === "tool_result" && b.tool_use_id === tu.id,
       );
       if (!resultBlock) continue;
       const contentStr =
-        typeof resultBlock.content === 'string' ? resultBlock.content : '';
+        typeof resultBlock.content === "string" ? resultBlock.content : "";
       let parsed;
       try {
         parsed = JSON.parse(contentStr);
       } catch {
         parsed = null;
       }
-      if (parsed?.status === 'pending_approval') {
+      if (parsed?.status === "pending_approval") {
         out.push({
           toolUseId: tu.id,
-          toolName: tu.name.replace('__', '/'),
+          toolName: tu.name.replace("__", "/"),
           input: tu.input,
         });
       }
@@ -839,7 +885,7 @@ function fileToBase64(file) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
-      const base64 = dataUrl?.split(',')[1] || null;
+      const base64 = dataUrl?.split(",")[1] || null;
       resolve(base64);
     };
     reader.onerror = () => resolve(null);
@@ -857,23 +903,23 @@ function fileToBase64(file) {
 async function* parseSSE(body) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
+  let buffer = "";
 
   try {
     while (true) {
-      const {done, value} = await reader.read();
+      const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, {stream: true});
+      buffer += decoder.decode(value, { stream: true });
 
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
       let eventType = null;
       for (const line of lines) {
-        if (line.startsWith('event: ')) {
+        if (line.startsWith("event: ")) {
           eventType = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
+        } else if (line.startsWith("data: ")) {
           const data = line.slice(6);
           if (eventType && data) {
             try {
@@ -886,7 +932,7 @@ async function* parseSSE(body) {
             }
           }
           eventType = null;
-        } else if (line.trim() === '') {
+        } else if (line.trim() === "") {
           eventType = null;
         }
       }

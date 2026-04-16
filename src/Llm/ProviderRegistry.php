@@ -28,30 +28,39 @@ class ProviderRegistry
         // Pricing last verified against primary sources on 2026-04-16.
         // Run `php bin/list-models.php` to check for new model IDs per provider.
         // Pricing pages: see the comment above each provider block.
+        //
+        // pricing: [input, output, cache_read, cache_write] — all $/M tokens.
+        // cache_read: price per M cached-input tokens on a cache hit.
+        // cache_write: price per M tokens when writing to cache (Anthropic 1.25x,
+        //              others = same as input since they don't surcharge writes).
+        // Omit cache_read/cache_write to default to [input_price, input_price].
 
         // Anthropic (Claude) — https://platform.claude.com/docs/en/about-claude/pricing
+        // Cache reads: 0.1× base input. Cache writes (5m TTL): 1.25× base input.
         self::register('anthropic', [
             'label' => 'Anthropic',
             'env' => ['GDS_ASSISTANT_ANTHROPIC_KEY', 'GDS_ASSISTANT_API_KEY', 'ANTHROPIC_API_KEY'],
             'models' => [
-                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku 4.5', 'pricing' => [1, 5], 'tier' => 'standard'],
-                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet 4.6', 'pricing' => [3, 15], 'tier' => 'full'],
-                'opus' => ['id' => 'claude-opus-4-7', 'label' => 'Opus 4.7', 'pricing' => [5, 25], 'tier' => 'full'],
-                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [1, 5], 'tier' => 'full'],
-                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15], 'tier' => 'full'],
+                'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku 4.5', 'pricing' => [1, 5, 0.1, 1.25], 'tier' => 'standard'],
+                'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet 4.6', 'pricing' => [3, 15, 0.3, 3.75], 'tier' => 'full'],
+                'opus' => ['id' => 'claude-opus-4-7', 'label' => 'Opus 4.7', 'pricing' => [5, 25, 0.5, 6.25], 'tier' => 'full'],
+                'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [1, 5, 0.1, 1.25], 'tier' => 'full'],
+                'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15, 0.3, 3.75], 'tier' => 'full'],
             ],
             'default' => 'sonnet',
         ]);
 
         // OpenAI — https://openai.com/api/pricing/
+        // Cache reads: 90% off for GPT-5.x (0.1× base), 75% for o-series (0.25×),
+        // 50% for GPT-4o legacy (0.5×). No write surcharge.
         self::register('openai', [
             'label' => 'OpenAI',
             'env' => ['GDS_ASSISTANT_OPENAI_KEY', 'OPENAI_API_KEY'],
             'models' => [
-                'gpt-nano' => ['id' => 'gpt-5.4-nano', 'label' => 'GPT-5.4 Nano', 'pricing' => [0.20, 1.25], 'tier' => 'read'],
-                'gpt-mini' => ['id' => 'gpt-5.4-mini', 'label' => 'GPT-5.4 Mini', 'pricing' => [0.75, 4.50], 'tier' => 'standard'],
-                'gpt' => ['id' => 'gpt-5.4', 'label' => 'GPT-5.4', 'pricing' => [2.50, 15], 'tier' => 'full'],
-                'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini (reasoning)', 'pricing' => [1.1, 4.4], 'tier' => 'standard'],
+                'gpt-nano' => ['id' => 'gpt-5.4-nano', 'label' => 'GPT-5.4 Nano', 'pricing' => [0.20, 1.25, 0.02, 0.20], 'tier' => 'read'],
+                'gpt-mini' => ['id' => 'gpt-5.4-mini', 'label' => 'GPT-5.4 Mini', 'pricing' => [0.75, 4.50, 0.075, 0.75], 'tier' => 'standard'],
+                'gpt' => ['id' => 'gpt-5.4', 'label' => 'GPT-5.4', 'pricing' => [2.50, 15, 0.25, 2.50], 'tier' => 'full'],
+                'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini (reasoning)', 'pricing' => [1.1, 4.4, 0.275, 1.1], 'tier' => 'standard'],
                 // gpt-5.4-pro omitted: only available via /v1/completions (not chat/completions), incompatible with OpenAiCompatibleProvider.
             ],
             'default' => 'gpt-mini',
@@ -59,18 +68,19 @@ class ProviderRegistry
         ]);
 
         // Google Gemini (AI Studio) — https://ai.google.dev/gemini-api/docs/pricing
+        // Implicit caching: 90% off (0.1× base), automatic on 2.5+. No write surcharge.
         // Note: free tier uses prompts for training — prefer Vertex for production/customer data.
         self::register('gemini', [
             'label' => 'Gemini',
             'env' => ['GDS_ASSISTANT_GEMINI_KEY', 'GOOGLE_AI_API_KEY'],
             'models' => [
-                'gemini-flash-lite' => ['id' => 'gemini-2.5-flash-lite', 'label' => 'Flash-Lite 2.5', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
+                'gemini-flash-lite' => ['id' => 'gemini-2.5-flash-lite', 'label' => 'Flash-Lite 2.5', 'pricing' => [0.10, 0.40, 0.01, 0.10], 'tier' => 'read'],
                 // gemini-2.0-flash-lite omitted: "no longer available to new users" per AI Studio as of 2026-04-16.
-                'gemini-2-flash' => ['id' => 'gemini-2.0-flash', 'label' => 'Flash 2.0', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
-                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.30, 2.50], 'tier' => 'read'],
-                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10], 'tier' => 'full'],
-                'gemini-3-flash-lite' => ['id' => 'gemini-3.1-flash-lite-preview', 'label' => 'Flash-Lite 3.1 (preview)', 'pricing' => [0.25, 1.50], 'tier' => 'read'],
-                'gemini-3-pro' => ['id' => 'gemini-3.1-pro-preview', 'label' => 'Pro 3.1 (preview)', 'pricing' => [2, 12], 'tier' => 'full'],
+                'gemini-2-flash' => ['id' => 'gemini-2.0-flash', 'label' => 'Flash 2.0', 'pricing' => [0.10, 0.40, 0.01, 0.10], 'tier' => 'read'],
+                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.30, 2.50, 0.03, 0.30], 'tier' => 'read'],
+                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10, 0.125, 1.25], 'tier' => 'full'],
+                'gemini-3-flash-lite' => ['id' => 'gemini-3.1-flash-lite-preview', 'label' => 'Flash-Lite 3.1 (preview)', 'pricing' => [0.25, 1.50, 0.025, 0.25], 'tier' => 'read'],
+                'gemini-3-pro' => ['id' => 'gemini-3.1-pro-preview', 'label' => 'Pro 3.1 (preview)', 'pricing' => [2, 12, 0.20, 2], 'tier' => 'full'],
             ],
             'default' => 'gemini-flash-lite',
         ]);

@@ -41,7 +41,12 @@ class AnthropicProvider implements LlmProviderInterface
         ];
 
         if ($systemPrompt) {
-            // Use cache_control on system prompt — it's stable across turns
+            // Use cache_control on system prompt — it's stable across turns.
+            // Currently using 5-minute TTL (default). Anthropic also supports
+            // 1-hour TTL via cache_control: {type:'ephemeral', ttl:'1h'} at
+            // 2x write cost (vs 1.25x for 5m) but 0.1x reads for a full hour.
+            // Worth enabling if users commonly pause 5+ minutes between
+            // messages — break-even is ~3 reads within the hour.
             $payload['system'] = [
                 [
                     'type' => 'text',
@@ -241,11 +246,17 @@ class AnthropicProvider implements LlmProviderInterface
 
             case 'message_delta':
                 if (isset($event['usage'])) {
+                    $uncached = $event['usage']['input_tokens'] ?? 0;
+                    $cacheRead = $event['usage']['cache_read_input_tokens'] ?? 0;
+                    $cacheWrite = $event['usage']['cache_creation_input_tokens'] ?? 0;
                     $onEvent('usage', [
-                        'input_tokens' => $event['usage']['input_tokens'] ?? 0,
+                        // Normalize: input_tokens = total (uncached + cached),
+                        // matching OpenAI/Gemini convention so the frontend has
+                        // one consistent formula across all providers.
+                        'input_tokens' => $uncached + $cacheRead + $cacheWrite,
                         'output_tokens' => $event['usage']['output_tokens'] ?? 0,
-                        'cache_creation_input_tokens' => $event['usage']['cache_creation_input_tokens'] ?? 0,
-                        'cache_read_input_tokens' => $event['usage']['cache_read_input_tokens'] ?? 0,
+                        'cache_read_tokens' => $cacheRead,
+                        'cache_write_tokens' => $cacheWrite,
                     ]);
                 }
                 break;

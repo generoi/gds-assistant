@@ -174,11 +174,16 @@ class GeminiProvider implements LlmProviderInterface
         }
 
         // Usage info
+        // Usage info. Gemini 2.5+ has implicit caching — automatically caches
+        // repeated prefixes at 90% discount. cachedContentTokenCount reflects
+        // how many prompt tokens were served from cache (if any).
         $usage = $event['usageMetadata'] ?? null;
         if ($usage) {
             $onEvent('usage', [
                 'input_tokens' => $usage['promptTokenCount'] ?? 0,
                 'output_tokens' => $usage['candidatesTokenCount'] ?? 0,
+                'cache_read_tokens' => $usage['cachedContentTokenCount'] ?? 0,
+                'cache_write_tokens' => 0,
             ]);
         }
 
