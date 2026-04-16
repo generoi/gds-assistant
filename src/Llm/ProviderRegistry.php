@@ -46,6 +46,7 @@ class ProviderRegistry
                 'opus' => ['id' => 'claude-opus-4-7', 'label' => 'Opus 4.7', 'pricing' => [5, 25, 0.5, 6.25], 'tier' => 'full'],
                 'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [1, 5, 0.1, 1.25], 'tier' => 'full'],
                 'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15, 0.3, 3.75], 'tier' => 'full'],
+                'auto' => ['id' => 'auto', 'label' => 'Auto (Haiku↔Sonnet)', 'pricing' => [2, 10, 0.2, 2.5], 'tier' => 'full'],
             ],
             'default' => 'sonnet',
         ]);
@@ -61,6 +62,7 @@ class ProviderRegistry
                 'gpt-mini' => ['id' => 'gpt-5.4-mini', 'label' => 'GPT-5.4 Mini', 'pricing' => [0.75, 4.50, 0.075, 0.75], 'tier' => 'standard'],
                 'gpt' => ['id' => 'gpt-5.4', 'label' => 'GPT-5.4', 'pricing' => [2.50, 15, 0.25, 2.50], 'tier' => 'full'],
                 'o4-mini' => ['id' => 'o4-mini', 'label' => 'o4 Mini (reasoning)', 'pricing' => [1.1, 4.4, 0.275, 1.1], 'tier' => 'standard'],
+                'auto' => ['id' => 'auto', 'label' => 'Auto (Nano↔GPT-5.4)', 'pricing' => [1.35, 8, 0.14, 1.35], 'tier' => 'full'],
                 // gpt-5.4-pro omitted: only available via /v1/completions (not chat/completions), incompatible with OpenAiCompatibleProvider.
             ],
             'default' => 'gpt-mini',
@@ -81,6 +83,7 @@ class ProviderRegistry
                 'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10, 0.125, 1.25], 'tier' => 'full'],
                 'gemini-3-flash-lite' => ['id' => 'gemini-3.1-flash-lite-preview', 'label' => 'Flash-Lite 3.1 (preview)', 'pricing' => [0.25, 1.50, 0.025, 0.25], 'tier' => 'read'],
                 'gemini-3-pro' => ['id' => 'gemini-3.1-pro-preview', 'label' => 'Pro 3.1 (preview)', 'pricing' => [2, 12, 0.20, 2], 'tier' => 'full'],
+                'auto' => ['id' => 'auto', 'label' => 'Auto (Flash-Lite↔Pro)', 'pricing' => [0.68, 5.2, 0.07, 0.68], 'tier' => 'full'],
             ],
             'default' => 'gemini-flash-lite',
         ]);
@@ -283,12 +286,60 @@ class ProviderRegistry
             ),
         };
 
+        // Smart routing: wrap in SmartProvider that alternates cheap/full
+        // models within the same provider family.
+        if ($modelName === 'auto') {
+            $cheapKey = self::findModelByTier($providerName, 'read');
+            $fullKey = self::findModelByTier($providerName, 'full')
+                ?? self::findModelByTier($providerName, 'standard');
+
+            if ($cheapKey && $fullKey) {
+                $cheap = self::resolve("{$providerName}:{$cheapKey}", $maxTokens);
+                $full = self::resolve("{$providerName}:{$fullKey}", $maxTokens);
+
+                if ($cheap && $full) {
+                    return [
+                        'provider' => new SmartProvider(
+                            $cheap['provider'],
+                            $full['provider'],
+                            $providerName,
+                        ),
+                        'modelId' => 'auto',
+                        'label' => $modelDef['label'],
+                        'tier' => 'full',
+                    ];
+                }
+            }
+        }
+
         return [
             'provider' => $provider,
             'modelId' => $modelId,
             'label' => $modelDef['label'],
             'tier' => $modelDef['tier'] ?? 'standard',
         ];
+    }
+
+    /**
+     * Find the first model key with a given capability tier in a provider.
+     */
+    private static function findModelByTier(string $providerName, string $tier): ?string
+    {
+        $config = self::$providers[$providerName] ?? null;
+        if (! $config) {
+            return null;
+        }
+
+        foreach ($config['models'] as $key => $def) {
+            if ($key === 'auto') {
+                continue; // Skip the smart meta-model itself
+            }
+            if (($def['tier'] ?? 'standard') === $tier) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /**
