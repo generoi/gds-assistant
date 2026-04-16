@@ -240,10 +240,27 @@ class GeminiProvider implements LlmProviderInterface
                             ];
                         }
                     } elseif ($type === 'tool_result') {
+                        // Gemini requires functionResponse.response to be a
+                        // dict (StructValue), not a list or scalar. Our tool
+                        // results can be any shape — wrap non-dicts in
+                        // {"result": ...} so the payload always validates.
+                        //
+                        // MessageLoop also truncates large JSON at 20k chars
+                        // by raw substring slice, which produces INVALID
+                        // JSON. If decode fails, fall back to sending the
+                        // raw content as a string so the LLM at least sees
+                        // what it can instead of receiving null.
+                        $raw = $block['content'] ?? '';
+                        $decoded = $raw !== '' ? json_decode($raw, true) : [];
+                        if ($decoded === null && $raw !== '') {
+                            $decoded = ['result' => $raw];
+                        } elseif (! is_array($decoded) || array_is_list($decoded)) {
+                            $decoded = ['result' => $decoded];
+                        }
                         $parts[] = [
                             'functionResponse' => [
                                 'name' => $block['tool_use_id'] ?? '',
-                                'response' => json_decode($block['content'] ?? '{}', true) ?: [],
+                                'response' => $decoded,
                             ],
                         ];
                     }

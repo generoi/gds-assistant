@@ -169,7 +169,11 @@ export function useAssistantRuntime() {
     }
 
     if (!isControlMsg) {
-      const userMsg = {role: 'user', content: contentBlocks};
+      const userMsg = {
+        role: 'user',
+        content: contentBlocks,
+        timestamp: Date.now(),
+      };
       setMessages((prev) => [...prev, userMsg]);
     }
 
@@ -179,6 +183,12 @@ export function useAssistantRuntime() {
 
     try {
       const {restUrl, nonce} = window.gdsAssistant || {};
+      // For control messages (approval/denial) the server's detectToolApproval
+      // expects the LAST message's content to be a STRING. Don't wrap it in a
+      // content-block array — that would make the content non-string and the
+      // server would miss the signal, fall into the regular-message branch,
+      // and call the LLM again (adding MORE pending approvals to the queue).
+      const requestContent = isControlMsg ? userText : contentBlocks;
       const response = await fetch(`${restUrl}chat`, {
         method: 'POST',
         headers: {
@@ -186,7 +196,7 @@ export function useAssistantRuntime() {
           'X-WP-Nonce': nonce,
         },
         body: JSON.stringify({
-          messages: [{role: 'user', content: contentBlocks}],
+          messages: [{role: 'user', content: requestContent}],
           conversation_id: currentConversationId || '',
           model: currentModel || '',
           max_tokens: currentMaxTokens || undefined,
@@ -219,28 +229,48 @@ export function useAssistantRuntime() {
         return currentTextIdx;
       };
 
+      // Stable timestamp for the current turn — set when the first event
+      // arrives so the embedded timestamp doesn't jitter as deltas stream in.
+      let turnTimestamp = null;
+      const touchTurnTimestamp = () => {
+        if (turnTimestamp === null) {
+          turnTimestamp = Date.now();
+        }
+      };
+
       /** Flush current turn as an assistant message and start a new turn. */
       const flushTurn = () => {
         if (!turnParts.length) return;
         const contentParts = turnParts.map((p) => ({...p}));
         setMessages((prev) => [
           ...prev,
-          {role: 'assistant', content: contentParts},
+          {
+            role: 'assistant',
+            content: contentParts,
+            timestamp: turnTimestamp ?? Date.now(),
+          },
         ]);
         turnParts = [];
         currentTextIdx = -1;
+        turnTimestamp = null;
       };
 
       /** Update the current turn's assistant message in-place (for streaming). */
       const updateCurrentTurn = () => {
+        touchTurnTimestamp();
         const contentParts = turnParts.map((p) => ({...p}));
+        const timestamp = turnTimestamp;
         setMessages((prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
           if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-            updated[lastIdx] = {role: 'assistant', content: contentParts};
+            updated[lastIdx] = {
+              role: 'assistant',
+              content: contentParts,
+              timestamp: updated[lastIdx].timestamp ?? timestamp,
+            };
           } else {
-            updated.push({role: 'assistant', content: contentParts});
+            updated.push({role: 'assistant', content: contentParts, timestamp});
           }
           return updated;
         });
@@ -272,16 +302,23 @@ export function useAssistantRuntime() {
             const idx = ensureTextPart();
             const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
             const toolId = event.data.id || '';
-            turnParts[idx].text += `\n\n**Tool:** \`${toolLabel}\``;
-            if (event.data.input && Object.keys(event.data.input).length > 0) {
-              turnParts[idx].text +=
-                `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
-            }
-            // Tag the Running marker with its tool_use_id so a later
-            // `tool_result` event can replace the CORRECT marker, even when
-            // multiple tools are in flight at once. HTML comments are
-            // invisible in rendered markdown.
-            turnParts[idx].text += `\n_Running..._<!--t:${toolId}-->`;
+            // Compact one-liner — full input in an <abbr title=…> so the
+            // browser shows a native tooltip on hover. Markdown processors
+            // don't parse markdown inside raw HTML blocks, so we keep the
+            // bold/code formatting OUTSIDE the abbr tag and only wrap the
+            // tool name. Much simpler than nested <details> which rendered
+            // its inner markdown as plain text.
+            const inputForTitle =
+              event.data.input && Object.keys(event.data.input).length > 0
+                ? JSON.stringify(event.data.input, null, 2)
+                : '(no arguments)';
+            // Escape for the attribute: &quot; and newlines as literal \n
+            // survive the HTML sanitizer, which is enough for a tooltip.
+            const titleSafe = inputForTitle
+              .replace(/&/g, '&amp;')
+              .replace(/"/g, '&quot;');
+            turnParts[idx].text +=
+              `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._<!--t:${toolId}-->`;
             break;
           }
 
@@ -298,8 +335,7 @@ export function useAssistantRuntime() {
                 status +
                 turnParts[idx].text.slice(pos + marker.length);
             } else {
-              // Fallback for events without an id — replace the last Running
-              // and strip any trailing tag.
+              // Fallback for events without an id
               const fallback = turnParts[idx].text.lastIndexOf('_Running..._');
               if (fallback !== -1) {
                 const after = turnParts[idx].text.slice(fallback);
@@ -312,6 +348,7 @@ export function useAssistantRuntime() {
                   turnParts[idx].text.slice(fallback + markerLen);
               }
             }
+
             // Drop this tool from the pending-approval queue if it was
             // there (server resolves pending stubs into real results).
             if (event.data.tool_use_id) {
@@ -516,7 +553,16 @@ export function useAssistantRuntime() {
       }
       return part;
     });
-    return {role: msg.role, content};
+    return {
+      role: msg.role,
+      content,
+      // Pass a real Date when we have a timestamp; use epoch (`new Date(0)`)
+      // as a sentinel for "unknown" so assistant-ui's internal
+      // `createdAt ?? new Date()` fallback doesn't overwrite undefined with
+      // the current time (that made every message render as "now").
+      // MessageTimestamp treats epoch as "hide".
+      createdAt: msg.timestamp ? new Date(msg.timestamp) : new Date(0),
+    };
   }, []);
 
   // Edit: truncate conversation to the edited message and re-send
@@ -694,6 +740,28 @@ export function useAssistantRuntime() {
 }
 
 // ── Helpers ─────────────────────────────────────────────────
+
+/**
+ * Format a timestamp for display in the message-time footer.
+ * Same day: `HH:MM` (24h); different day: `MM-DD HH:MM`. sv-SE locale so
+ * digits are always 24-hour and the date reads consistently regardless of
+ * the browser UI language.
+ */
+export function formatMessageTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString('sv-SE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return sameDay
+    ? time
+    : `${d.toLocaleDateString('sv-SE', {month: '2-digit', day: '2-digit'})} ${time}`;
+}
 
 /**
  * Walk stored conversation messages and return pending-approval items so

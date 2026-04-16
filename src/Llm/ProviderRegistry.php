@@ -36,7 +36,7 @@ class ProviderRegistry
             'models' => [
                 'haiku' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku 4.5', 'pricing' => [1, 5], 'tier' => 'standard'],
                 'sonnet' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet 4.6', 'pricing' => [3, 15], 'tier' => 'full'],
-                'opus' => ['id' => 'claude-opus-4-6', 'label' => 'Opus 4.6', 'pricing' => [5, 25], 'tier' => 'full'],
+                'opus' => ['id' => 'claude-opus-4-7', 'label' => 'Opus 4.7', 'pricing' => [5, 25], 'tier' => 'full'],
                 'haiku-advisor' => ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Haiku+Advisor', 'advisor' => true, 'pricing' => [1, 5], 'tier' => 'full'],
                 'advisor' => ['id' => 'claude-sonnet-4-6', 'label' => 'Sonnet+Advisor', 'advisor' => true, 'pricing' => [3, 15], 'tier' => 'full'],
             ],
