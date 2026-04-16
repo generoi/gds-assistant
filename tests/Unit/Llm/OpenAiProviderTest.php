@@ -55,12 +55,27 @@ class OpenAiProviderTest extends TestCase
         // AND there are unflushed tool buffers. For pure text, no message_stop is emitted.
         // The ChatEndpoint relies on the stream ending, not this event.
 
-        // Usage
+        // Usage — includes cache fields (0 when no cache hit)
         $usageEvents = array_filter($events['callbacks'], fn ($e) => $e[0] === 'usage');
         $this->assertNotEmpty($usageEvents);
         $usage = array_values($usageEvents)[0][1];
         $this->assertSame(50, $usage['input_tokens']);
         $this->assertSame(10, $usage['output_tokens']);
+        $this->assertSame(0, $usage['cache_read_tokens']);
+        $this->assertSame(0, $usage['cache_write_tokens']);
+    }
+
+    public function test_emits_cached_tokens_from_usage(): void
+    {
+        $events = $this->replayFixture('openai-cached-usage.txt');
+
+        $usageEvents = array_filter($events['callbacks'], fn ($e) => $e[0] === 'usage');
+        $this->assertNotEmpty($usageEvents);
+        $usage = array_values($usageEvents)[0][1];
+        $this->assertSame(2000, $usage['input_tokens']);
+        $this->assertSame(100, $usage['output_tokens']);
+        $this->assertSame(1800, $usage['cache_read_tokens']);
+        $this->assertSame(0, $usage['cache_write_tokens']);
     }
 
     public function test_parses_tool_call_with_argument_accumulation(): void

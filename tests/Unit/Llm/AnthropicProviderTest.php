@@ -38,16 +38,33 @@ class AnthropicProviderTest extends TestCase
         $textDeltas = array_filter($events['callbacks'], fn ($e) => $e[0] === 'text_delta');
         $this->assertCount(2, $textDeltas);
 
-        // Should have usage
+        // Usage — normalized: input_tokens = total (uncached + cached)
         $usageEvents = array_filter($events['callbacks'], fn ($e) => $e[0] === 'usage');
         $this->assertNotEmpty($usageEvents);
         $usage = array_values($usageEvents)[0][1];
-        $this->assertSame(100, $usage['input_tokens']);
+        $this->assertSame(100, $usage['input_tokens']); // 100 uncached + 0 cached
         $this->assertSame(20, $usage['output_tokens']);
+        $this->assertSame(0, $usage['cache_read_tokens']);
+        $this->assertSame(0, $usage['cache_write_tokens']);
 
         // Should have message_stop
         $stops = array_filter($events['callbacks'], fn ($e) => $e[0] === 'message_stop');
         $this->assertCount(1, $stops);
+    }
+
+    public function test_normalizes_cache_tokens_in_usage(): void
+    {
+        $events = $this->replayFixture('anthropic-cached-usage.txt');
+
+        $usageEvents = array_filter($events['callbacks'], fn ($e) => $e[0] === 'usage');
+        $this->assertNotEmpty($usageEvents);
+        $usage = array_values($usageEvents)[0][1];
+
+        // input_tokens = uncached (50) + cache_read (2000) + cache_write (500) = 2550
+        $this->assertSame(2550, $usage['input_tokens']);
+        $this->assertSame(30, $usage['output_tokens']);
+        $this->assertSame(2000, $usage['cache_read_tokens']);
+        $this->assertSame(500, $usage['cache_write_tokens']);
     }
 
     public function test_parses_tool_call_with_json_fragments(): void

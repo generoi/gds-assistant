@@ -48,9 +48,13 @@ class GeminiProviderTest extends TestCase
         $textDeltas = array_filter($events['callbacks'], fn ($e) => $e[0] === 'text_delta');
         $this->assertGreaterThanOrEqual(2, count($textDeltas));
 
-        // Usage
+        // Usage — includes cache fields
         $usageEvents = array_filter($events['callbacks'], fn ($e) => $e[0] === 'usage');
         $this->assertNotEmpty($usageEvents);
+        $usage = array_values($usageEvents)[0][1];
+        $this->assertArrayHasKey('cache_read_tokens', $usage);
+        $this->assertArrayHasKey('cache_write_tokens', $usage);
+        $this->assertSame(0, $usage['cache_write_tokens']);
 
         // message_stop on STOP finish reason
         $stops = array_filter($events['callbacks'], fn ($e) => $e[0] === 'message_stop');
