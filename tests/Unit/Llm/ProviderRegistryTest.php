@@ -47,7 +47,7 @@ class ProviderRegistryTest extends WP_UnitTestCase
             $this->markTestSkipped('No OpenAI API key configured.');
         }
 
-        $result = ProviderRegistry::resolve('openai:gpt-4.1-mini');
+        $result = ProviderRegistry::resolve('openai:gpt-mini');
 
         $this->assertNotNull($result);
         $this->assertInstanceOf(OpenAiCompatibleProvider::class, $result['provider']);
