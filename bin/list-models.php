@@ -1,4 +1,5 @@
 <?php
+
 /**
  * List available models for every configured LLM provider.
  *
@@ -171,7 +172,7 @@ foreach ($toRun as $name) {
     echo "Pricing: {$p['pricing_url']}\n";
 
     if (! $key) {
-        echo "  (no API key configured: ".implode(' / ', $p['env']).")\n";
+        echo '  (no API key configured: '.implode(' / ', $p['env']).")\n";
 
         continue;
     }
@@ -203,7 +204,7 @@ foreach ($toRun as $name) {
     foreach ($ids as $id) {
         echo "  $id\n";
     }
-    echo "  (".count($ids)." models)\n";
+    echo '  ('.count($ids)." models)\n";
 }
 
 echo "\nTip: run with a subset, e.g. `php bin/list-models.php anthropic openai`.\n";
