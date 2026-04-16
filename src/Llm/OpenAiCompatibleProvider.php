@@ -38,9 +38,17 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
             $oaiMessages[] = self::convertMessage($msg);
         }
 
+        // OpenAI's reasoning models (o1/o3/o4/gpt-5) require
+        // `max_completion_tokens` and reject the legacy `max_tokens`. Other
+        // OpenAI-compatible providers (Mistral, Groq, xAI, DeepSeek) still use
+        // `max_tokens`, so we only swap the field when talking to OpenAI.
+        $isOpenAi = $this->providerName === 'openai';
+        $isReasoningModel = $isOpenAi && preg_match('/^(o1|o3|o4|gpt-5)/', $this->model);
+        $tokenField = $isReasoningModel ? 'max_completion_tokens' : 'max_tokens';
+
         $payload = [
             'model' => $this->model,
-            'max_tokens' => $this->maxTokens,
+            $tokenField => $this->maxTokens,
             'stream' => true,
             'messages' => $oaiMessages,
         ];
@@ -279,6 +287,14 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         // Array type must have items
         if (($schema['type'] ?? '') === 'array' && ! isset($schema['items'])) {
             $schema['items'] = ['type' => 'string'];
+        }
+
+        // Object type must have `properties` — OpenAI's strict validator (GPT-5+)
+        // rejects object schemas without it with "object schema missing
+        // properties". Some abilities declare `type: object` with no fields
+        // (e.g. gds/help takes no inputs); give them an empty dict.
+        if (($schema['type'] ?? '') === 'object' && ! isset($schema['properties'])) {
+            $schema['properties'] = new \stdClass;
         }
 
         // Recursively sanitize properties
