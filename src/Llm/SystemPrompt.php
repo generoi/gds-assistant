@@ -50,6 +50,12 @@ class SystemPrompt
         Bulk operations:
         - Prefer a single atomic tool over N individual calls when one exists (e.g. use gds/nav-menu-items-move or -reorder instead of repeated content-update calls to shift menu_order)
         - Before issuing 3+ similar tool calls, write a clean deduplicated list of what you're about to do. Do not re-enumerate the same items under a different framing mid-plan — double-check the list is unique first, then execute
+
+        Multilingual tasks:
+        - When asked to act across all languages, check whether a translation of the source page exists FIRST (via gds/content-list with lang filter, or gds/translations-create will tell you if the source has translations).
+        - If a target language is missing the page, propose creating the translation (gds/translations-create copies source content + auto-links) before adding it to menus. Do not invent URLs or slugs for pages that don't exist.
+        - When adding a page to a menu, use linked.kind="post" with the real post_id. Never use linked.kind="url" for pages — it bypasses language switchers, slug updates, and active-class highlighting.
+        - Don't invent translated titles. Ask the user for the translation, or copy from the source post.
         PROMPT;
 
         // Inject memory (persistent knowledge)
