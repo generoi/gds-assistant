@@ -46,6 +46,10 @@ class SystemPrompt
         - Use _fields parameter on list queries to reduce response size
         - Provide clear summaries of what was changed after each operation
         - Be concise and helpful
+
+        Bulk operations:
+        - Prefer a single atomic tool over N individual calls when one exists (e.g. use gds/nav-menu-items-move or -reorder instead of repeated content-update calls to shift menu_order)
+        - Before issuing 3+ similar tool calls, write a clean deduplicated list of what you're about to do. Do not re-enumerate the same items under a different framing mid-plan — double-check the list is unique first, then execute
         PROMPT;
 
         // Inject memory (persistent knowledge)
