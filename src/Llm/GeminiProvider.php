@@ -11,14 +11,22 @@ class GeminiProvider implements LlmProviderInterface
     private const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
     public function __construct(
-        private readonly string $apiKey,
-        private readonly string $model = 'gemini-2.5-flash-preview-05-20',
-        private readonly int $maxTokens = 4096,
+        protected readonly string $apiKey,
+        protected readonly string $model = 'gemini-2.5-flash-preview-05-20',
+        protected readonly int $maxTokens = 4096,
     ) {}
 
     public function name(): string
     {
         return 'gemini';
+    }
+
+    /**
+     * The streaming endpoint URL. Subclasses can override for alternate backends (e.g. Vertex).
+     */
+    protected function apiUrl(): string
+    {
+        return self::API_BASE."/{$this->model}:streamGenerateContent?alt=sse&key={$this->apiKey}";
     }
 
     public function stream(
@@ -27,7 +35,7 @@ class GeminiProvider implements LlmProviderInterface
         callable $onEvent,
         ?string $systemPrompt = null,
     ): array {
-        $url = self::API_BASE."/{$this->model}:streamGenerateContent?alt=sse&key={$this->apiKey}";
+        $url = $this->apiUrl();
 
         $payload = [
             'contents' => self::convertMessages($messages),

@@ -52,13 +52,30 @@ class ProviderRegistry
             'base_url' => 'https://api.openai.com/v1',
         ]);
 
-        // Google Gemini
+        // Google Gemini (AI Studio)
+        // Note: free tier uses prompts for training — prefer Vertex for production/customer data.
         self::register('gemini', [
             'label' => 'Gemini',
             'env' => ['GDS_ASSISTANT_GEMINI_KEY', 'GOOGLE_AI_API_KEY'],
             'models' => [
+                'gemini-flash-lite' => ['id' => 'gemini-2.5-flash-lite', 'label' => 'Flash-Lite 2.5', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
+                'gemini-2-flash' => ['id' => 'gemini-2.0-flash', 'label' => 'Flash 2.0', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
                 'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5', 'pricing' => [0.15, 0.6], 'tier' => 'read'],
                 'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5', 'pricing' => [1.25, 10], 'tier' => 'full'],
+            ],
+            'default' => 'gemini-flash',
+        ]);
+
+        // Vertex AI Express Mode — same Gemini models, enterprise backend (no training, better quotas).
+        // Express Mode API keys start with "AQ." and are obtained from console.cloud.google.com (Vertex AI Studio → API keys).
+        self::register('vertex', [
+            'label' => 'Vertex AI',
+            'env' => ['GDS_ASSISTANT_VERTEX_KEY', 'VERTEX_API_KEY'],
+            'models' => [
+                'gemini-flash-lite' => ['id' => 'gemini-2.5-flash-lite', 'label' => 'Flash-Lite 2.5 (Vertex)', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
+                'gemini-2-flash' => ['id' => 'gemini-2.0-flash', 'label' => 'Flash 2.0 (Vertex)', 'pricing' => [0.10, 0.40], 'tier' => 'read'],
+                'gemini-flash' => ['id' => 'gemini-2.5-flash', 'label' => 'Flash 2.5 (Vertex)', 'pricing' => [0.15, 0.6], 'tier' => 'read'],
+                'gemini-pro' => ['id' => 'gemini-2.5-pro', 'label' => 'Pro 2.5 (Vertex)', 'pricing' => [1.25, 10], 'tier' => 'full'],
             ],
             'default' => 'gemini-flash',
         ]);
@@ -225,6 +242,11 @@ class ProviderRegistry
                 model: $modelId,
                 maxTokens: $maxTokens,
             ),
+            'vertex' => new VertexExpressProvider(
+                apiKey: $apiKey,
+                model: $modelId,
+                maxTokens: $maxTokens,
+            ),
             default => new OpenAiCompatibleProvider(
                 apiKey: $apiKey,
                 model: $modelId,
@@ -246,7 +268,7 @@ class ProviderRegistry
      * Get the default model key (first available provider's default).
      */
     /** Preferred provider order when no explicit default is set. */
-    private const PROVIDER_PRIORITY = ['gemini', 'anthropic', 'groq', 'openai', 'deepseek', 'mistral', 'xai'];
+    private const PROVIDER_PRIORITY = ['vertex', 'gemini', 'anthropic', 'groq', 'openai', 'deepseek', 'mistral', 'xai'];
 
     public static function getDefaultModelKey(): ?string
     {
