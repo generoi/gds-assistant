@@ -13,7 +13,7 @@ export function App() {
     loadConversation,
     approveToolCall,
     denyToolCall,
-    pendingApprovalRef,
+    pendingApprovals,
   } = useAssistantRuntime();
   const [context, setContext] = useState('');
 
@@ -61,7 +61,7 @@ export function App() {
         onSystemContextChange={handleContextChange}
         onApproveToolCall={approveToolCall}
         onDenyToolCall={denyToolCall}
-        pendingApprovalRef={pendingApprovalRef}
+        pendingApprovals={pendingApprovals}
       />
     </AssistantRuntimeProvider>
   );

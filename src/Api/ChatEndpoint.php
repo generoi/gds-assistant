@@ -584,7 +584,55 @@ class ChatEndpoint
             return $msg;
         }, $messages);
 
-        return self::patchDanglingToolUses($messages);
+        // Order matters:
+        //   1. Drop any empty user/assistant messages first, so we don't
+        //      treat an empty user message as "the paired tool_result
+        //      message" for an assistant tool_use.
+        //   2. Then patch dangling tool_uses — any now-unpaired tool_use
+        //      gets a synthetic skipped-result user message injected.
+        $messages = self::dropEmptyContentMessages($messages);
+        $messages = self::patchDanglingToolUses($messages);
+
+        return $messages;
+    }
+
+    /**
+     * Drop messages whose content is empty — Anthropic rejects with
+     * "user messages must have non-empty content". Can happen when older
+     * control messages were stored, or when a block array ended up empty
+     * after sanitization, or from other legacy buggy states.
+     */
+    private static function dropEmptyContentMessages(array $messages): array
+    {
+        return array_values(array_filter($messages, function ($msg) {
+            $content = $msg['content'] ?? null;
+            if (is_string($content)) {
+                return trim($content) !== '';
+            }
+            if (is_array($content)) {
+                // Keep if at least one block has something meaningful
+                foreach ($content as $block) {
+                    if (! is_array($block)) {
+                        if (! empty($block)) {
+                            return true;
+                        }
+
+                        continue;
+                    }
+                    $type = $block['type'] ?? '';
+                    if ($type === 'text' && ! empty(trim((string) ($block['text'] ?? '')))) {
+                        return true;
+                    }
+                    if (in_array($type, ['tool_use', 'tool_result', 'image', 'server_tool_use', 'web_search_tool_result'], true)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return false;
+        }));
     }
 
     /**

@@ -109,8 +109,12 @@ export async function fetchConversation(uuid) {
 export function useAssistantRuntime() {
   const [messages, setMessages] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
+  // Queue of pending tool approvals. Each entry:
+  //   {toolUseId, toolName, input}
+  // Kept as state (not ref) so mutations trigger re-renders and the
+  // Approve/Deny UI appears/disappears correctly. Ordered by arrival.
+  const [pendingApprovals, setPendingApprovals] = useState([]);
   const abortRef = useRef(null);
-  const pendingApprovalRef = useRef(null);
   const onNewRef = useRef(null);
 
   const onNew = useCallback(async (message) => {
@@ -308,6 +312,13 @@ export function useAssistantRuntime() {
                   turnParts[idx].text.slice(fallback + markerLen);
               }
             }
+            // Drop this tool from the pending-approval queue if it was
+            // there (server resolves pending stubs into real results).
+            if (event.data.tool_use_id) {
+              setPendingApprovals((q) =>
+                q.filter((p) => p.toolUseId !== event.data.tool_use_id),
+              );
+            }
             // Don't flush here — the LLM may be running multiple tools in
             // parallel. Flush only when the LLM continues with new text
             // (handled in `text_delta`) or when the whole response ends.
@@ -324,11 +335,20 @@ export function useAssistantRuntime() {
                 `\n\`\`\`json\n${JSON.stringify(event.data.input, null, 2)}\n\`\`\``;
             }
             turnParts[idx].text += '\n_Waiting for approval..._';
-            pendingApprovalRef.current = {
-              toolUseId: event.data.tool_use_id,
-              toolName: event.data.tool_name,
-              input: event.data.input,
-            };
+            // Enqueue unless we already have this id (dedupe on resurface).
+            setPendingApprovals((q) => {
+              if (q.some((p) => p.toolUseId === event.data.tool_use_id)) {
+                return q;
+              }
+              return [
+                ...q,
+                {
+                  toolUseId: event.data.tool_use_id,
+                  toolName: event.data.tool_name,
+                  input: event.data.input,
+                },
+              ];
+            });
             break;
           }
 
@@ -474,6 +494,13 @@ export function useAssistantRuntime() {
       }, []);
 
     setMessages(uiMessages);
+
+    // Restore the pending-approval queue from any pending_approval stubs
+    // that still exist in stored conversation — so the Approve/Deny UI
+    // comes back after a page reload without the user having to send
+    // another message first.
+    const restored = restorePendingApprovalsFromHistory(conv.messages || []);
+    setPendingApprovals(restored);
   }, []);
 
   const convertMessage = useCallback((msg) => {
@@ -629,21 +656,29 @@ export function useAssistantRuntime() {
   // Keep ref to onNew for approval callbacks
   onNewRef.current = onNew;
 
+  // Approve/Deny always act on the FIRST pending approval; the server
+  // batch-resolves ALL currently-pending stubs when any one is approved or
+  // denied (see ChatEndpoint::handleToolApproval), so one click covers the
+  // whole queue.
   const approveToolCall = useCallback(() => {
-    const pending = pendingApprovalRef.current;
-    if (!pending) return;
-    pendingApprovalRef.current = null;
-    onNewRef.current?.({
-      content: `__tool_approved__:${pending.toolUseId}`,
+    setPendingApprovals((q) => {
+      if (!q.length) return q;
+      const [first, ...rest] = q;
+      onNewRef.current?.({
+        content: `__tool_approved__:${first.toolUseId}`,
+      });
+      return rest;
     });
   }, []);
 
   const denyToolCall = useCallback(() => {
-    const pending = pendingApprovalRef.current;
-    if (!pending) return;
-    pendingApprovalRef.current = null;
-    onNewRef.current?.({
-      content: `__tool_denied__:${pending.toolUseId}`,
+    setPendingApprovals((q) => {
+      if (!q.length) return q;
+      const [first, ...rest] = q;
+      onNewRef.current?.({
+        content: `__tool_denied__:${first.toolUseId}`,
+      });
+      return rest;
     });
   }, []);
 
@@ -654,11 +689,76 @@ export function useAssistantRuntime() {
     loadConversation,
     approveToolCall,
     denyToolCall,
-    pendingApprovalRef,
+    pendingApprovals,
   };
 }
 
 // ── Helpers ─────────────────────────────────────────────────
+
+/**
+ * Walk stored conversation messages and return pending-approval items so
+ * the Approve/Deny UI can be restored on load.
+ *
+ * Pairs assistant tool_use blocks with the corresponding tool_result block
+ * in the NEXT user message, then keeps only ones still in pending_approval
+ * state.
+ *
+ * Exported for tests.
+ *
+ * @param {Array} rawMessages Raw conversation.messages from the server.
+ * @return {Array<{toolUseId, toolName, input}>}
+ */
+export function restorePendingApprovalsFromHistory(rawMessages) {
+  if (!Array.isArray(rawMessages)) return [];
+
+  const out = [];
+  for (let i = 0; i < rawMessages.length; i++) {
+    const msg = rawMessages[i];
+    if (msg?.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+
+    // Collect tool_use blocks (id → {name, input}) from this assistant msg.
+    const toolUses = [];
+    for (const block of msg.content) {
+      if (block?.type === 'tool_use' && block.id) {
+        toolUses.push({
+          id: block.id,
+          name: block.name || '',
+          input: block.input || {},
+        });
+      }
+    }
+    if (!toolUses.length) continue;
+
+    // The corresponding tool_result blocks should be in the next user msg.
+    const next = rawMessages[i + 1];
+    const nextBlocks =
+      next?.role === 'user' && Array.isArray(next.content) ? next.content : [];
+
+    for (const tu of toolUses) {
+      const resultBlock = nextBlocks.find(
+        (b) => b?.type === 'tool_result' && b.tool_use_id === tu.id,
+      );
+      if (!resultBlock) continue;
+      const contentStr =
+        typeof resultBlock.content === 'string' ? resultBlock.content : '';
+      let parsed;
+      try {
+        parsed = JSON.parse(contentStr);
+      } catch {
+        parsed = null;
+      }
+      if (parsed?.status === 'pending_approval') {
+        out.push({
+          toolUseId: tu.id,
+          toolName: tu.name.replace('__', '/'),
+          input: tu.input,
+        });
+      }
+    }
+  }
+
+  return out;
+}
 
 /**
  * Read a File object as base64 string (without the data: prefix).

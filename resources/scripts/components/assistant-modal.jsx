@@ -79,9 +79,9 @@ const SUGGESTIONS = [
  * @param {Function} root0.onLoadConversation    Callback to load an old conversation by UUID.
  * @param {string}   root0.systemContext         Optional system context prepended to first message.
  * @param {Function} root0.onSystemContextChange Callback when system context changes.
- * @param {Function} root0.onApproveToolCall     Callback to approve a pending tool call.
- * @param {Function} root0.onDenyToolCall        Callback to deny a pending tool call.
- * @param {Object}   root0.pendingApprovalRef    React ref holding pending approval state.
+ * @param {Function} root0.onApproveToolCall     Callback to approve pending tool calls.
+ * @param {Function} root0.onDenyToolCall        Callback to deny pending tool calls.
+ * @param {Array}    root0.pendingApprovals      Array of pending approval items {toolUseId, toolName, input}.
  */
 export function AssistantModal({
   onNewChat,
@@ -90,7 +90,7 @@ export function AssistantModal({
   onSystemContextChange,
   onApproveToolCall,
   onDenyToolCall,
-  pendingApprovalRef,
+  pendingApprovals,
 }) {
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
   // Also open when a conversation is resumed
@@ -135,7 +135,7 @@ export function AssistantModal({
           onSystemContextChange={onSystemContextChange}
           onApproveToolCall={onApproveToolCall}
           onDenyToolCall={onDenyToolCall}
-          pendingApprovalRef={pendingApprovalRef}
+          pendingApprovals={pendingApprovals}
         />
       </AssistantModalPrimitive.Content>
     </AssistantModalPrimitive.Root>
@@ -149,7 +149,7 @@ function Thread({
   onSystemContextChange,
   onApproveToolCall,
   onDenyToolCall,
-  pendingApprovalRef,
+  pendingApprovals,
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState([]);
@@ -381,14 +381,20 @@ function Thread({
         <TypingIndicator />
       </ThreadPrimitive.Viewport>
 
-      {pendingApprovalRef?.current && (
+      {pendingApprovals && pendingApprovals.length > 0 && (
         <div className="gds-assistant__approval-bar">
-          <span>Approve this action?</span>
+          <span>
+            {pendingApprovals.length === 1 ?
+              'Approve this action?'
+            : `${pendingApprovals.length} pending actions — approve all?`}
+          </span>
           <button
             className="gds-assistant__approval-btn gds-assistant__approval-btn--approve"
             onClick={onApproveToolCall}
           >
-            Approve
+            {pendingApprovals.length > 1 ?
+              `Approve (${pendingApprovals.length})`
+            : 'Approve'}
           </button>
           <button
             className="gds-assistant__approval-btn gds-assistant__approval-btn--deny"
