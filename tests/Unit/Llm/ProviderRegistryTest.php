@@ -65,7 +65,7 @@ class ProviderRegistryTest extends WP_UnitTestCase
         $this->assertInstanceOf(GeminiProvider::class, $result['provider']);
     }
 
-    public function test_default_model_key_prefers_gemini(): void
+    public function test_default_model_key_prefers_vertex_then_gemini(): void
     {
         $default = ProviderRegistry::getDefaultModelKey();
 
@@ -73,8 +73,10 @@ class ProviderRegistryTest extends WP_UnitTestCase
             $this->markTestSkipped('No providers configured.');
         }
 
-        // If Gemini is available, it should be the default (cheapest)
-        if (ProviderRegistry::getApiKey('gemini')) {
+        // Vertex wins over Gemini (AI Studio) when both are set.
+        if (ProviderRegistry::getApiKey('vertex')) {
+            $this->assertStringStartsWith('vertex:', $default);
+        } elseif (ProviderRegistry::getApiKey('gemini')) {
             $this->assertStringStartsWith('gemini:', $default);
         }
     }
