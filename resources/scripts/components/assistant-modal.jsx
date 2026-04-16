@@ -1047,8 +1047,66 @@ function CopyMessageButton() {
 
 // ── Tool call fallback UI ───────────────────────────────────
 
+/**
+ * Short one-line hint shown next to the tool name in the collapsed summary.
+ * Picks up to 3 identifying args so a bulk sequence of the same tool is
+ * distinguishable at a glance (e.g. `id=26520 menu_order=6`).
+ */
+function summarizeArgs(args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return '';
+  const entries = Object.entries(args);
+  if (entries.length === 0) return '';
+
+  // Prioritize fields that identify what the call targets.
+  const preferred = [
+    'id',
+    'post_id',
+    'term_id',
+    'menu_id',
+    'parent_item_id',
+    'conversation_uuid',
+    'type',
+    'post_type',
+    'taxonomy',
+    'title',
+    'name',
+    'slug',
+    'position',
+    'menu_order',
+    'status',
+  ];
+  const sorted = entries.slice().sort(([a], [b]) => {
+    const ai = preferred.indexOf(a);
+    const bi = preferred.indexOf(b);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  return sorted
+    .slice(0, 3)
+    .map(([k, v]) => {
+      let str;
+      if (typeof v === 'string') {
+        str = v.length > 24 ? `${v.slice(0, 21)}…` : v;
+      } else if (typeof v === 'number' || typeof v === 'boolean') {
+        str = String(v);
+      } else if (v === null) {
+        str = 'null';
+      } else if (Array.isArray(v)) {
+        str = `[${v.length}]`;
+      } else {
+        str = '{…}';
+      }
+      return `${k}=${str}`;
+    })
+    .join(' ');
+}
+
 function ToolCallFallback({toolName, args, result, isError, status}) {
   const needsApproval = status?.type === 'requires-action';
+  const argsHint = summarizeArgs(args);
 
   return (
     <div
@@ -1057,6 +1115,11 @@ function ToolCallFallback({toolName, args, result, isError, status}) {
       <details open={needsApproval}>
         <summary className="gds-assistant__tool-call-summary">
           <span className="gds-assistant__tool-call-name">{toolName}</span>
+          {argsHint && (
+            <span className="gds-assistant__tool-call-args-hint">
+              {argsHint}
+            </span>
+          )}
           {needsApproval && (
             <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--approval">
               Approval required

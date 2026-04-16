@@ -71,6 +71,9 @@ class Plugin
         // Settings page
         new Admin\SettingsPage($this);
 
+        // CLI — only active when WP-CLI is loaded.
+        Cli\AuditCommand::register();
+
         register_activation_hook($this->file, [$this, 'activate']);
         register_deactivation_hook($this->file, [$this, 'deactivate']);
     }
