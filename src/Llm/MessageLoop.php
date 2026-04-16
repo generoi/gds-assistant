@@ -103,7 +103,16 @@ class MessageLoop
                 break;
             }
 
-            // Execute each tool and collect results
+            // Execute each tool and collect results.
+            //
+            // IMPORTANT: we must emit a tool_result for EVERY tool_use in the
+            // assistant message, otherwise Anthropic (and other providers)
+            // reject the next API call with "tool_use ids were found without
+            // tool_result blocks". So when a dangerous tool needs approval we
+            // still iterate the rest — if they're also dangerous they get
+            // their own pending-approval stubs, if they're safe they execute
+            // normally. The outer loop breaks at the end only when at least
+            // one approval was requested.
             $toolResults = [];
             $pendingApproval = false;
 
@@ -137,7 +146,7 @@ class MessageLoop
                     ];
                     $pendingApproval = true;
 
-                    break; // Stop processing more tools, wait for user
+                    continue; // Keep iterating so every tool_use gets a paired tool_result
                 }
 
                 // Log the actual parsed input

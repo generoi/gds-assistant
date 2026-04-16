@@ -336,8 +336,11 @@ class ChatEndpoint
     }
 
     /**
-     * Handle tool approval: find the pending tool in stored messages, execute or deny it,
-     * replace the pending_approval result, and return the updated messages ready for the loop.
+     * Handle tool approval: when a single tool_use_id is provided, approve or
+     * deny only that one — BUT also batch-approve/deny any sibling pending
+     * tool_results that came from the same assistant message, because the UI
+     * only surfaces one Approve/Deny button per turn and the user expects
+     * their one click to cover all prompts they saw.
      */
     private function handleToolApproval(
         array $storedMessages,
@@ -348,54 +351,103 @@ class ChatEndpoint
         $toolRegistry = new ToolRegistry;
         do_action('gds-assistant/register_tools', $toolRegistry);
 
-        // Find the pending tool_result and its corresponding tool_use
-        $toolName = '';
-        $toolInput = [];
-
-        foreach (array_reverse($storedMessages) as $msg) {
+        // Collect all (tool_use_id → [name, input]) pairs that currently have
+        // a pending_approval tool_result.
+        $pending = [];
+        foreach ($storedMessages as $msg) {
             if (! is_array($msg['content'] ?? null)) {
                 continue;
             }
-            foreach ($msg['content'] as $block) {
-                if (($block['type'] ?? '') === 'tool_use' && ($block['id'] ?? '') === $toolUseId) {
-                    $toolName = $block['name'];
-                    $toolInput = json_decode(json_encode($block['input'] ?? []), true) ?: [];
-                    break 2;
+            // assistant tool_use blocks → name + input
+            if (($msg['role'] ?? '') === 'assistant') {
+                foreach ($msg['content'] as $block) {
+                    if (is_array($block) && ($block['type'] ?? '') === 'tool_use') {
+                        $pending[$block['id']] = [
+                            'name' => $block['name'],
+                            'input' => json_decode(json_encode($block['input'] ?? []), true) ?: [],
+                            'is_pending' => false,
+                        ];
+                    }
+                }
+            }
+            // user tool_result blocks → flag which ones are still pending
+            if (($msg['role'] ?? '') === 'user') {
+                foreach ($msg['content'] as $block) {
+                    if (is_array($block) && ($block['type'] ?? '') === 'tool_result') {
+                        $id = $block['tool_use_id'] ?? '';
+                        if (! $id || ! isset($pending[$id])) {
+                            continue;
+                        }
+                        $content = is_string($block['content'] ?? null) ? $block['content'] : '';
+                        $decoded = json_decode($content, true);
+                        if (is_array($decoded) && ($decoded['status'] ?? '') === 'pending_approval') {
+                            $pending[$id]['is_pending'] = true;
+                        }
+                    }
                 }
             }
         }
 
-        if ($approved && $toolName) {
-            $result = $toolRegistry->executeTool($toolName, $toolInput);
-            $isError = is_wp_error($result);
-            $resultContent = $isError ? ['error' => $result->get_error_message()] : $result;
-            $resultJson = json_encode($resultContent);
+        $pendingIds = array_keys(array_filter($pending, fn ($p) => $p['is_pending']));
 
-            $onEvent('tool_result', [
-                'tool_use_id' => $toolUseId,
-                'result' => $resultContent,
-                'is_error' => $isError,
-            ]);
-        } else {
-            $resultJson = json_encode(['error' => 'User denied this action']);
-            $isError = true;
+        // If the client referenced a tool that we can't find at all (stale
+        // client state, e.g. after a manual DB edit), emit a single denial
+        // event for it so the approval UI can clear. Otherwise fall through
+        // to the normal batch-resolution path.
+        if (! $pendingIds && ! isset($pending[$toolUseId])) {
             $onEvent('tool_result', [
                 'tool_use_id' => $toolUseId,
                 'result' => ['error' => 'User denied this action'],
                 'is_error' => true,
             ]);
+
+            return $storedMessages;
         }
 
-        // Replace the pending_approval tool_result in stored messages
+        // Make sure the explicitly-requested tool is among the pending set; if
+        // not, prepend it so a focused approval still fires.
+        if (isset($pending[$toolUseId]) && ! in_array($toolUseId, $pendingIds, true)) {
+            $pendingIds[] = $toolUseId;
+        }
+
+        $newResults = [];
+        foreach ($pendingIds as $id) {
+            $info = $pending[$id] ?? null;
+            if ($approved && $info && ! empty($info['name'])) {
+                $result = $toolRegistry->executeTool($info['name'], $info['input']);
+                $isError = is_wp_error($result);
+                $resultContent = $isError ? ['error' => $result->get_error_message()] : $result;
+            } else {
+                $isError = true;
+                $resultContent = ['error' => 'User denied this action'];
+            }
+
+            $onEvent('tool_result', [
+                'tool_use_id' => $id,
+                'result' => $resultContent,
+                'is_error' => $isError,
+            ]);
+
+            $newResults[$id] = [
+                'content' => json_encode($resultContent),
+                'is_error' => $isError,
+            ];
+        }
+
+        // Replace the pending_approval tool_result in stored messages for
+        // every ID we just resolved.
         foreach ($storedMessages as &$msg) {
             if (! is_array($msg['content'] ?? null)) {
                 continue;
             }
             foreach ($msg['content'] as &$block) {
-                if (($block['type'] ?? '') === 'tool_result' && ($block['tool_use_id'] ?? '') === $toolUseId) {
-                    $block['content'] = $resultJson;
-                    $block['is_error'] = $isError;
-                    break 2;
+                if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
+                    continue;
+                }
+                $id = $block['tool_use_id'] ?? '';
+                if (isset($newResults[$id])) {
+                    $block['content'] = $newResults[$id]['content'];
+                    $block['is_error'] = $newResults[$id]['is_error'];
                 }
             }
         }
@@ -442,7 +494,7 @@ class ChatEndpoint
      */
     private static function sanitizeMessages(array $messages): array
     {
-        return array_map(function (array $msg) {
+        $messages = array_map(function (array $msg) {
             if (! is_array($msg['content'] ?? null)) {
                 return $msg;
             }
@@ -465,6 +517,88 @@ class ChatEndpoint
 
             return $msg;
         }, $messages);
+
+        return self::patchDanglingToolUses($messages);
+    }
+
+    /**
+     * Defensive fix for corrupted conversation history: every tool_use block
+     * must have a matching tool_result block in the IMMEDIATELY NEXT user
+     * message, otherwise Anthropic rejects the request with:
+     *
+     *   "tool_use ids were found without tool_result blocks immediately after"
+     *
+     * This can happen when:
+     *   - An earlier version of MessageLoop broke out of a tool-execution
+     *     foreach when a dangerous tool hit approval, skipping remaining
+     *     tool_uses in the same assistant message (fixed, but old history
+     *     may still be malformed)
+     *   - A mid-turn exception killed the request between pushing the
+     *     assistant message and pushing the tool_results user message
+     *
+     * For any tool_use that has no paired tool_result, inject a synthetic
+     * "skipped" tool_result so the conversation replays cleanly.
+     */
+    private static function patchDanglingToolUses(array $messages): array
+    {
+        $count = count($messages);
+        $result = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $msg = $messages[$i];
+            $result[] = $msg;
+
+            if (($msg['role'] ?? '') !== 'assistant' || ! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+
+            $toolUseIds = [];
+            foreach ($msg['content'] as $block) {
+                if (is_array($block) && ($block['type'] ?? '') === 'tool_use' && ! empty($block['id'])) {
+                    $toolUseIds[] = $block['id'];
+                }
+            }
+            if (! $toolUseIds) {
+                continue;
+            }
+
+            $next = $messages[$i + 1] ?? null;
+            $nextIsUser = is_array($next) && ($next['role'] ?? '') === 'user' && is_array($next['content'] ?? null);
+
+            $seenIds = [];
+            if ($nextIsUser) {
+                foreach ($next['content'] as $block) {
+                    if (is_array($block) && ($block['type'] ?? '') === 'tool_result' && ! empty($block['tool_use_id'])) {
+                        $seenIds[] = $block['tool_use_id'];
+                    }
+                }
+            }
+
+            $missing = array_values(array_diff($toolUseIds, $seenIds));
+            if (! $missing) {
+                continue;
+            }
+
+            $patches = array_map(fn ($id) => [
+                'type' => 'tool_result',
+                'tool_use_id' => $id,
+                'content' => json_encode(['error' => 'skipped — tool was not paired with a result in the stored conversation']),
+                'is_error' => true,
+            ], $missing);
+
+            if ($nextIsUser) {
+                // Merge patches into the existing next user message when we
+                // reach it on the next iteration. Mutate the source array so
+                // the next push sees the patched content.
+                $messages[$i + 1]['content'] = array_merge($next['content'], $patches);
+            } else {
+                // No next user message at all — inject one right after this
+                // assistant message.
+                $result[] = ['role' => 'user', 'content' => $patches];
+            }
+        }
+
+        return $result;
     }
 
     /**

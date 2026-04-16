@@ -264,6 +264,64 @@ class MessageLoopTest extends TestCase
         remove_all_filters('gds-assistant/max_iterations');
     }
 
+    public function test_multiple_destructive_tools_each_get_a_tool_result(): void
+    {
+        // Regression: when the LLM emits two destructive tool_use blocks in
+        // a single response, the foreach must emit a pending_approval stub
+        // for EACH one — otherwise the subsequent Anthropic call fails with
+        // "tool_use ids were found without tool_result blocks immediately
+        // after". Previously the loop `break`ed on the first one, leaving
+        // later tool_use blocks dangling.
+        $this->setExpectedIncorrectUsage('WP_Abilities_Registry::get_registered');
+
+        $provider = $this->mockProvider([
+            [
+                ['type' => 'text', 'text' => 'Deleting both items.'],
+                ['type' => 'tool_use', 'id' => 'toolu_a', 'name' => 'test__destructive-tool', 'input' => ['id' => 1]],
+                ['type' => 'tool_use', 'id' => 'toolu_b', 'name' => 'test__destructive-tool', 'input' => ['id' => 2]],
+            ],
+        ]);
+
+        $registry = new ToolRegistry;
+        $registry->register($this->mockToolProvider(
+            'test__destructive-tool',
+            '[DESTRUCTIVE] Deletes stuff',
+            ['deleted' => true],
+        ));
+
+        // Mark the tool as dangerous so approval kicks in
+        add_filter('gds-assistant/tool_risk', fn () => 'dangerous');
+
+        $loop = new MessageLoop($provider, $registry);
+        $events = [];
+        $messages = $loop->run(
+            [['role' => 'user', 'content' => 'Delete both']],
+            function ($type, $data) use (&$events) {
+                $events[] = [$type, $data];
+            },
+        );
+
+        remove_all_filters('gds-assistant/tool_risk');
+
+        // The final user message must have tool_result blocks for BOTH ids.
+        $lastMsg = end($messages);
+        $this->assertSame('user', $lastMsg['role']);
+        $resultIds = array_values(array_filter(array_map(
+            fn ($b) => is_array($b) && ($b['type'] ?? '') === 'tool_result' ? $b['tool_use_id'] ?? null : null,
+            $lastMsg['content'],
+        )));
+        $this->assertContains('toolu_a', $resultIds);
+        $this->assertContains('toolu_b', $resultIds);
+
+        // And both should have triggered an approval-required event.
+        $approvalIds = array_map(
+            fn ($e) => $e[1]['tool_use_id'] ?? null,
+            array_filter($events, fn ($e) => $e[0] === 'tool_approval_required'),
+        );
+        $this->assertContains('toolu_a', $approvalIds);
+        $this->assertContains('toolu_b', $approvalIds);
+    }
+
     public function test_token_tracking(): void
     {
         $provider = new class implements LlmProviderInterface
