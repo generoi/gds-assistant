@@ -141,6 +141,17 @@ class ChatEndpoint
                 $messages, $toolUseId, $approved,
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
             );
+        } else {
+            // User sent a regular message while approvals were pending — treat
+            // it as an implicit denial so the conversation can continue. The
+            // approval UI may have been dismissed (tab reload, new message
+            // typed, etc.); without this the next LLM call sees lingering
+            // pending_approval stubs and refuses to proceed, and the user
+            // would have to start a fresh conversation.
+            $messages = $this->autoDenyPendingApprovals(
+                $messages,
+                fn (string $type, array $data) => $this->sendSSE($type, $data),
+            );
         }
 
         // Allow filter to override the provider
@@ -453,6 +464,41 @@ class ChatEndpoint
         }
 
         return $storedMessages;
+    }
+
+    /**
+     * Find any tool_result blocks still in `pending_approval` state and
+     * convert them into denials. Called when the user sends a regular
+     * (non-approval) message — their new message implicitly cancels any
+     * pending approval prompts the UI may no longer be surfacing.
+     */
+    private function autoDenyPendingApprovals(array $messages, callable $onEvent): array
+    {
+        $converted = 0;
+        foreach ($messages as &$msg) {
+            if (! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as &$block) {
+                if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
+                    continue;
+                }
+                $content = is_string($block['content'] ?? null) ? $block['content'] : '';
+                $decoded = json_decode($content, true);
+                if (is_array($decoded) && ($decoded['status'] ?? '') === 'pending_approval') {
+                    $block['content'] = json_encode(['error' => 'User denied this action (implicit, new message sent)']);
+                    $block['is_error'] = true;
+                    $onEvent('tool_result', [
+                        'tool_use_id' => $block['tool_use_id'] ?? '',
+                        'result' => ['error' => 'User denied this action (implicit, new message sent)'],
+                        'is_error' => true,
+                    ]);
+                    $converted++;
+                }
+            }
+        }
+
+        return $messages;
     }
 
     private function generateTitle(array $messages): string
