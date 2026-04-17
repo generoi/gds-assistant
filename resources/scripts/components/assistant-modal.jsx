@@ -108,30 +108,30 @@ function getStoredPanelSize() {
 }
 
 /**
- * Override Radix's floating-ui transform positioning with our absolute
- * top/left. Radix re-applies its transform on every render, so we also
- * add a class that carries a CSS !important override to keep it from
- * snapping back to the anchor point.
+ * Override Radix/floating-ui's inline transform positioning.
+ *
+ * Radix uses `Object.assign(node.style, {transform: '...', left: '...'})`
+ * to position its Content on every autoUpdate tick. `Object.assign`
+ * wipes any !important flags we set via setProperty — so a plain
+ * `setProperty('transform', 'none', 'important')` doesn't stick.
+ *
+ * The reliable win is CSS `!important` in a stylesheet (which beats a
+ * plain inline style from Radix) combined with CSS custom properties
+ * for the values (CSS vars survive on the element because they're set
+ * via React's style= prop, which React DOES preserve across renders).
  */
 function applyPanelPosition(node, top, left) {
   if (!node) return;
   node.classList.add('gds-assistant__panel--moved');
-  node.style.top = `${top}px`;
-  node.style.left = `${left}px`;
-  node.style.bottom = 'auto';
-  node.style.right = 'auto';
-  // Radix uses transform for positioning; clear it so our top/left win.
-  node.style.transform = 'none';
+  node.style.setProperty('--gds-panel-top', `${top}px`);
+  node.style.setProperty('--gds-panel-left', `${left}px`);
 }
 
 function clearPanelPosition(node) {
   if (!node) return;
   node.classList.remove('gds-assistant__panel--moved');
-  node.style.top = '';
-  node.style.left = '';
-  node.style.bottom = '';
-  node.style.right = '';
-  node.style.transform = '';
+  node.style.removeProperty('--gds-panel-top');
+  node.style.removeProperty('--gds-panel-left');
 }
 
 /**
@@ -192,8 +192,6 @@ export function AssistantModal({
   // header space — clicks on buttons inside the header still work
   // normally because they stop propagation naturally.
   const onHeaderMouseDown = useCallback((e) => {
-    // Only start drag on primary button, and only when the target is
-    // the header itself or a non-interactive span — not a button/input.
     if (e.button !== 0) return;
     const target = e.target;
     if (target.closest('button, input, textarea, select, a')) return;
@@ -202,15 +200,27 @@ export function AssistantModal({
     const panel = panelRef.current;
     if (!panel) return;
 
+    // Snapshot initial rect + mouse pos, THEN lock our positioning
+    // immediately so the panel stays put during the drag (no jump).
     const rect = panel.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left;
-    const offsetY = e.clientY - rect.top;
+    const startTop = rect.top;
+    const startLeft = rect.left;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    // Pin the panel at its current visual location before Radix can
+    // re-render and move it elsewhere.
+    applyPanelPosition(panel, startTop, startLeft);
+
+    const clamp = (top, left) => ({
+      top: Math.max(0, Math.min(window.innerHeight - 40, top)),
+      left: Math.max(0, Math.min(window.innerWidth - 40, left)),
+    });
 
     const onMove = (ev) => {
-      const maxLeft = window.innerWidth - 40;
-      const maxTop = window.innerHeight - 40;
-      const left = Math.max(0, Math.min(maxLeft, ev.clientX - offsetX));
-      const top = Math.max(0, Math.min(maxTop, ev.clientY - offsetY));
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      const { top, left } = clamp(startTop + dy, startLeft + dx);
       applyPanelPosition(panel, top, left);
     };
     const onUp = () => {
@@ -223,7 +233,7 @@ export function AssistantModal({
           JSON.stringify({ top: r.top, left: r.left }),
         );
       } catch {
-        // Private browsing etc.
+        // noop
       }
     };
     document.addEventListener('mousemove', onMove);
