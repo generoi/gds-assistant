@@ -110,7 +110,7 @@ class McpAuthEndpoint
                 ? TokenStore::userHasToken($server->name, $userId)
                 : true;
 
-            $out[] = [
+            $row = [
                 'id' => $server->name,
                 'name' => $server->name,
                 'label' => $server->displayLabel(),
@@ -122,7 +122,24 @@ class McpAuthEndpoint
                 'callback_url' => $authType === 'oauth' ? self::callbackUrl($server->name) : null,
                 'origin' => $origin,
                 'deletable' => $origin === 'admin',
+                'editable' => $origin === 'admin',
             ];
+
+            // For admin-origin servers, expose the non-secret auth fields so
+            // the DataView can pre-fill the edit modal. client_secret is never
+            // returned — the modal shows a placeholder and the backend keeps
+            // the stored value if the client submits an empty string.
+            if ($origin === 'admin') {
+                $row['auth_detail'] = [
+                    'type' => $authType,
+                    'scopes' => $server->auth['scopes'] ?? [],
+                    'client_id' => $server->auth['client_id'] ?? '',
+                    'has_client_secret' => ! empty($server->auth['client_secret']),
+                    'env' => $server->auth['env'] ?? '',
+                ];
+            }
+
+            $out[] = $row;
         }
 
         return new \WP_REST_Response($out);
