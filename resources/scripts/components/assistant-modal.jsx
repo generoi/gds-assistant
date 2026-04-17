@@ -85,6 +85,28 @@ const SUGGESTIONS = [
  * @param {Function} root0.onDenyToolCall        Callback to deny pending tool calls.
  * @param {Array}    root0.pendingApprovals      Array of pending approval items {toolUseId, toolName, input}.
  */
+/**
+ * Read persisted panel size from localStorage, guarding against stale or
+ * out-of-bounds values (user resized their window smaller, changed monitors,
+ * etc.). Falls back to null → CSS defaults apply.
+ */
+function getStoredPanelSize() {
+  try {
+    const raw = localStorage.getItem('gds-assistant-panel-size');
+    if (!raw) return null;
+    const { width, height } = JSON.parse(raw);
+    const maxW = window.innerWidth - 48;
+    const maxH = window.innerHeight - 120;
+    if (typeof width !== 'number' || typeof height !== 'number') return null;
+    return {
+      width: Math.max(320, Math.min(maxW, width)),
+      height: Math.max(400, Math.min(maxH, height)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AssistantModal({
   onNewChat,
   onLoadConversation,
@@ -97,6 +119,64 @@ export function AssistantModal({
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
   // Also open when a conversation is resumed
   const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+
+  // Callback ref: fires every time the panel element mounts (the modal
+  // uses a portal + may unmount on close, so a plain useEffect only runs
+  // once). Applies the stored size whenever a new panel node appears.
+  const setPanelRef = useCallback((node) => {
+    panelRef.current = node;
+    if (!node) return;
+    const size = getStoredPanelSize();
+    if (size) {
+      node.style.width = `${size.width}px`;
+      node.style.height = `${size.height}px`;
+    }
+  }, []);
+
+  // Resize handle drag logic. The handle sits in the TOP-LEFT corner of
+  // the panel since the panel is anchored bottom-right — dragging up/left
+  // grows outward in both dimensions naturally.
+  const onResizeStart = useCallback((e) => {
+    e.preventDefault();
+    const panel = panelRef.current;
+    if (!panel) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const rect = panel.getBoundingClientRect();
+    const startW = rect.width;
+    const startH = rect.height;
+
+    const onMove = (ev) => {
+      // Anchored bottom-right, so dragging LEFT increases width and
+      // dragging UP increases height.
+      const dx = startX - ev.clientX;
+      const dy = startY - ev.clientY;
+      const maxW = window.innerWidth - 48;
+      const maxH = window.innerHeight - 120;
+      const w = Math.max(320, Math.min(maxW, startW + dx));
+      const h = Math.max(400, Math.min(maxH, startH + dy));
+      panel.style.width = `${w}px`;
+      panel.style.height = `${h}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try {
+        localStorage.setItem(
+          'gds-assistant-panel-size',
+          JSON.stringify({
+            width: panel.offsetWidth,
+            height: panel.offsetHeight,
+          }),
+        );
+      } catch {
+        // Private browsing etc. — non-fatal.
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -127,9 +207,16 @@ export function AssistantModal({
       </AssistantModalPrimitive.Trigger>
 
       <AssistantModalPrimitive.Content
+        ref={setPanelRef}
         className="gds-assistant gds-assistant__panel"
         sideOffset={16}
       >
+        <div
+          className="gds-assistant__resize-handle"
+          onMouseDown={onResizeStart}
+          title="Drag to resize"
+          aria-label="Resize chat panel"
+        />
         <Thread
           onNewChat={onNewChat}
           onLoadConversation={onLoadConversation}

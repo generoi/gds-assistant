@@ -189,6 +189,11 @@ class Plugin
             'has_archive' => false,
             'rewrite' => false,
         ]);
+
+        // Install bundled default skills on first load after upgrade. Runs
+        // in init (not activation) because activation hooks don't fire
+        // when updating via Composer — and the version gate makes it cheap.
+        Bridge\DefaultSkills::maybeInstall();
     }
 
     public function tagAssistantUpload(\WP_Post $attachment): void
@@ -273,6 +278,7 @@ class Plugin
     {
         Storage\ConversationStore::createTables();
         Storage\AuditLog::createTables();
+        Bridge\DefaultSkills::maybeInstall();
 
         if (! wp_next_scheduled('gds_assistant_cleanup')) {
             wp_schedule_event(time(), 'daily', 'gds_assistant_cleanup');
