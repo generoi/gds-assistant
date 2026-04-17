@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 3;
+    private const VERSION = 4;
 
     public static function maybeInstall(): void
     {
@@ -110,6 +110,12 @@ class DefaultSkills
                 'title' => 'Create Content (guided)',
                 'description' => 'Guided content creation that matches existing site structure — finds similar posts, copies block/ACF structure, honors design tokens. Never creates without review.',
                 'prompt' => self::createContentPrompt(),
+            ],
+            [
+                'slug' => 'report-bug',
+                'title' => 'Report Bug / Bad Session',
+                'description' => 'Email the site administrator with a report about an assistant bug, bad response, or quality issue. Includes the conversation ID so the admin can look up the full session in the audit log.',
+                'prompt' => self::reportBugPrompt(),
             ],
         ];
     }
@@ -283,6 +289,71 @@ If translations were requested, use `gds/translations-create` to link them — c
 - **Match the voice of existing content.** Formal vs. casual, first vs. third person — infer from the references and stay consistent.
 - **Ask first when the gap is structural.** If a reference post has a "Client quote" section and this is a real client engagement, ask for the quote. If it's a demo / fictional topic, use `[placeholder quote]` and continue.
 - Create ONE draft first. If the user wants variations, generate them AFTER seeing the first one.
+PROMPT;
+    }
+
+    private static function reportBugPrompt(): string
+    {
+        return <<<'PROMPT'
+Report a bug, bad session, or quality issue to the site administrator.
+
+Use this when:
+- The user says "this isn't working", "bad response", "that was wrong", "/report-bug", etc.
+- You (the assistant) recognize the session went badly (hallucinated IDs/titles, stuck in a loop, contradicted the user, misunderstood a basic request repeatedly)
+
+## 1. Get the complaint
+
+If the user already described what went wrong, use their words. Otherwise ASK ONCE briefly: "Anything specific you want me to flag, or should I summarize what I noticed?" — don't dig further than one round, this is a quick reporting flow.
+
+## 2. Draft the email
+
+Recipient: the site admin email from the "## This conversation" section of your context. If it's missing, stop and ask the user for an address.
+
+Subject format: `[AI Assistant] Bug: <one-line summary>` (≤70 chars)
+
+Body (markdown):
+
+```
+# Assistant bug report
+
+**Conversation ID:** <uuid from "## This conversation" in your context>
+**Model:** <model key from footer, e.g. anthropic:sonnet>
+**Time:** <current human-readable timestamp>
+
+## What went wrong
+
+<user's description if provided, otherwise your concise summary>
+
+## Recent exchange
+
+**User:** <last user message, verbatim>
+
+**Assistant:** <the problematic assistant response, truncated to ~500 chars if long>
+
+<include one more turn above if it adds context, max 3 total>
+
+## How to reproduce
+
+Admin can view the full session via:
+`wp gds-assistant audit show <uuid>`
+```
+
+## 3. Send
+
+Use `gds/mail-send`:
+- `to`: [<admin email>]
+- `subject`: the line above
+- `body`: the markdown above (plain text is fine — `html: false`)
+
+The user will see the full email in the approval prompt. Let them approve or deny — do not argue if they deny.
+
+## Constraints
+
+- **ALWAYS go through gds/mail-send**, never some other path.
+- **Do NOT include sensitive data** the user may not want shared (draft post contents, form submissions, customer PII, credentials) unless directly relevant to the bug. If unsure, leave it out and note "see audit log" instead.
+- **Don't embellish.** If you don't know what went wrong, say so — the admin will look up the session via the UUID.
+- **Keep it short.** One issue per report. Admins triage many of these; brevity helps.
+- If the admin email isn't in your context, ASK for it instead of guessing.
 PROMPT;
     }
 }
