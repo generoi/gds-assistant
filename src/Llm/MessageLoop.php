@@ -92,15 +92,11 @@ class MessageLoop
             if (! empty($compressed['summary'])) {
                 $this->updatedSummary = $compressed['summary'];
             }
-            // Only notify the user about compression when it's actually
-            // meaningful — >30% reduction. Tiny compressions fire every turn
-            // as the stored history grows past the L2 threshold, but they're
-            // noise from the user's POV.
-            $reductionPct = $tokensBefore > 0
-                ? (($tokensBefore - $tokensAfter) / $tokensBefore) * 100
-                : 0;
-            if ($reductionPct >= 30) {
-                $onEvent('text_delta', ['text' => "\n_Context compressed: {$tokensBefore} → {$tokensAfter} tokens_\n"]);
+            // Log compression for debugging but don't show to user — once
+            // a conversation is long enough, compression fires every turn
+            // and the notices clutter the chat.
+            if ($tokensBefore !== $tokensAfter) {
+                error_log("[gds-assistant] Context compressed: {$tokensBefore} → {$tokensAfter} tokens");
             }
 
             $contentBlocks = $this->provider->stream(

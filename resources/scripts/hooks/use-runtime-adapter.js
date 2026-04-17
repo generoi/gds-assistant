@@ -180,6 +180,12 @@ export function useAssistantRuntime() {
             type: "image",
             source: { type: "url", url: imageUrl },
           });
+          if (mediaId) {
+            contentBlocks.push({
+              type: "text",
+              text: `(Uploaded image — attachment ID: ${mediaId})`,
+            });
+          }
         } else {
           // Fallback: data URL → extract base64
           const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -358,6 +364,30 @@ export function useAssistantRuntime() {
               ? "**Error**"
               : "**Done** \u2713";
             const toolId = event.data.tool_use_id || "";
+
+            // Update the abbr title to include the result alongside input
+            if (toolId) {
+              const resultPreview = event.data.result
+                ? JSON.stringify(event.data.result).slice(0, 800)
+                : "(empty)";
+              const resultSafe = resultPreview
+                .replace(/&/g, "&amp;")
+                .replace(/"/g, "&quot;");
+              // Find the abbr tag associated with this tool call and append result
+              const abbrRe = new RegExp(
+                `(<abbr class="gds-tool" title=")(.*?)(">)([\\s\\S]*?<!--t:${toolId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`
+              );
+              const abbrMatch = turnParts[idx].text.match(abbrRe);
+              if (abbrMatch) {
+                const inputTitle = abbrMatch[2];
+                const newTitle = `${inputTitle}\n\n→ ${resultSafe}`;
+                turnParts[idx].text = turnParts[idx].text.replace(
+                  abbrRe,
+                  `$1${newTitle}$3$4`
+                );
+              }
+            }
+
             const marker = `_Running..._<!--t:${toolId}-->`;
             const pos = toolId ? turnParts[idx].text.indexOf(marker) : -1;
             if (pos !== -1) {
@@ -530,6 +560,19 @@ export function useAssistantRuntime() {
       });
     }
 
+    // Build a map of tool_use_id → result content from stored messages
+    // so we can show input+output in the abbr tooltip for history.
+    const toolResultMap = {};
+    for (const m of conv.messages) {
+      if (m.role !== "user" || !Array.isArray(m.content)) continue;
+      for (const block of m.content) {
+        if (block.type === "tool_result" && block.tool_use_id) {
+          const raw = typeof block.content === "string" ? block.content : JSON.stringify(block.content || "");
+          toolResultMap[block.tool_use_id] = raw.slice(0, 800);
+        }
+      }
+    }
+
     // Convert stored messages to structured UI format
     const uiMessages = conv.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -560,9 +603,20 @@ export function useAssistantRuntime() {
           if (block.type === "text" && block.text) {
             parts.push({ type: "text", text: block.text });
           } else if (block.type === "tool_use") {
-            // Render tool calls as text to avoid duplicate key issues
             const toolLabel = (block.name || "").replace("__", "/");
-            const toolText = `\n**Tool:** \`${toolLabel}\` **Done** \u2713`;
+            const inputStr = block.input && Object.keys(block.input).length > 0
+              ? JSON.stringify(block.input, null, 2)
+              : "(no arguments)";
+            const resultStr = toolResultMap[block.id] || "";
+            let titleContent = inputStr
+              .replace(/&/g, "&amp;")
+              .replace(/"/g, "&quot;");
+            if (resultStr) {
+              titleContent += `\n\n→ ${resultStr
+                .replace(/&/g, "&amp;")
+                .replace(/"/g, "&quot;")}`;
+            }
+            const toolText = `\n**Tool:** <abbr class="gds-tool" title="${titleContent}">\`${toolLabel}\`</abbr> **Done** \u2713`;
             parts.push({ type: "text", text: toolText });
           }
         }
