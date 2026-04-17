@@ -14,9 +14,9 @@ use GeneroWP\Assistant\Plugin;
  *
  * Example config entry:
  *   'asana' => [
- *       'url'   => 'https://mcp.asana.com/sse',
+ *       'url'   => 'https://mcp.asana.com/v2/mcp',
  *       'label' => 'Asana',
- *       'auth'  => ['type' => 'oauth', 'scopes' => ['default']],
+ *       'auth'  => ['type' => 'oauth', 'client_id' => '...', 'client_secret' => '...'],
  *   ],
  */
 class ServerRegistry
@@ -87,10 +87,19 @@ class ServerRegistry
                 continue;
             }
             try {
+                $auth = is_array($entry['auth'] ?? null) ? $entry['auth'] : ['type' => 'none'];
+                // Admin-origin entries encrypt client_secret at rest. Decrypt
+                // it here so downstream code (OAuthAuth) sees plaintext.
+                if ($origin === 'admin' && ! empty($auth['client_secret']) && is_string($auth['client_secret'])) {
+                    $plain = Encrypt::decrypt($auth['client_secret']);
+                    if ($plain !== null) {
+                        $auth['client_secret'] = $plain;
+                    }
+                }
                 $config = new McpServerConfig(
                     name: (string) $name,
                     url: (string) $entry['url'],
-                    auth: is_array($entry['auth'] ?? null) ? $entry['auth'] : ['type' => 'none'],
+                    auth: $auth,
                     label: isset($entry['label']) ? (string) $entry['label'] : null,
                     enabled: ($entry['enabled'] ?? true) !== false,
                 );
@@ -149,10 +158,27 @@ class ServerRegistry
         if (! is_array($stored)) {
             $stored = [];
         }
+
+        $authToStore = $config->auth;
+
+        // If the caller didn't supply a client_secret but we already have one
+        // stored (typical on edit — UI sends "" to mean "keep existing"),
+        // preserve the encrypted value rather than dropping it.
+        $previousAuth = is_array($stored[$name]['auth'] ?? null) ? $stored[$name]['auth'] : [];
+        $incomingSecret = $authToStore['client_secret'] ?? null;
+        if (($incomingSecret === null || $incomingSecret === '') && ! empty($previousAuth['client_secret'])) {
+            $authToStore['client_secret'] = $previousAuth['client_secret'];
+        } elseif (is_string($incomingSecret) && $incomingSecret !== '') {
+            // Fresh secret from the form — encrypt before persisting.
+            $authToStore['client_secret'] = Encrypt::encrypt($incomingSecret);
+        } else {
+            unset($authToStore['client_secret']);
+        }
+
         $stored[$name] = [
             'url' => $config->url,
             'label' => $config->label,
-            'auth' => $config->auth,
+            'auth' => $authToStore,
             'enabled' => $config->enabled,
         ];
         update_option(self::OPTION, $stored, false);

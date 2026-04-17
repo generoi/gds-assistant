@@ -24,7 +24,7 @@ export function McpServersDataView() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [notice, setNotice] = useState(() => readInitialNotice());
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [editing, setEditing] = useState(null); // null = closed, {} = add, server-row = edit
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -190,6 +190,15 @@ export function McpServersDataView() {
               {__('Disconnect', 'gds-assistant')}
             </Button>
           )}
+          {item.editable && (
+            <Button
+              variant="link"
+              disabled={busy === item.name}
+              onClick={() => setEditing(item)}
+            >
+              {__('Edit', 'gds-assistant')}
+            </Button>
+          )}
           {item.deletable && (
             <Button
               variant="link"
@@ -200,7 +209,7 @@ export function McpServersDataView() {
               {__('Delete', 'gds-assistant')}
             </Button>
           )}
-          {!item.requires_oauth && !item.deletable && (
+          {!item.requires_oauth && !item.editable && !item.deletable && (
             <span style={{color: '#999'}}>—</span>
           )}
         </div>
@@ -231,7 +240,7 @@ export function McpServersDataView() {
             'gds-assistant',
           )}
         </p>
-        <Button variant="primary" onClick={() => setShowAddModal(true)}>
+        <Button variant="primary" onClick={() => setEditing({})}>
           {__('Add MCP Server', 'gds-assistant')}
         </Button>
       </div>
@@ -251,7 +260,7 @@ export function McpServersDataView() {
       ) : servers.length === 0 ? (
         <Notice status="info" isDismissible={false}>
           {__(
-            'No MCP servers yet. Click "Add MCP Server" above to configure one (e.g. Asana at https://mcp.asana.com/sse with OAuth).',
+            'No MCP servers yet. Click "Add MCP Server" above to configure one (e.g. Asana at https://mcp.asana.com/v2/mcp with OAuth).',
             'gds-assistant',
           )}
         </Notice>
@@ -269,14 +278,18 @@ export function McpServersDataView() {
         />
       )}
 
-      {showAddModal && (
-        <AddServerModal
-          onClose={() => setShowAddModal(false)}
+      {editing && (
+        <ServerModal
+          initial={editing}
+          onClose={() => setEditing(null)}
           onSaved={() => {
-            setShowAddModal(false);
+            const wasEdit = !!editing.name;
+            setEditing(null);
             setNotice({
               type: 'success',
-              text: __('Server added.', 'gds-assistant'),
+              text: wasEdit
+                ? __('Server updated.', 'gds-assistant')
+                : __('Server added.', 'gds-assistant'),
             });
             load();
           }}
@@ -319,15 +332,31 @@ function OriginBadge({origin}) {
   );
 }
 
-function AddServerModal({onClose, onSaved}) {
-  const [name, setName] = useState('');
-  const [label, setLabel] = useState('');
-  const [url, setUrl] = useState('');
-  const [authType, setAuthType] = useState('oauth');
-  const [scopes, setScopes] = useState('');
-  const [envName, setEnvName] = useState('');
+function ServerModal({initial, onClose, onSaved}) {
+  // initial = {} for add, or a server row (with auth_detail) for edit.
+  const isEdit = !!initial?.name;
+  const detail = initial?.auth_detail || {};
+
+  const [name, setName] = useState(initial?.name || '');
+  const [label, setLabel] = useState(initial?.label || '');
+  const [url, setUrl] = useState(initial?.url || '');
+  const [authType, setAuthType] = useState(
+    initial?.auth_type || detail.type || 'oauth',
+  );
+  const [scopes, setScopes] = useState(
+    Array.isArray(detail.scopes) ? detail.scopes.join(' ') : '',
+  );
+  const [envName, setEnvName] = useState(detail.env || '');
+  const [clientId, setClientId] = useState(detail.client_id || '');
+  const [clientSecret, setClientSecret] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Callback URL for this server-to-be. Shown so admins can copy it into
+  // the OAuth provider's redirect-URI field when registering the app.
+  const previewCallback = name
+    ? `${window.location.origin}/wp-json/gds-assistant/v1/mcp/${name}/callback`
+    : null;
 
   const save = async () => {
     setError(null);
@@ -336,11 +365,19 @@ function AddServerModal({onClose, onSaved}) {
       return;
     }
     const auth = {type: authType};
-    if (authType === 'oauth' && scopes.trim()) {
-      auth.scopes = scopes
-        .split(/[\s,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+    if (authType === 'oauth') {
+      if (scopes.trim()) {
+        auth.scopes = scopes
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (clientId.trim()) {
+        auth.client_id = clientId.trim();
+      }
+      if (clientSecret.trim()) {
+        auth.client_secret = clientSecret.trim();
+      }
     }
     if (authType === 'bearer') {
       if (!envName) {
@@ -369,7 +406,11 @@ function AddServerModal({onClose, onSaved}) {
 
   return (
     <Modal
-      title={__('Add MCP Server', 'gds-assistant')}
+      title={
+        isEdit
+          ? __('Edit MCP Server', 'gds-assistant')
+          : __('Add MCP Server', 'gds-assistant')
+      }
       onRequestClose={onClose}
       style={{maxWidth: 600}}
     >
@@ -380,12 +421,21 @@ function AddServerModal({onClose, onSaved}) {
       )}
       <TextControl
         label={__('Name (slug)', 'gds-assistant')}
-        help={__(
-          'Lowercase identifier used internally. Example: "asana" or "jira".',
-          'gds-assistant',
-        )}
+        help={
+          isEdit
+            ? __(
+                'Name cannot be changed — delete and re-add to rename.',
+                'gds-assistant',
+              )
+            : __(
+                'Lowercase identifier used internally. Example: "asana" or "jira".',
+                'gds-assistant',
+              )
+        }
         value={name}
         onChange={(v) => setName(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+        disabled={isEdit}
+        readOnly={isEdit}
       />
       <TextControl
         label={__('Label (optional)', 'gds-assistant')}
@@ -399,7 +449,7 @@ function AddServerModal({onClose, onSaved}) {
       <TextControl
         label={__('URL', 'gds-assistant')}
         help={__(
-          'MCP server endpoint (SSE or HTTP). Example: https://mcp.asana.com/sse',
+          'Streamable HTTP MCP endpoint. Example: https://mcp.asana.com/v2/mcp',
           'gds-assistant',
         )}
         value={url}
@@ -423,16 +473,56 @@ function AddServerModal({onClose, onSaved}) {
         onChange={setAuthType}
       />
       {authType === 'oauth' && (
-        <TextControl
-          label={__('OAuth scopes (optional)', 'gds-assistant')}
-          help={__(
-            'Space or comma-separated list of scopes to request. Leave empty to use the server\'s default.',
-            'gds-assistant',
+        <>
+          <TextControl
+            label={__('OAuth scopes (optional)', 'gds-assistant')}
+            help={__(
+              'Space or comma-separated list of scopes. Leave empty when the provider says not to send a scope parameter (e.g. Asana MCP apps).',
+              'gds-assistant',
+            )}
+            value={scopes}
+            onChange={setScopes}
+            placeholder="default"
+          />
+          {previewCallback && (
+            <p
+              className="description"
+              style={{margin: '4px 0 12px', fontSize: 12}}
+            >
+              {__('Register this redirect URI with the provider:', 'gds-assistant')}{' '}
+              <code style={{fontSize: 11}}>{previewCallback}</code>
+            </p>
           )}
-          value={scopes}
-          onChange={setScopes}
-          placeholder="default"
-        />
+          <TextControl
+            label={__('Client ID (optional)', 'gds-assistant')}
+            help={__(
+              'Required for providers that don\'t support dynamic client registration (RFC 7591). Asana, for example, issues a client_id when you create an MCP app in their developer console. Leave empty to let the plugin register dynamically.',
+              'gds-assistant',
+            )}
+            value={clientId}
+            onChange={setClientId}
+            autoComplete="off"
+          />
+          <TextControl
+            label={__('Client Secret (optional)', 'gds-assistant')}
+            help={
+              detail.has_client_secret
+                ? __(
+                    'Leave empty to keep the existing secret. Encrypted at rest.',
+                    'gds-assistant',
+                  )
+                : __(
+                    'Paired with Client ID when the provider issues a confidential client. Encrypted at rest.',
+                    'gds-assistant',
+                  )
+            }
+            value={clientSecret}
+            onChange={setClientSecret}
+            type="password"
+            autoComplete="off"
+            placeholder={detail.has_client_secret ? '••••••••' : ''}
+          />
+        </>
       )}
       {authType === 'bearer' && (
         <TextControl
@@ -450,7 +540,9 @@ function AddServerModal({onClose, onSaved}) {
         <Button variant="primary" onClick={save} disabled={saving}>
           {saving
             ? __('Saving…', 'gds-assistant')
-            : __('Save', 'gds-assistant')}
+            : isEdit
+              ? __('Update', 'gds-assistant')
+              : __('Save', 'gds-assistant')}
         </Button>
         <Button variant="tertiary" onClick={onClose}>
           {__('Cancel', 'gds-assistant')}
