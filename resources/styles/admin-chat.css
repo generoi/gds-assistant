@@ -90,6 +90,9 @@
   right: 24px;
   width: 420px;
   height: 600px;
+  min-width: 320px;
+  min-height: 400px;
+  max-width: calc(100vw - 48px);
   max-height: calc(100vh - 120px);
   background: #fff;
   border-radius: 12px;
@@ -101,6 +104,58 @@
   overflow: hidden;
   z-index: 100100;
   animation: gds-assistant-slide-up 0.2s ease-out;
+}
+
+/* Resize handle — top-left corner; panel is anchored bottom-right so
+   dragging outward grows the panel. Shows on hover of the panel only. */
+.gds-assistant__resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  border-top-left-radius: 12px;
+}
+
+/* Two short diagonal lines that form a classic resize-corner "grip" */
+.gds-assistant__resize-handle::before,
+.gds-assistant__resize-handle::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  color: rgba(0, 0, 0, 0.35);
+  transform: rotate(-45deg);
+  transform-origin: 0 0;
+  border-radius: 1px;
+}
+
+.gds-assistant__resize-handle::before {
+  top: 13px;
+  left: 4px;
+  width: 10px;
+  height: 1.5px;
+}
+
+.gds-assistant__resize-handle::after {
+  top: 16px;
+  left: 7px;
+  width: 6px;
+  height: 1.5px;
+}
+
+.gds-assistant__panel:hover .gds-assistant__resize-handle,
+.gds-assistant__resize-handle:hover,
+.gds-assistant__resize-handle:focus-visible {
+  opacity: 1;
+}
+
+.gds-assistant__resize-handle:hover::before,
+.gds-assistant__resize-handle:hover::after {
+  color: rgba(0, 0, 0, 0.6);
 }
 
 @keyframes gds-assistant-slide-up {
