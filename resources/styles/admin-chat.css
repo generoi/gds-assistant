@@ -106,12 +106,20 @@
   animation: gds-assistant-slide-up 0.2s ease-out;
 }
 
-/* When the user has dragged the panel, override Radix's transform-based
-   positioning so our inline top/left win. Radix re-applies the transform
-   on every render, so we need !important to hold it at bay. */
+/* When the user has dragged the panel, override Radix/floating-ui's
+   inline transform positioning. CSS !important beats plain inline
+   styles from Radix — so these win even when floating-ui runs its
+   autoUpdate tick and rewrites `style="transform: translate(...)"`.
+   The position values come from CSS vars the JS sets on the element. */
 .gds-assistant__panel--moved {
+  position: fixed !important;
+  top: var(--gds-panel-top, 0) !important;
+  left: var(--gds-panel-left, 0) !important;
+  right: auto !important;
+  bottom: auto !important;
   transform: none !important;
   animation: none !important;
+  margin: 0 !important;
 }
 
 /* Resize handle — top-left corner; panel is anchored bottom-right so
