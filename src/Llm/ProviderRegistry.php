@@ -289,11 +289,11 @@ class ProviderRegistry
         // Smart routing: wrap in SmartProvider that alternates cheap/full
         // models within the same provider family.
         if ($modelName === 'auto') {
-            $cheapKey = self::findModelByTier($providerName, 'read');
-            $fullKey = self::findModelByTier($providerName, 'full')
+            $cheapKey = self::findModelByTier($providerName, 'read')
                 ?? self::findModelByTier($providerName, 'standard');
+            $fullKey = self::findModelByTier($providerName, 'full');
 
-            if ($cheapKey && $fullKey) {
+            if ($cheapKey && $fullKey && $cheapKey !== $fullKey) {
                 $cheap = self::resolve("{$providerName}:{$cheapKey}", $maxTokens);
                 $full = self::resolve("{$providerName}:{$fullKey}", $maxTokens);
 
