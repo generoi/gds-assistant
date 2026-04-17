@@ -54,6 +54,13 @@ class GeminiProvider implements LlmProviderInterface
             $payload['tools'] = [
                 ['functionDeclarations' => self::convertTools($tools)],
             ];
+
+            // Enable Google Search grounding. Gemini 2.5+ supports combining
+            // google_search with function calling (earlier models couldn't).
+            // Filter can disable if restricting to gds/web-fetch only.
+            if (apply_filters('gds-assistant/gemini_web_tools', true)) {
+                $payload['tools'][] = ['google_search' => new \stdClass];
+            }
         }
 
         $contentBlocks = [];

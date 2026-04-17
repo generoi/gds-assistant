@@ -72,6 +72,21 @@ class AnthropicProvider implements LlmProviderInterface
             ];
         }
 
+        // Enable Anthropic's built-in web_search/web_fetch server tools.
+        // Filter can disable if sites want to restrict to gds/web-fetch only.
+        if (apply_filters('gds-assistant/anthropic_web_tools', true)) {
+            $payload['tools'][] = [
+                'type' => 'web_search_20250305',
+                'name' => 'web_search',
+                'max_uses' => 3,
+            ];
+            $payload['tools'][] = [
+                'type' => 'web_fetch_20250910',
+                'name' => 'web_fetch',
+                'max_uses' => 5,
+            ];
+        }
+
         $contentBlocks = [];
         $currentIndex = -1;
         $inputJsonBuffer = '';
