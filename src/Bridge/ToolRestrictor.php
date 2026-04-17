@@ -19,45 +19,34 @@ class ToolRestrictor
      */
     public static function filter(array $tools, string $tier): array
     {
-        $allowedRisks = match ($tier) {
-            'read' => ['safe'],
-            'standard' => ['safe', 'moderate'],
-            default => ['safe', 'moderate', 'dangerous'],
-        };
-
         $tierRank = ['read' => 1, 'standard' => 2, 'full' => 3];
         $currentRank = $tierRank[$tier] ?? 2;
 
         $filtered = [];
         foreach ($tools as $tool) {
-            // Per-tool minimum tier (e.g. mail-send requires standard+). Weak
-            // models reliably fail to follow complex multi-step prompts — we
-            // hide the tool so those models don't produce bad output.
+            // Explicit min_tier annotation wins over risk-based classification.
+            // Abilities can set `min_tier: 'read'` to opt into all tiers even
+            // when marked destructive (web-fetch), or `min_tier: 'standard'`
+            // to require stronger models (mail-send).
             $minTier = $tool['min_tier'] ?? null;
-            if ($minTier && ($tierRank[$minTier] ?? 0) > $currentRank) {
-                continue;
+
+            if ($minTier) {
+                $requiredRank = $tierRank[$minTier] ?? $currentRank;
+            } else {
+                // Fall back to risk-based classification: safe → 1 (read),
+                // moderate → 2 (standard), dangerous → 3 (full).
+                $risk = self::classifyRisk($tool);
+                $requiredRank = match ($risk) {
+                    'safe' => 1,
+                    'moderate' => 2,
+                    default => 3,
+                };
             }
 
-            // min_tier is an internal flag — don't leak it to the LLM payload.
+            // min_tier is an internal routing flag — don't leak it to the LLM.
             unset($tool['min_tier']);
 
-            if ($tier === 'full') {
-                $filtered[] = $tool;
-
-                continue;
-            }
-
-            $risk = self::classifyRisk($tool);
-            if (in_array($risk, $allowedRisks, true)) {
-                $filtered[] = $tool;
-
-                continue;
-            }
-
-            // Approval-gated exception: [DESTRUCTIVE] tools require user
-            // approval on every call, so the user (not the model) gates
-            // execution. That makes them safe on any tier.
-            if (str_starts_with((string) ($tool['description'] ?? ''), '[DESTRUCTIVE]')) {
+            if ($currentRank >= $requiredRank) {
                 $filtered[] = $tool;
             }
         }
