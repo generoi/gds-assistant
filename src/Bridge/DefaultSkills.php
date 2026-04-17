@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 2;
+    private const VERSION = 3;
 
     public static function maybeInstall(): void
     {
@@ -101,9 +101,9 @@ class DefaultSkills
         return [
             [
                 'slug' => 'audit-links',
-                'title' => 'Broken Link Audit',
-                'description' => 'Scan posts for broken external links. Warns before auditing large sets and offers to scope by post type or recency.',
-                'prompt' => self::brokenLinkAuditPrompt(),
+                'title' => 'Link Quality Audit',
+                'description' => 'Scan posts for link quality issues: placeholder hrefs (#, empty, javascript:), links to non-existent pages, language mismatches, and anchor text that doesn\'t match the target page.',
+                'prompt' => self::linkQualityAuditPrompt(),
             ],
             [
                 'slug' => 'create-content',
@@ -114,64 +114,85 @@ class DefaultSkills
         ];
     }
 
-    private static function brokenLinkAuditPrompt(): string
+    private static function linkQualityAuditPrompt(): string
     {
         return <<<'PROMPT'
-Run a broken-link audit on this site's content. Follow this procedure strictly.
+Audit the quality of internal links across this site's content. This is NOT about HTTP 404 checks on external URLs — it's about finding sloppy/placeholder links and links that point to pages that don't make sense for the anchor text.
 
 ## 1. Scope the audit first — DO NOT skip this step
 
-Before listing posts, clarify scope with the user:
-- Which post types? (ask if unclear — offer the site's actual public post types from the context)
-- All posts, or filter by status/date range? (recent-only = last 90 days is a reasonable default for large sites)
-- Any language filter (if the site is multilingual)?
-- Maximum number of posts to scan (default: 50)
+Before listing posts, confirm with the user:
+- Which post types? (offer the site's public post types — use `gds/post-types-list` if unsure)
+- Scope: all, recent only (last 90 days), or drafts only?
+- Language filter if multilingual?
 
-Then use `gds/content-list` with `_fields=id,title,status,link,date` to get the candidate posts.
+Use `gds/content-list` with `_fields=id,title,status,link,content,lang` (fetches rendered content inline — no per-post reads needed). Paginate as needed.
 
-**Warn the user before proceeding if the candidate set is larger than 100 posts.** Each post requires one content-read + one web-fetch per unique link. Show the estimated count and ask for confirmation.
+**Warn the user before proceeding if the candidate set is larger than 100 posts.** The issue isn't tool cost (content comes back inline) but LLM context — very large sets may need multi-pass review. Ask if they want to limit scope or proceed in batches.
 
-## 2. Extract and deduplicate links
+## 2. Categorize every link
 
-For each post:
-1. Use `gds/content-read` to get the content (request `_fields=id,title,content,link` to limit payload)
-2. Extract all `https?://...` URLs from the rendered content AND from block attributes (href, url, link.url fields — parsing block JSON if needed)
-3. Skip:
-   - Internal links (same host as the site)
-   - Media library links (`/wp-content/uploads/`)
-   - Mailto, tel, javascript, anchor-only (#...)
-   - URLs already checked in this session
+For each post's rendered content (and block attributes), extract all links — both `<a href>` and block attributes like `button.url`, `image.link`, ACF link fields. For each link, classify:
 
-Maintain a running map of `url → { status, posts_containing_it }` so each unique URL is fetched exactly once.
+**Placeholder / broken** (report always):
+- `href="#"` or `href=""` with no legitimate purpose (intentional JS-handled links rare — flag them for review)
+- `href="javascript:..."`
+- `href="http://..."` when the site uses https (mixed-content risk)
+- Trailing-slash inconsistencies on known routes
+- URLs with `?p=123` (raw post IDs) when a pretty permalink exists
 
-## 3. Check each unique URL
+**Internal dead links** (report always):
+- Links to the site's own domain pointing to a slug that no longer exists (check via `gds/content-list` with search/slug, or try a targeted `gds/content-read`). Cache lookups so we don't re-query the same slug.
+- Links to pages with status != publish (drafts/trash) from published content
 
-Use `gds/web-fetch` with `format=text` and `max_length=500` — we only need the status code and title, not the full page. On each check:
-- 200 → OK
-- 3xx following to 200 → OK (but note redirect chains >2 hops)
-- 4xx/5xx or timeout → broken
+**Language mismatches** (multilingual sites only):
+- A Finnish post linking to an English page when a Finnish translation exists (`gds/translations-create` or `gds/content-list` with `lang` can confirm). Often an oversight during translation.
 
-Batch sensibly — if there are 50+ unique URLs, warn the user and confirm before continuing.
+**Semantic mismatches** (the judgment call — use LLM reasoning here):
+- Anchor text vs. target page topic. "Read more about pricing" linking to `/about-us` is suspect.
+- "Click here" / "more" / "here" anchors — flag as low-quality even if the target is fine (a11y + SEO smell)
+- CTA links on related sections that point to unrelated landing pages
 
-## 4. Report findings
+When in doubt, surface it as a "review needed" item rather than silently passing it.
 
-Present results as a markdown table:
-| Status | URL | Found in |
-|--------|-----|----------|
-| 404 | https://example.com/broken | Post A (id:123), Post B (id:456) |
+## 3. Report findings
 
-Group by status code. Sort by most-referenced broken URL first.
+Group by issue type, sort by severity (dead > language mismatch > placeholder > anchor-text smell):
 
-**Do NOT auto-fix anything.** Offer next steps:
-- "Want me to draft replacement URLs for any of these?"
-- "Want me to save this report as a draft post?" (if yes, create a draft with gds/content-create — requires approval)
-- "Want to re-check specific URLs after you've updated them?"
+```
+## Placeholder / dead hrefs (3)
+- Post "Pricing" (id:123) — <a href="#">Learn more</a> — anchor: "Learn more", href is placeholder
+- ...
+
+## Internal dead links (2)
+- Post "Services" (id:456) — links to /old-page (404 — page doesn't exist)
+- ...
+
+## Language mismatches (5)
+- /fi/palvelut (id:789) — link "Our team" → /about-us (English). Finnish translation exists at /fi/tiimi (id:790).
+- ...
+
+## Semantic review needed (6)
+- Post "Blog post" (id:901) — "Read our case study" → /about. Should this be a specific case, or the main about page?
+- ...
+```
+
+For each item, include: post title + id, the anchor text, the href, and why it's flagged.
+
+## 4. Offer next steps
+
+**Do NOT auto-fix anything.** Offer:
+- "Want me to suggest replacement URLs for the internal dead links?"
+- "Want me to propose corrected language-consistent URLs?" (use the translations tools to find the right target)
+- "Want me to save this audit as a draft report post?"
+- "Should I fix a specific issue now?" (will require approval per fix)
 
 ## Constraints
 
-- Never edit post content without the user reviewing each change individually
-- Don't invent URLs — if a link is broken, say so and ask the user what to replace it with
-- Keep report concise — don't repeat the same broken URL under each post it appears in
+- Don't rewrite post content without per-change approval
+- For semantic-mismatch items, explain your reasoning ("anchor says X, target page is about Y") so the user can judge
+- Never invent replacement URLs — only suggest pages that actually exist (verified via gds/content-list)
+- If the site has >100 posts, suggest running the audit in batches by post type or date range — don't try to reason about 500 posts at once
 PROMPT;
     }
 
