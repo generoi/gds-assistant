@@ -55,11 +55,14 @@ class McpAuthEndpoint
         register_rest_route('gds-assistant/v1', '/mcp/(?P<name>[a-z0-9_]+)/callback', [
             'methods' => \WP_REST_Server::READABLE,
             'callback' => [$this, 'callback'],
-            // State param + pending-transient lookup binds the callback to
-            // the user that started the flow. We still require a logged-in
-            // admin here — the OAuth provider redirects back within the same
-            // browser session, so this should always be satisfied.
-            'permission_callback' => fn () => current_user_can('manage_options'),
+            // OAuth callback is a top-level browser redirect from the
+            // upstream provider (Asana etc.). WP REST's standard cookie
+            // auth requires an X-WP-Nonce header which a cross-site
+            // navigation can't carry, so current_user_can returns false
+            // even for logged-in admins. Authenticate via the logged-in
+            // cookie directly — CSRF is covered by the OAuth `state`
+            // parameter (bound to user_id in the pending transient).
+            'permission_callback' => [$this, 'callbackPermission'],
             'args' => [
                 'name' => ['required' => true, 'sanitize_callback' => 'sanitize_key'],
             ],
@@ -238,6 +241,29 @@ class McpAuthEndpoint
         return new \WP_REST_Response(['authorization_url' => $url]);
     }
 
+    /**
+     * Permission callback for the OAuth return URL. Uses
+     * wp_validate_auth_cookie directly so we skip WP REST's mandatory
+     * X-WP-Nonce check — a top-level browser redirect from the upstream
+     * OAuth provider can't carry a nonce, so the standard cookie+nonce
+     * check fails and current_user_can() returns false for an otherwise-
+     * logged-in admin.
+     *
+     * CSRF safety: the OAuth `state` parameter is bound to the user_id
+     * in the pending transient (OAuthAuth::startAuthorization). The
+     * callback handler refuses to exchange a code when the state's
+     * user_id doesn't match the cookie-resolved user_id.
+     */
+    public function callbackPermission(): bool
+    {
+        $userId = wp_validate_auth_cookie('', 'logged_in');
+        if (! $userId) {
+            return false;
+        }
+
+        return user_can($userId, 'manage_options');
+    }
+
     public function callback(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
     {
         $server = ServerRegistry::get($request['name']);
@@ -259,7 +285,13 @@ class McpAuthEndpoint
             return new \WP_Error('bad_request', 'Missing code or state', ['status' => 400]);
         }
 
-        $userId = get_current_user_id();
+        // Resolve the user via the logged-in cookie rather than
+        // get_current_user_id(), which may return 0 here because REST's
+        // cookie auth path bailed out on the missing nonce.
+        $userId = (int) wp_validate_auth_cookie('', 'logged_in');
+        if (! $userId) {
+            $userId = get_current_user_id();
+        }
         $auth = new OAuthAuth($server, $userId);
         $result = $auth->completeAuthorization($code, $state);
         if (is_wp_error($result)) {
