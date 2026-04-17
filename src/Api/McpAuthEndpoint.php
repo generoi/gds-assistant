@@ -22,9 +22,25 @@ class McpAuthEndpoint
     public function register(): void
     {
         register_rest_route('gds-assistant/v1', '/mcp/servers', [
-            'methods' => \WP_REST_Server::READABLE,
-            'callback' => [$this, 'listServers'],
+            [
+                'methods' => \WP_REST_Server::READABLE,
+                'callback' => [$this, 'listServers'],
+                'permission_callback' => fn () => current_user_can('manage_options'),
+            ],
+            [
+                'methods' => \WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'createServer'],
+                'permission_callback' => fn () => current_user_can('manage_options'),
+            ],
+        ]);
+
+        register_rest_route('gds-assistant/v1', '/mcp/servers/(?P<name>[a-z0-9_]+)', [
+            'methods' => \WP_REST_Server::DELETABLE,
+            'callback' => [$this, 'deleteServer'],
             'permission_callback' => fn () => current_user_can('manage_options'),
+            'args' => [
+                'name' => ['required' => true, 'sanitize_callback' => 'sanitize_key'],
+            ],
         ]);
 
         register_rest_route('gds-assistant/v1', '/mcp/(?P<name>[a-z0-9_]+)/connect', [
@@ -67,14 +83,35 @@ class McpAuthEndpoint
     {
         $userId = get_current_user_id();
         $out = [];
-        foreach (ServerRegistry::all() as $server) {
+
+        // Synthetic built-in entry so admins see the local gds-mcp tools
+        // alongside remote ones. Read-only, no connect needed.
+        if (defined('GDS_MCP_VERSION') || function_exists('gds_mcp_init') || self::gdsMcpActive()) {
+            $out[] = [
+                'id' => 'gds-mcp',
+                'name' => 'gds-mcp',
+                'label' => 'GDS MCP (built-in)',
+                'url' => home_url(),
+                'auth_type' => 'none',
+                'enabled' => true,
+                'connected' => true,
+                'requires_oauth' => false,
+                'callback_url' => null,
+                'origin' => 'builtin',
+                'deletable' => false,
+            ];
+        }
+
+        foreach (ServerRegistry::entries() as $entry) {
+            $server = $entry['config'];
+            $origin = $entry['origin'];
             $authType = $server->authType();
             $connected = $authType === 'oauth'
                 ? TokenStore::userHasToken($server->name, $userId)
                 : true;
 
             $out[] = [
-                'id' => $server->name, // DataViews needs a stable id field
+                'id' => $server->name,
                 'name' => $server->name,
                 'label' => $server->displayLabel(),
                 'url' => $server->url,
@@ -83,10 +120,85 @@ class McpAuthEndpoint
                 'connected' => $connected,
                 'requires_oauth' => $authType === 'oauth',
                 'callback_url' => $authType === 'oauth' ? self::callbackUrl($server->name) : null,
+                'origin' => $origin,
+                'deletable' => $origin === 'admin',
             ];
         }
 
         return new \WP_REST_Response($out);
+    }
+
+    /**
+     * POST /mcp/servers — add a server via the admin UI. Body:
+     *   name, url, label?, auth: {type, scopes?, env?, token?}
+     */
+    public function createServer(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $name = sanitize_key((string) $request->get_param('name'));
+        $url = esc_url_raw((string) $request->get_param('url'));
+        $label = $request->get_param('label');
+        $label = is_string($label) ? sanitize_text_field($label) : null;
+        $authParam = $request->get_param('auth');
+        $auth = is_array($authParam) ? $authParam : ['type' => 'none'];
+
+        // Only whitelist expected keys in the auth array.
+        $auth = array_intersect_key($auth, array_flip(['type', 'scopes', 'env', 'token', 'client_id', 'client_secret']));
+        if (! empty($auth['type'])) {
+            $auth['type'] = sanitize_key((string) $auth['type']);
+        }
+        if (! empty($auth['env'])) {
+            $auth['env'] = preg_replace('/[^A-Z0-9_]/', '', strtoupper((string) $auth['env']));
+        }
+        if (isset($auth['scopes']) && is_array($auth['scopes'])) {
+            $auth['scopes'] = array_values(array_filter(array_map('sanitize_text_field', $auth['scopes'])));
+        }
+
+        $result = ServerRegistry::upsertAdminServer($name, [
+            'url' => $url,
+            'label' => $label,
+            'auth' => $auth,
+        ]);
+        if (is_wp_error($result)) {
+            $result->add_data(['status' => 400]);
+
+            return $result;
+        }
+
+        return new \WP_REST_Response(['created' => true, 'name' => $name], 201);
+    }
+
+    /**
+     * DELETE /mcp/servers/{name} — remove an admin-added server. Can't
+     * delete filter/env-configured servers — those are owned by code.
+     */
+    public function deleteServer(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $name = $request['name'];
+        $userId = get_current_user_id();
+
+        // Also drop this user's tokens for the server, so the disconnect
+        // is complete rather than leaving orphan meta.
+        TokenStore::deleteUserTokens($name, $userId);
+        self::clearToolsCache($name, $userId);
+
+        $result = ServerRegistry::deleteAdminServer($name);
+        if (is_wp_error($result)) {
+            $result->add_data(['status' => $result->get_error_code() === 'not_found' ? 404 : 400]);
+
+            return $result;
+        }
+
+        return new \WP_REST_Response(['deleted' => true]);
+    }
+
+    /** Best-effort check that the gds-mcp plugin is active. */
+    private static function gdsMcpActive(): bool
+    {
+        if (! function_exists('is_plugin_active')) {
+            require_once ABSPATH.'wp-admin/includes/plugin.php';
+        }
+
+        return is_plugin_active('gds-mcp/gds-mcp.php');
     }
 
     public function connect(\WP_REST_Request $request): \WP_REST_Response|\WP_Error

@@ -1,21 +1,30 @@
 import {DataViews} from '@wordpress/dataviews';
 import {useState, useEffect, useCallback} from '@wordpress/element';
 import {__} from '@wordpress/i18n';
-import {Button, Notice} from '@wordpress/components';
+import {
+  Button,
+  Notice,
+  Modal,
+  TextControl,
+  SelectControl,
+} from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 
 /**
- * List + connect/disconnect UI for remote MCP servers.
+ * List + connect/disconnect + add/delete UI for MCP servers.
  *
- * Server list is read-only (configured via the `gds-assistant/mcp_servers`
- * PHP filter or `GDS_ASSISTANT_MCP_SERVERS` env var). This view is for
- * managing per-user OAuth connections to those servers.
+ * Servers come from three sources, displayed via an origin badge:
+ *   - builtin: gds-mcp local abilities (read-only placeholder row)
+ *   - code: declared via `gds-assistant/mcp_servers` filter or env var
+ *   - admin: added through this UI, persisted to wp_options
+ * Only `admin`-origin servers can be edited or deleted from the UI.
  */
 export function McpServersDataView() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [notice, setNotice] = useState(() => readInitialNotice());
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,12 +87,47 @@ export function McpServersDataView() {
     [load],
   );
 
+  const remove = useCallback(
+    async (name) => {
+      // eslint-disable-next-line no-alert
+      if (
+        !window.confirm(
+          __(
+            'Delete this MCP server and any stored tokens for it?',
+            'gds-assistant',
+          ),
+        )
+      ) {
+        return;
+      }
+      setBusy(name);
+      try {
+        await apiFetch({
+          path: `/gds-assistant/v1/mcp/servers/${name}`,
+          method: 'DELETE',
+        });
+        setNotice({type: 'success', text: __('Removed.', 'gds-assistant')});
+        load();
+      } catch (e) {
+        setNotice({type: 'error', text: e.message || 'Delete failed'});
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
   const fields = [
     {
       id: 'label',
       label: __('Server', 'gds-assistant'),
       enableGlobalSearch: true,
-      render: ({item}) => <strong>{item.label}</strong>,
+      render: ({item}) => (
+        <span>
+          <strong>{item.label}</strong>{' '}
+          <OriginBadge origin={item.origin} />
+        </span>
+      ),
     },
     {
       id: 'url',
@@ -123,31 +167,44 @@ export function McpServersDataView() {
       id: 'actions',
       label: __('Actions', 'gds-assistant'),
       enableSorting: false,
-      render: ({item}) => {
-        if (!item.requires_oauth) {
-          return <span style={{color: '#999'}}>—</span>;
-        }
-        return item.connected ? (
-          <Button
-            variant="link"
-            isDestructive
-            disabled={busy === item.name}
-            onClick={() => disconnect(item.name)}
-          >
-            {__('Disconnect', 'gds-assistant')}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            disabled={busy === item.name}
-            onClick={() => connect(item.name)}
-          >
-            {busy === item.name
-              ? __('Connecting…', 'gds-assistant')
-              : __('Connect', 'gds-assistant')}
-          </Button>
-        );
-      },
+      render: ({item}) => (
+        <div style={{display: 'flex', gap: 8}}>
+          {item.requires_oauth && !item.connected && (
+            <Button
+              variant="primary"
+              disabled={busy === item.name}
+              onClick={() => connect(item.name)}
+            >
+              {busy === item.name
+                ? __('Connecting…', 'gds-assistant')
+                : __('Connect', 'gds-assistant')}
+            </Button>
+          )}
+          {item.requires_oauth && item.connected && (
+            <Button
+              variant="link"
+              isDestructive
+              disabled={busy === item.name}
+              onClick={() => disconnect(item.name)}
+            >
+              {__('Disconnect', 'gds-assistant')}
+            </Button>
+          )}
+          {item.deletable && (
+            <Button
+              variant="link"
+              isDestructive
+              disabled={busy === item.name}
+              onClick={() => remove(item.name)}
+            >
+              {__('Delete', 'gds-assistant')}
+            </Button>
+          )}
+          {!item.requires_oauth && !item.deletable && (
+            <span style={{color: '#999'}}>—</span>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -159,12 +216,25 @@ export function McpServersDataView() {
 
   return (
     <>
-      <p className="description" style={{marginBottom: 16}}>
-        {__(
-          'Remote MCP servers whose tools are available in the assistant. Configure servers via the gds-assistant/mcp_servers filter or GDS_ASSISTANT_MCP_SERVERS env var. OAuth connections are per-user.',
-          'gds-assistant',
-        )}
-      </p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          marginBottom: 16,
+          gap: 16,
+        }}
+      >
+        <p className="description" style={{flex: 1, margin: 0}}>
+          {__(
+            'Remote MCP servers whose tools are available in the assistant. Add via this UI, or configure in code via the gds-assistant/mcp_servers filter or GDS_ASSISTANT_MCP_SERVERS env var. OAuth connections are per-user.',
+            'gds-assistant',
+          )}
+        </p>
+        <Button variant="primary" onClick={() => setShowAddModal(true)}>
+          {__('Add MCP Server', 'gds-assistant')}
+        </Button>
+      </div>
 
       {notice && (
         <Notice
@@ -181,7 +251,7 @@ export function McpServersDataView() {
       ) : servers.length === 0 ? (
         <Notice status="info" isDismissible={false}>
           {__(
-            'No MCP servers configured yet. Add some via the gds-assistant/mcp_servers filter.',
+            'No MCP servers yet. Click "Add MCP Server" above to configure one (e.g. Asana at https://mcp.asana.com/sse with OAuth).',
             'gds-assistant',
           )}
         </Notice>
@@ -198,7 +268,195 @@ export function McpServersDataView() {
           actions={[]}
         />
       )}
+
+      {showAddModal && (
+        <AddServerModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={() => {
+            setShowAddModal(false);
+            setNotice({
+              type: 'success',
+              text: __('Server added.', 'gds-assistant'),
+            });
+            load();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function OriginBadge({origin}) {
+  if (!origin || origin === 'admin') return null;
+  const label =
+    origin === 'code'
+      ? __('code', 'gds-assistant')
+      : origin === 'env'
+        ? __('env', 'gds-assistant')
+        : origin === 'builtin'
+          ? __('built-in', 'gds-assistant')
+          : origin;
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        padding: '1px 6px',
+        borderRadius: 3,
+        background: '#eee',
+        color: '#555',
+        marginLeft: 6,
+        verticalAlign: 'middle',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+      }}
+      title={__(
+        'This server is configured outside the UI and can\'t be edited here.',
+        'gds-assistant',
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function AddServerModal({onClose, onSaved}) {
+  const [name, setName] = useState('');
+  const [label, setLabel] = useState('');
+  const [url, setUrl] = useState('');
+  const [authType, setAuthType] = useState('oauth');
+  const [scopes, setScopes] = useState('');
+  const [envName, setEnvName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const save = async () => {
+    setError(null);
+    if (!name || !url) {
+      setError(__('Name and URL are required.', 'gds-assistant'));
+      return;
+    }
+    const auth = {type: authType};
+    if (authType === 'oauth' && scopes.trim()) {
+      auth.scopes = scopes
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    if (authType === 'bearer') {
+      if (!envName) {
+        setError(
+          __('Env var name is required for bearer auth.', 'gds-assistant'),
+        );
+        return;
+      }
+      auth.env = envName;
+    }
+
+    setSaving(true);
+    try {
+      await apiFetch({
+        path: '/gds-assistant/v1/mcp/servers',
+        method: 'POST',
+        data: {name, label: label || null, url, auth},
+      });
+      onSaved();
+    } catch (e) {
+      setError(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={__('Add MCP Server', 'gds-assistant')}
+      onRequestClose={onClose}
+      style={{maxWidth: 600}}
+    >
+      {error && (
+        <Notice status="error" isDismissible={false}>
+          {error}
+        </Notice>
+      )}
+      <TextControl
+        label={__('Name (slug)', 'gds-assistant')}
+        help={__(
+          'Lowercase identifier used internally. Example: "asana" or "jira".',
+          'gds-assistant',
+        )}
+        value={name}
+        onChange={(v) => setName(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+      />
+      <TextControl
+        label={__('Label (optional)', 'gds-assistant')}
+        help={__(
+          'Human-readable display name. Defaults to the capitalized slug.',
+          'gds-assistant',
+        )}
+        value={label}
+        onChange={setLabel}
+      />
+      <TextControl
+        label={__('URL', 'gds-assistant')}
+        help={__(
+          'MCP server endpoint (SSE or HTTP). Example: https://mcp.asana.com/sse',
+          'gds-assistant',
+        )}
+        value={url}
+        onChange={setUrl}
+        type="url"
+      />
+      <SelectControl
+        label={__('Authentication', 'gds-assistant')}
+        value={authType}
+        options={[
+          {value: 'none', label: __('None (public)', 'gds-assistant')},
+          {
+            value: 'oauth',
+            label: __('OAuth 2.1 + PKCE', 'gds-assistant'),
+          },
+          {
+            value: 'bearer',
+            label: __('Bearer token (static)', 'gds-assistant'),
+          },
+        ]}
+        onChange={setAuthType}
+      />
+      {authType === 'oauth' && (
+        <TextControl
+          label={__('OAuth scopes (optional)', 'gds-assistant')}
+          help={__(
+            'Space or comma-separated list of scopes to request. Leave empty to use the server\'s default.',
+            'gds-assistant',
+          )}
+          value={scopes}
+          onChange={setScopes}
+          placeholder="default"
+        />
+      )}
+      {authType === 'bearer' && (
+        <TextControl
+          label={__('Env var name', 'gds-assistant')}
+          help={__(
+            'Name of the environment variable holding the bearer token. Set it in .env — it\'s never stored in the database.',
+            'gds-assistant',
+          )}
+          value={envName}
+          onChange={(v) => setEnvName(v.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+          placeholder="INTERNAL_MCP_TOKEN"
+        />
+      )}
+      <div style={{display: 'flex', gap: 8, marginTop: 16}}>
+        <Button variant="primary" onClick={save} disabled={saving}>
+          {saving
+            ? __('Saving…', 'gds-assistant')
+            : __('Save', 'gds-assistant')}
+        </Button>
+        <Button variant="tertiary" onClick={onClose}>
+          {__('Cancel', 'gds-assistant')}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
