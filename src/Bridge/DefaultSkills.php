@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 1;
+    private const VERSION = 2;
 
     public static function maybeInstall(): void
     {
@@ -32,29 +32,65 @@ class DefaultSkills
         update_option(self::VERSION_OPTION, self::VERSION);
     }
 
+    /**
+     * Meta key storing the hash of the bundled prompt we installed. Used
+     * to detect whether the user has customized the skill — if the stored
+     * content still hashes to what we installed, it's safe to update; if
+     * it doesn't, the user edited it and we leave it alone.
+     */
+    private const BUNDLED_HASH_META = '_assistant_bundled_hash';
+
     private static function installSkill(array $skill): void
     {
-        // Skip if a skill with this slug already exists — preserves
-        // user customizations across upgrades.
+        $newHash = md5($skill['prompt']);
+
         $existing = get_posts([
             'post_type' => 'assistant_skill',
             'post_status' => 'any',
             'name' => $skill['slug'],
             'numberposts' => 1,
-            'fields' => 'ids',
         ]);
-        if (! empty($existing)) {
+
+        if (empty($existing)) {
+            $postId = wp_insert_post([
+                'post_type' => 'assistant_skill',
+                'post_title' => $skill['title'],
+                'post_name' => $skill['slug'],
+                'post_content' => $skill['prompt'],
+                'post_excerpt' => $skill['description'],
+                'post_status' => 'publish',
+            ]);
+            if ($postId && ! is_wp_error($postId)) {
+                update_post_meta($postId, self::BUNDLED_HASH_META, $newHash);
+            }
+
             return;
         }
 
-        wp_insert_post([
-            'post_type' => 'assistant_skill',
+        // Skill exists. Only update if the current content matches the
+        // hash we installed originally — i.e. user hasn't touched it.
+        // Otherwise we'd clobber their customizations.
+        $post = $existing[0];
+        $installedHash = (string) get_post_meta($post->ID, self::BUNDLED_HASH_META, true);
+        $currentHash = md5($post->post_content);
+
+        if ($installedHash === '' || $installedHash !== $currentHash) {
+            // Either never tracked (pre-meta install) or user-edited — leave it.
+            return;
+        }
+
+        if ($installedHash === $newHash) {
+            // Already up to date.
+            return;
+        }
+
+        wp_update_post([
+            'ID' => $post->ID,
             'post_title' => $skill['title'],
-            'post_name' => $skill['slug'],
             'post_content' => $skill['prompt'],
             'post_excerpt' => $skill['description'],
-            'post_status' => 'publish',
         ]);
+        update_post_meta($post->ID, self::BUNDLED_HASH_META, $newHash);
     }
 
     /**
@@ -220,11 +256,11 @@ If translations were requested, use `gds/translations-create` to link them — c
 
 ## Constraints
 
-- **Never invent factual content** — company names, statistics, testimonials, product specs, prices, dates. Ask the user or copy from reference posts.
-- **Never publish without explicit "publish it" from the user.** Always draft first.
-- **Mirror, don't clone** — match the structure and style, but the content should be new and relevant to the topic at hand.
+- **Mark invented facts clearly.** Plausible placeholder content is fine for drafts (client names, statistics, testimonials, quotes, prices, dates) as long as you wrap each placeholder in `[brackets]` or prefix with `TODO:`. Never present invented facts as real — the reviewer needs to see at a glance which parts need human verification before publish. Example: "Served [15+ Nordic retailers]" or "TODO: insert real client quote here".
+- **Never publish without explicit "publish it" from the user.** Always draft first. If any `[brackets]` / `TODO:` markers remain, remind the user to fill them in before publishing.
+- **Mirror, don't clone** — match the structure and style, but the body content should be new and relevant to the topic at hand.
 - **Match the voice of existing content.** Formal vs. casual, first vs. third person — infer from the references and stay consistent.
-- **Flag gaps.** If a reference post has a testimonial but you don't have one for the new topic, ask the user — don't fabricate.
+- **Ask first when the gap is structural.** If a reference post has a "Client quote" section and this is a real client engagement, ask for the quote. If it's a demo / fictional topic, use `[placeholder quote]` and continue.
 - Create ONE draft first. If the user wants variations, generate them AFTER seeing the first one.
 PROMPT;
     }
