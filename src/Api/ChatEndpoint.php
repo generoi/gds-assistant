@@ -592,6 +592,7 @@ class ChatEndpoint
         //      message" for an assistant tool_use.
         //   2. Then patch dangling tool_uses — any now-unpaired tool_use
         //      gets a synthetic skipped-result user message injected.
+        $messages = self::stripServerToolBlocks($messages);
         $messages = self::stripEmptyTextBlocks($messages);
         $messages = self::dropEmptyContentMessages($messages);
         $messages = self::patchDanglingToolUses($messages);
@@ -636,6 +637,34 @@ class ChatEndpoint
 
             return false;
         }));
+    }
+
+    /**
+     * Strip Anthropic server-tool blocks (web_search, code_execution, etc.)
+     * from stored history. These are ephemeral server-side tools whose
+     * names are validated strictly — replaying them after context compression
+     * or provider switches causes 400 errors.
+     */
+    private static function stripServerToolBlocks(array $messages): array
+    {
+        $serverTypes = ['server_tool_use', 'web_search_tool_result', 'advisor_tool_use', 'advisor_tool_result'];
+
+        return array_map(function ($msg) use ($serverTypes) {
+            $content = $msg['content'] ?? null;
+            if (! is_array($content)) {
+                return $msg;
+            }
+
+            $msg['content'] = array_values(array_filter($content, function ($block) use ($serverTypes) {
+                if (! is_array($block)) {
+                    return true;
+                }
+
+                return ! in_array($block['type'] ?? '', $serverTypes, true);
+            }));
+
+            return $msg;
+        }, $messages);
     }
 
     /**
