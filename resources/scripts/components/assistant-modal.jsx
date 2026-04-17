@@ -203,8 +203,10 @@ export function AssistantModal({
     }
     const pos = getStoredPanelPosition();
     if (pos) {
-      node.style.setProperty('--gds-panel-top', `${pos.top}px`);
-      node.style.setProperty('--gds-panel-left', `${pos.left}px`);
+      // applyPanelPosition sets CSS vars AND tags the wrapper — critical
+      // because without the wrapper tag its transform forwards the
+      // position: fixed panel off-screen on page reload.
+      applyPanelPosition(node, pos.top, pos.left);
     }
   }, []);
 
