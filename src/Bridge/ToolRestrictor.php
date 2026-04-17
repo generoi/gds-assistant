@@ -32,7 +32,20 @@ class ToolRestrictor
         return array_values(array_filter($tools, function (array $tool) use ($allowedRisks) {
             $risk = self::classifyRisk($tool);
 
-            return in_array($risk, $allowedRisks, true);
+            if (in_array($risk, $allowedRisks, true)) {
+                return true;
+            }
+
+            // Approval-gated exception: tools with [DESTRUCTIVE] in their
+            // description require user approval for every call, so the user
+            // (not the model) decides whether the call fires. That makes
+            // them safe on any tier — a cheap model can't do damage
+            // silently. Web-fetch and mail-send live here.
+            if (str_starts_with((string) ($tool['description'] ?? ''), '[DESTRUCTIVE]')) {
+                return true;
+            }
+
+            return false;
         }));
     }
 
