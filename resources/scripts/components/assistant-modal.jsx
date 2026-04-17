@@ -108,6 +108,33 @@ function getStoredPanelSize() {
 }
 
 /**
+ * Override Radix's floating-ui transform positioning with our absolute
+ * top/left. Radix re-applies its transform on every render, so we also
+ * add a class that carries a CSS !important override to keep it from
+ * snapping back to the anchor point.
+ */
+function applyPanelPosition(node, top, left) {
+  if (!node) return;
+  node.classList.add('gds-assistant__panel--moved');
+  node.style.top = `${top}px`;
+  node.style.left = `${left}px`;
+  node.style.bottom = 'auto';
+  node.style.right = 'auto';
+  // Radix uses transform for positioning; clear it so our top/left win.
+  node.style.transform = 'none';
+}
+
+function clearPanelPosition(node) {
+  if (!node) return;
+  node.classList.remove('gds-assistant__panel--moved');
+  node.style.top = '';
+  node.style.left = '';
+  node.style.bottom = '';
+  node.style.right = '';
+  node.style.transform = '';
+}
+
+/**
  * Read persisted panel position (top/left in px). Returns null to keep
  * the CSS default (bottom-right anchored). Clamps to keep the panel
  * on-screen after window resizes / monitor changes.
@@ -157,11 +184,7 @@ export function AssistantModal({
     }
     const pos = getStoredPanelPosition();
     if (pos) {
-      // Switch from bottom-right anchoring to top-left positioning.
-      node.style.top = `${pos.top}px`;
-      node.style.left = `${pos.left}px`;
-      node.style.bottom = 'auto';
-      node.style.right = 'auto';
+      applyPanelPosition(node, pos.top, pos.left);
     }
   }, []);
 
@@ -188,10 +211,7 @@ export function AssistantModal({
       const maxTop = window.innerHeight - 40;
       const left = Math.max(0, Math.min(maxLeft, ev.clientX - offsetX));
       const top = Math.max(0, Math.min(maxTop, ev.clientY - offsetY));
-      panel.style.top = `${top}px`;
-      panel.style.left = `${left}px`;
-      panel.style.bottom = 'auto';
-      panel.style.right = 'auto';
+      applyPanelPosition(panel, top, left);
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
@@ -217,13 +237,12 @@ export function AssistantModal({
     try {
       localStorage.removeItem('gds-assistant-panel-position');
       localStorage.removeItem('gds-assistant-panel-size');
-    } catch {}
+    } catch {
+      // noop
+    }
     const panel = panelRef.current;
     if (panel) {
-      panel.style.top = '';
-      panel.style.left = '';
-      panel.style.bottom = '';
-      panel.style.right = '';
+      clearPanelPosition(panel);
       panel.style.width = '';
       panel.style.height = '';
     }
