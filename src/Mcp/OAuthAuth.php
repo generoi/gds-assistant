@@ -136,16 +136,21 @@ class OAuthAuth implements AuthStrategyInterface
      */
     public function completeAuthorization(string $code, string $state): bool|\WP_Error
     {
-        $pending = get_transient($this->pendingTransientKey($state));
+        $transientKey = $this->pendingTransientKey($state);
+        $pending = get_transient($transientKey);
         if (! is_array($pending) || empty($pending['code_verifier'])) {
             return new \WP_Error('oauth_state_invalid', 'OAuth state missing or expired — retry from the connect button.');
         }
         // Bind the pending record to the user that started the flow. Stops
         // user A's in-flight state being completed by a request from user B.
+        // ALWAYS consume the transient, even on user-mismatch: a stale or
+        // attacker-replayed state shouldn't remain exchangeable.
         if ((int) ($pending['user_id'] ?? 0) !== $this->userId) {
+            delete_transient($transientKey);
+
             return new \WP_Error('oauth_state_user_mismatch', 'OAuth callback did not match the user that initiated the flow.');
         }
-        delete_transient($this->pendingTransientKey($state));
+        delete_transient($transientKey);
 
         $meta = $this->getAuthorizationServerMetadata();
         if (is_wp_error($meta)) {
@@ -162,7 +167,9 @@ class OAuthAuth implements AuthStrategyInterface
         if (! empty($serverMeta['client_id'])) {
             $body['client_id'] = $serverMeta['client_id'];
         }
-        if (! empty($serverMeta['client_secret'])) {
+        // Only send client_secret for confidential clients — not for the
+        // public clients created via dynamic registration.
+        if (! empty($serverMeta['client_secret']) && empty($serverMeta['dcr_registered'])) {
             $body['client_secret'] = $serverMeta['client_secret'];
         }
 
@@ -327,46 +334,95 @@ class OAuthAuth implements AuthStrategyInterface
             return new \WP_Error('oauth_registration_invalid', 'Registration response missing client_id');
         }
 
+        // We register as a public client (token_endpoint_auth_method: 'none'),
+        // so ignore any client_secret the server returns. Sending it on
+        // subsequent requests would contradict the registered auth method
+        // and some servers reject the token exchange for this inconsistency.
         TokenStore::mergeServerMeta($this->server->name, [
             'client_id' => $data['client_id'],
-            'client_secret' => $data['client_secret'] ?? null,
+            'client_secret' => null,
+            'dcr_registered' => true,
         ]);
 
         return [
             'client_id' => $data['client_id'],
-            'client_secret' => $data['client_secret'] ?? null,
+            'client_secret' => null,
         ];
     }
 
     private function refreshAccessToken(): ?string
     {
-        $tokens = TokenStore::getUserTokens($this->server->name, $this->userId);
-        $serverMeta = TokenStore::getServerMeta($this->server->name);
-        if (empty($tokens['refresh_token']) || empty($serverMeta['token_endpoint'])) {
-            return null;
+        // Concurrency guard: two parallel tool calls can both see an expired
+        // token and try to refresh, and for servers that rotate refresh
+        // tokens (OAuth 2.1 requires this for public clients) the second
+        // refresh invalidates the first — causing silent disconnects. Take a
+        // short lock; if we can't get it, another request is refreshing now
+        // and we re-read the stored token.
+        $lockKey = $this->refreshLockKey();
+        $waited = 0;
+        while (get_transient($lockKey) !== false) {
+            if ($waited >= 30) {
+                // Give up waiting; fall through to our own attempt.
+                break;
+            }
+            usleep(200_000); // 0.2s
+            $waited += 1;
+
+            // If someone else refreshed while we waited, use their result.
+            $fresh = TokenStore::getUserTokens($this->server->name, $this->userId);
+            if (! empty($fresh['access_token']) && (int) ($fresh['expires_at'] ?? 0) - self::REFRESH_MARGIN > time()) {
+                return $fresh['access_token'];
+            }
         }
+        set_transient($lockKey, 1, 30);
 
-        $body = [
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $tokens['refresh_token'],
-        ];
-        if (! empty($serverMeta['client_id'])) {
-            $body['client_id'] = $serverMeta['client_id'];
+        try {
+            // Re-read after acquiring the lock in case another process already
+            // refreshed and wrote a new token.
+            $tokens = TokenStore::getUserTokens($this->server->name, $this->userId);
+            if (! empty($tokens['access_token']) && (int) ($tokens['expires_at'] ?? 0) - self::REFRESH_MARGIN > time()) {
+                return $tokens['access_token'];
+            }
+
+            $serverMeta = TokenStore::getServerMeta($this->server->name);
+            if (empty($tokens['refresh_token']) || empty($serverMeta['token_endpoint'])) {
+                return null;
+            }
+
+            $body = [
+                'grant_type' => 'refresh_token',
+                'refresh_token' => $tokens['refresh_token'],
+            ];
+            if (! empty($serverMeta['client_id'])) {
+                $body['client_id'] = $serverMeta['client_id'];
+            }
+            // client_secret is only sent for confidential clients. DCR uses
+            // token_endpoint_auth_method: 'none', so we skip it for
+            // dynamically-registered clients even if the server returned one.
+            if (! empty($serverMeta['client_secret']) && empty($serverMeta['dcr_registered'])) {
+                $body['client_secret'] = $serverMeta['client_secret'];
+            }
+
+            $result = $this->postTokenEndpoint($serverMeta['token_endpoint'], $body);
+            if (is_wp_error($result)) {
+                // Log the error code only — some providers echo the (rejected)
+                // token in the error body, which we don't want in logs.
+                error_log("[gds-assistant] MCP OAuth refresh failed for {$this->server->name} user {$this->userId}: ".$result->get_error_code());
+
+                return null;
+            }
+
+            $this->persistTokenResponse($result);
+
+            return $result['access_token'] ?? null;
+        } finally {
+            delete_transient($lockKey);
         }
-        if (! empty($serverMeta['client_secret'])) {
-            $body['client_secret'] = $serverMeta['client_secret'];
-        }
+    }
 
-        $result = $this->postTokenEndpoint($serverMeta['token_endpoint'], $body);
-        if (is_wp_error($result)) {
-            error_log("[gds-assistant] MCP OAuth refresh failed for {$this->server->name} user {$this->userId}: {$result->get_error_message()}");
-
-            return null;
-        }
-
-        $this->persistTokenResponse($result);
-
-        return $result['access_token'] ?? null;
+    private function refreshLockKey(): string
+    {
+        return 'gds_assistant_mcp_refresh_'.$this->server->name.'_'.$this->userId;
     }
 
     private function postTokenEndpoint(string $url, array $body): array|\WP_Error
