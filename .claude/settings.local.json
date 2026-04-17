@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php bin/list-models.php anthropic)",
+      "Bash(php bin/list-models.php)",
+      "Bash(php:*)",
+      "Bash(docker ps:*)"
+    ]
+  }
+}
