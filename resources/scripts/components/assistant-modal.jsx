@@ -609,7 +609,7 @@ function Thread({
         />
       )}
 
-      {showSkills && <SkillsList />}
+      {showSkills && <SkillsList onUsed={() => setShowSkills(false)} />}
 
       {showHistory && (
         <ConversationList
@@ -775,7 +775,7 @@ function relativeTime(dateStr) {
 
 // ── Skills list panel ────────────────────────────────────────
 
-function SkillsList() {
+function SkillsList({onUsed}) {
   const [skills, setSkills] = useState(getSkills);
   const threadRuntime = useThreadRuntime();
 
@@ -793,8 +793,9 @@ function SkillsList() {
         role: 'user',
         content: [{type: 'text', text: skill.prompt}],
       });
+      onUsed?.();
     },
-    [threadRuntime],
+    [threadRuntime, onUsed],
   );
 
   if (!skills.length) {

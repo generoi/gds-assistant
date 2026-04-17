@@ -19,34 +19,50 @@ class ToolRestrictor
      */
     public static function filter(array $tools, string $tier): array
     {
-        if ($tier === 'full') {
-            return $tools;
-        }
-
         $allowedRisks = match ($tier) {
             'read' => ['safe'],
             'standard' => ['safe', 'moderate'],
-            default => ['safe', 'moderate'],
+            default => ['safe', 'moderate', 'dangerous'],
         };
 
-        return array_values(array_filter($tools, function (array $tool) use ($allowedRisks) {
+        $tierRank = ['read' => 1, 'standard' => 2, 'full' => 3];
+        $currentRank = $tierRank[$tier] ?? 2;
+
+        $filtered = [];
+        foreach ($tools as $tool) {
+            // Per-tool minimum tier (e.g. mail-send requires standard+). Weak
+            // models reliably fail to follow complex multi-step prompts — we
+            // hide the tool so those models don't produce bad output.
+            $minTier = $tool['min_tier'] ?? null;
+            if ($minTier && ($tierRank[$minTier] ?? 0) > $currentRank) {
+                continue;
+            }
+
+            // min_tier is an internal flag — don't leak it to the LLM payload.
+            unset($tool['min_tier']);
+
+            if ($tier === 'full') {
+                $filtered[] = $tool;
+
+                continue;
+            }
+
             $risk = self::classifyRisk($tool);
-
             if (in_array($risk, $allowedRisks, true)) {
-                return true;
+                $filtered[] = $tool;
+
+                continue;
             }
 
-            // Approval-gated exception: tools with [DESTRUCTIVE] in their
-            // description require user approval for every call, so the user
-            // (not the model) decides whether the call fires. That makes
-            // them safe on any tier — a cheap model can't do damage
-            // silently. Web-fetch and mail-send live here.
+            // Approval-gated exception: [DESTRUCTIVE] tools require user
+            // approval on every call, so the user (not the model) gates
+            // execution. That makes them safe on any tier.
             if (str_starts_with((string) ($tool['description'] ?? ''), '[DESTRUCTIVE]')) {
-                return true;
+                $filtered[] = $tool;
             }
+        }
 
-            return false;
-        }));
+        return array_values($filtered);
     }
 
     /**

@@ -63,11 +63,20 @@ class AbilitiesToolProvider implements ToolProviderInterface
                 $inputSchema['properties'] = (object) [];
             }
 
-            $this->toolCache[] = [
+            $entry = [
                 'name' => self::toToolName($name),
                 'description' => $description,
                 'input_schema' => $inputSchema,
             ];
+
+            // Pass through `min_tier` so ToolRestrictor can gate tools that
+            // need solid instruction-following. Not sent to the LLM — used
+            // only by our filtering layer.
+            if (! empty($annotations['min_tier'])) {
+                $entry['min_tier'] = (string) $annotations['min_tier'];
+            }
+
+            $this->toolCache[] = $entry;
         }
 
         return $this->toolCache;

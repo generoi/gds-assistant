@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 4;
+    private const VERSION = 5;
 
     public static function maybeInstall(): void
     {
@@ -346,6 +346,14 @@ Use `gds/mail-send`:
 - `body`: the markdown above (plain text is fine — `html: false`)
 
 The user will see the full email in the approval prompt. Let them approve or deny — do not argue if they deny.
+
+### If gds/mail-send is not available
+
+Some weaker/cheaper models don't have access to `gds/mail-send` (the tool is restricted to standard-tier and above because drafting coherent email requires reliable instruction-following). If you look at your tool list and don't see `gds/mail-send`, DO NOT try to send the report some other way. Instead, tell the user exactly this:
+
+> Bug reporting needs a standard or full tier model so the email draft is reliable. Please switch via the model selector at the bottom of the chat (e.g. Claude Sonnet, GPT-5.4 Mini, or Gemini Flash) and re-run `/report-bug`.
+
+Then stop. Don't fabricate a report or try a workaround.
 
 ## Constraints
 
