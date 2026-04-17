@@ -177,6 +177,14 @@ class ChatEndpoint
 
         try {
             $systemPrompt = SystemPrompt::build();
+
+            // Append per-conversation info AFTER the cached base prompt so
+            // skills (like /report-bug) can reference them. Kept short to
+            // minimize cache-miss cost.
+            $systemPrompt .= "\n\n## This conversation\n";
+            $systemPrompt .= "- Conversation ID: {$conversationId}\n";
+            $systemPrompt .= '- Site admin email: '.get_bloginfo('admin_email')."\n";
+
             $systemContext = trim($request->get_param('system_context') ?? '');
             if ($systemContext) {
                 $systemPrompt .= "\n\nUser context for this chat:\n".$systemContext;
