@@ -310,6 +310,10 @@ class ProviderRegistry
                     ];
                 }
             }
+
+            // Can't build SmartProvider (missing read/full tier) — don't fall
+            // through and create a provider with model id 'auto'.
+            return null;
         }
 
         return [
