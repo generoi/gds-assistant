@@ -64,6 +64,15 @@ class SettingsPage
             'gds-assistant-conversations',
             [$this, 'renderConversationsPage'],
         );
+
+        add_submenu_page(
+            'gds-assistant',
+            __('MCP Servers', 'gds-assistant'),
+            __('MCP Servers', 'gds-assistant'),
+            'manage_options',
+            'gds-assistant-mcp',
+            [$this, 'renderMcpPage'],
+        );
     }
 
     public function registerSettings(): void
@@ -237,6 +246,13 @@ class SettingsPage
     {
         echo '<div class="wrap gds-assistant"><h1>'.__('Conversations', 'gds-assistant').'</h1>';
         echo '<div id="gds-assistant-conversations-dataview"></div>';
+        echo '</div>';
+    }
+
+    public function renderMcpPage(): void
+    {
+        echo '<div class="wrap gds-assistant"><h1>'.__('MCP Servers', 'gds-assistant').'</h1>';
+        echo '<div id="gds-assistant-mcp-dataview"></div>';
         echo '</div>';
     }
 

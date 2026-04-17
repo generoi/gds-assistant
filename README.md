@@ -127,6 +127,54 @@ The `ProviderRegistry` auto-discovers available providers from env vars and expo
 
 Tools are sourced from WordPress Abilities API via `AbilitiesToolProvider`. The `ToolProviderInterface` allows registering additional tool sources. Hook into `gds-assistant/register_tools` to add providers.
 
+### Remote MCP servers
+
+The assistant can pull in tools from external Model Context Protocol servers (e.g. Asana, Figma, in-house MCPs). Each configured server's tools appear in the tool list as `mcp_{server}__{tool}` and route through `McpToolProvider`.
+
+**Configuration** — register servers via the `gds-assistant/mcp_servers` filter or the `GDS_ASSISTANT_MCP_SERVERS` env var (JSON, same shape):
+
+```php
+add_filter('gds-assistant/mcp_servers', function ($servers) {
+    $servers['asana'] = [
+        'url'   => 'https://mcp.asana.com/sse',
+        'label' => 'Asana',
+        'auth'  => ['type' => 'oauth', 'scopes' => ['default']],
+    ];
+
+    $servers['internal'] = [
+        'url'  => 'https://mcp.internal.example/mcp',
+        'auth' => ['type' => 'bearer', 'env' => 'INTERNAL_MCP_TOKEN'],
+    ];
+
+    return $servers;
+});
+```
+
+**Supported auth modes:**
+
+| Type | Config | Notes |
+| --- | --- | --- |
+| `none` | `['type' => 'none']` | Public/unauthenticated MCP |
+| `bearer` | `['type' => 'bearer', 'token' => '...']` or `['env' => 'NAME']` | Static API token |
+| `oauth` | `['type' => 'oauth', 'scopes' => [...], 'client_id' => '...'?, 'client_secret' => '...'?]` | OAuth 2.1 + PKCE. Uses RFC 7591 dynamic client registration when `client_id` is omitted and the server supports it |
+
+**OAuth connect flow:**
+
+1. Configure the server via filter/env
+2. Go to **AI Assistant → Settings** — configured servers appear in the "MCP Servers" section
+3. Click **Connect** → the plugin discovers the auth server (RFC 9728 / RFC 8414), registers a client if needed, and redirects you to the provider's authorize page
+4. After you approve, the callback at `/wp-json/gds-assistant/v1/mcp/{name}/callback` exchanges the code for tokens and stores them. Tokens are refreshed transparently on 401.
+
+Server names must match `[a-z0-9_]+` (used in the tool-name namespace and callback URL).
+
+**Token scope:**
+
+- **OAuth servers** — tokens are per-user. Each admin connects their own upstream account (Asana, Figma, etc.) so tool calls act on behalf of whoever is chatting. Stored in `user_meta` with autoload off.
+- **Bearer servers** — the token comes from config/env, so it's inherently site-wide. All admins share it.
+- **Server metadata** (auth endpoints, DCR `client_id`/`client_secret`) is site-wide in `wp_options` — one registration per WP install, reused across users.
+
+**Encryption at rest:** `access_token`, `refresh_token`, and any DCR-issued `client_secret` are encrypted with AES-256-GCM keyed from `wp_salt('auth')` (HKDF-SHA256). This is defense in depth, not a boundary — an attacker with DB access typically has `wp-config.php` too — but it stops casual DB dumps/backups/logs from leaking usable upstream-service tokens.
+
 ### Streaming
 
 The chat endpoint (`POST /wp-json/gds-assistant/v1/chat`) streams Server-Sent Events (SSE). The entire agentic loop runs server-side in a single SSE connection. No WebSockets required.
