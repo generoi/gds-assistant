@@ -185,7 +185,7 @@ class SettingsPage
                 </p>
                 <?php
                 $trustedHosts = (array) get_option('gds_mcp_trusted_web_hosts', []);
-                ?>
+        ?>
                 <textarea
                     name="gds_mcp_trusted_web_hosts"
                     rows="6"
