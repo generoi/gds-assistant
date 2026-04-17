@@ -177,6 +177,20 @@
   padding: 8px 12px;
   border-bottom: 1px solid #e0e0e0;
   flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.gds-assistant__header:active {
+  cursor: grabbing;
+}
+
+/* Children that accept clicks need their own cursor so they don't
+   inherit `grab` — keeps buttons feeling like buttons. */
+.gds-assistant__header button,
+.gds-assistant__header input,
+.gds-assistant__header a {
+  cursor: pointer;
 }
 
 .gds-assistant__title {
