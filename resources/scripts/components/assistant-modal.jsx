@@ -107,6 +107,28 @@ function getStoredPanelSize() {
   }
 }
 
+/**
+ * Read persisted panel position (top/left in px). Returns null to keep
+ * the CSS default (bottom-right anchored). Clamps to keep the panel
+ * on-screen after window resizes / monitor changes.
+ */
+function getStoredPanelPosition() {
+  try {
+    const raw = localStorage.getItem('gds-assistant-panel-position');
+    if (!raw) return null;
+    const { top, left } = JSON.parse(raw);
+    if (typeof top !== 'number' || typeof left !== 'number') return null;
+    // Keep at least 40px of the panel on-screen at all edges so the user
+    // can always grab the drag handle.
+    return {
+      top: Math.max(0, Math.min(window.innerHeight - 40, top)),
+      left: Math.max(0, Math.min(window.innerWidth - 40, left)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AssistantModal({
   onNewChat,
   onLoadConversation,
@@ -123,7 +145,8 @@ export function AssistantModal({
 
   // Callback ref: fires every time the panel element mounts (the modal
   // uses a portal + may unmount on close, so a plain useEffect only runs
-  // once). Applies the stored size whenever a new panel node appears.
+  // once). Applies the stored size + position whenever a new panel node
+  // appears.
   const setPanelRef = useCallback((node) => {
     panelRef.current = node;
     if (!node) return;
@@ -131,6 +154,78 @@ export function AssistantModal({
     if (size) {
       node.style.width = `${size.width}px`;
       node.style.height = `${size.height}px`;
+    }
+    const pos = getStoredPanelPosition();
+    if (pos) {
+      // Switch from bottom-right anchoring to top-left positioning.
+      node.style.top = `${pos.top}px`;
+      node.style.left = `${pos.left}px`;
+      node.style.bottom = 'auto';
+      node.style.right = 'auto';
+    }
+  }, []);
+
+  // Drag the panel around by its header. Starts a drag only on empty
+  // header space — clicks on buttons inside the header still work
+  // normally because they stop propagation naturally.
+  const onHeaderMouseDown = useCallback((e) => {
+    // Only start drag on primary button, and only when the target is
+    // the header itself or a non-interactive span — not a button/input.
+    if (e.button !== 0) return;
+    const target = e.target;
+    if (target.closest('button, input, textarea, select, a')) return;
+
+    e.preventDefault();
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    const onMove = (ev) => {
+      const maxLeft = window.innerWidth - 40;
+      const maxTop = window.innerHeight - 40;
+      const left = Math.max(0, Math.min(maxLeft, ev.clientX - offsetX));
+      const top = Math.max(0, Math.min(maxTop, ev.clientY - offsetY));
+      panel.style.top = `${top}px`;
+      panel.style.left = `${left}px`;
+      panel.style.bottom = 'auto';
+      panel.style.right = 'auto';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try {
+        const r = panel.getBoundingClientRect();
+        localStorage.setItem(
+          'gds-assistant-panel-position',
+          JSON.stringify({ top: r.top, left: r.left }),
+        );
+      } catch {
+        // Private browsing etc.
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
+
+  // Reset position/size to defaults (clears both localStorage keys and
+  // inline styles). Exposed via a button in the header context menu or
+  // can be called from console.
+  const resetPanelPosition = useCallback(() => {
+    try {
+      localStorage.removeItem('gds-assistant-panel-position');
+      localStorage.removeItem('gds-assistant-panel-size');
+    } catch {}
+    const panel = panelRef.current;
+    if (panel) {
+      panel.style.top = '';
+      panel.style.left = '';
+      panel.style.bottom = '';
+      panel.style.right = '';
+      panel.style.width = '';
+      panel.style.height = '';
     }
   }, []);
 
@@ -225,6 +320,8 @@ export function AssistantModal({
           onApproveToolCall={onApproveToolCall}
           onDenyToolCall={onDenyToolCall}
           pendingApprovals={pendingApprovals}
+          onHeaderMouseDown={onHeaderMouseDown}
+          resetPanelPosition={resetPanelPosition}
         />
       </AssistantModalPrimitive.Content>
     </AssistantModalPrimitive.Root>
@@ -239,6 +336,8 @@ function Thread({
   onApproveToolCall,
   onDenyToolCall,
   pendingApprovals,
+  onHeaderMouseDown,
+  resetPanelPosition,
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState([]);
@@ -332,7 +431,16 @@ function Thread({
         }
       }}
     >
-      <div className="gds-assistant__header">
+      <div
+        className="gds-assistant__header"
+        onMouseDown={onHeaderMouseDown}
+        onDoubleClick={(e) => {
+          // Double-click empty header area to reset panel position/size
+          if (e.target.closest('button, input, textarea, select, a')) return;
+          resetPanelPosition?.();
+        }}
+        title="Drag to move — double-click to reset"
+      >
         <span className="gds-assistant__title">
           {activeTitle || 'AI Assistant'}
         </span>
