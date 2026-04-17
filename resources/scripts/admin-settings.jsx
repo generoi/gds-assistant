@@ -3,6 +3,7 @@ import {createRoot} from '@wordpress/element';
 import {MemoryDataView} from './components/memory-dataview';
 import {SkillsDataView} from './components/skills-dataview';
 import {ConversationsDataView} from './components/conversations-dataview';
+import {McpServersDataView} from './components/mcp-servers-dataview';
 import '../styles/admin-settings.css';
 
 domReady(() => {
@@ -28,5 +29,11 @@ domReady(() => {
   if (conversationsContainer) {
     const root = createRoot(conversationsContainer);
     root.render(<ConversationsDataView />);
+  }
+
+  const mcpContainer = document.getElementById('gds-assistant-mcp-dataview');
+  if (mcpContainer) {
+    const root = createRoot(mcpContainer);
+    root.render(<McpServersDataView />);
   }
 });

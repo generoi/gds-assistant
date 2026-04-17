@@ -2,11 +2,8 @@
 
 namespace GeneroWP\Assistant\Admin;
 
-use GeneroWP\Assistant\Api\McpAuthEndpoint;
 use GeneroWP\Assistant\Llm\ProviderRegistry;
 use GeneroWP\Assistant\Llm\SystemPrompt;
-use GeneroWP\Assistant\Mcp\ServerRegistry;
-use GeneroWP\Assistant\Mcp\TokenStore;
 use GeneroWP\Assistant\Plugin;
 
 class SettingsPage
@@ -66,6 +63,15 @@ class SettingsPage
             'manage_options',
             'gds-assistant-conversations',
             [$this, 'renderConversationsPage'],
+        );
+
+        add_submenu_page(
+            'gds-assistant',
+            __('MCP Servers', 'gds-assistant'),
+            __('MCP Servers', 'gds-assistant'),
+            'manage_options',
+            'gds-assistant-mcp',
+            [$this, 'renderMcpPage'],
         );
     }
 
@@ -218,115 +224,7 @@ class SettingsPage
 
                 <?php submit_button(); ?>
             </form>
-
-            <?php $this->renderMcpSection(); ?>
         </div>
-        <?php
-    }
-
-    /**
-     * Connection panel for configured remote MCP servers.
-     *
-     * Rendered outside the options form so the connect/disconnect buttons
-     * don't get submitted with regular settings saves.
-     */
-    private function renderMcpSection(): void
-    {
-        $servers = ServerRegistry::all();
-        if (empty($servers)) {
-            return;
-        }
-
-        $status = $_GET['mcp_connect'] ?? null;
-        $statusMsg = isset($_GET['mcp_msg']) ? rawurldecode((string) $_GET['mcp_msg']) : '';
-
-        ?>
-        <h2><?php esc_html_e('MCP Servers', 'gds-assistant'); ?></h2>
-        <p class="description">
-            <?php esc_html_e('Remote Model Context Protocol servers whose tools should be available in the assistant. Configure servers via the gds-assistant/mcp_servers filter or GDS_ASSISTANT_MCP_SERVERS env var.', 'gds-assistant'); ?>
-        </p>
-
-        <?php if ($status === 'success') { ?>
-            <div class="notice notice-success is-dismissible"><p><?php esc_html_e('MCP connection established.', 'gds-assistant'); ?></p></div>
-        <?php } elseif ($status === 'error') { ?>
-            <div class="notice notice-error is-dismissible"><p><?php echo esc_html($statusMsg ?: __('MCP connection failed.', 'gds-assistant')); ?></p></div>
-        <?php } ?>
-
-        <table class="form-table">
-            <?php foreach ($servers as $server) {
-                $isOauth = $server->authType() === 'oauth';
-                $connected = $isOauth ? TokenStore::userHasToken($server->name, get_current_user_id()) : true; ?>
-                <tr>
-                    <th scope="row"><?php echo esc_html($server->displayLabel()); ?></th>
-                    <td>
-                        <code style="font-size: 11px;"><?php echo esc_html($server->url); ?></code><br>
-                        <?php if (! $isOauth) { ?>
-                            <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                            <?php printf(esc_html__('Auth: %s', 'gds-assistant'), esc_html($server->authType())); ?>
-                        <?php } elseif ($connected) { ?>
-                            <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                            <?php esc_html_e('Connected to your account', 'gds-assistant'); ?>
-                            <button type="button" class="button button-link-delete" data-mcp-disconnect="<?php echo esc_attr($server->name); ?>" style="margin-left: 8px;">
-                                <?php esc_html_e('Disconnect', 'gds-assistant'); ?>
-                            </button>
-                        <?php } else { ?>
-                            <span class="dashicons dashicons-warning" style="color: #d63638;"></span>
-                            <?php esc_html_e('Not connected for your user', 'gds-assistant'); ?>
-                            <button type="button" class="button button-primary" data-mcp-connect="<?php echo esc_attr($server->name); ?>" style="margin-left: 8px;">
-                                <?php esc_html_e('Connect', 'gds-assistant'); ?>
-                            </button>
-                        <?php } ?>
-                        <?php if ($isOauth) { ?>
-                            <p class="description" style="margin-top: 4px;">
-                                <?php esc_html_e('Redirect URI:', 'gds-assistant'); ?>
-                                <code><?php echo esc_html(McpAuthEndpoint::callbackUrl($server->name)); ?></code>
-                            </p>
-                        <?php } ?>
-                    </td>
-                </tr>
-            <?php } ?>
-        </table>
-
-        <script>
-        (function () {
-            const nonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
-            const restUrl = <?php echo wp_json_encode(rest_url('gds-assistant/v1/mcp/')); ?>;
-
-            async function post(server, action) {
-                const res = await fetch(restUrl + server + '/' + action, {
-                    method: 'POST',
-                    headers: { 'X-WP-Nonce': nonce },
-                    credentials: 'same-origin',
-                });
-                if (!res.ok) {
-                    const err = await res.text();
-                    alert('MCP ' + action + ' failed: ' + err);
-                    return null;
-                }
-                return res.json();
-            }
-
-            document.querySelectorAll('[data-mcp-connect]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    btn.disabled = true;
-                    const data = await post(btn.dataset.mcpConnect, 'connect');
-                    if (data && data.authorization_url) {
-                        window.location.href = data.authorization_url;
-                    } else {
-                        btn.disabled = false;
-                    }
-                });
-            });
-            document.querySelectorAll('[data-mcp-disconnect]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    if (!confirm('Disconnect this MCP server?')) return;
-                    btn.disabled = true;
-                    await post(btn.dataset.mcpDisconnect, 'disconnect');
-                    window.location.reload();
-                });
-            });
-        })();
-        </script>
         <?php
     }
 
@@ -348,6 +246,13 @@ class SettingsPage
     {
         echo '<div class="wrap gds-assistant"><h1>'.__('Conversations', 'gds-assistant').'</h1>';
         echo '<div id="gds-assistant-conversations-dataview"></div>';
+        echo '</div>';
+    }
+
+    public function renderMcpPage(): void
+    {
+        echo '<div class="wrap gds-assistant"><h1>'.__('MCP Servers', 'gds-assistant').'</h1>';
+        echo '<div id="gds-assistant-mcp-dataview"></div>';
         echo '</div>';
     }
 

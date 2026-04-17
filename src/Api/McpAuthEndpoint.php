@@ -21,6 +21,12 @@ class McpAuthEndpoint
 {
     public function register(): void
     {
+        register_rest_route('gds-assistant/v1', '/mcp/servers', [
+            'methods' => \WP_REST_Server::READABLE,
+            'callback' => [$this, 'listServers'],
+            'permission_callback' => fn () => current_user_can('manage_options'),
+        ]);
+
         register_rest_route('gds-assistant/v1', '/mcp/(?P<name>[a-z0-9_]+)/connect', [
             'methods' => \WP_REST_Server::CREATABLE,
             'callback' => [$this, 'connect'],
@@ -53,6 +59,36 @@ class McpAuthEndpoint
         ]);
     }
 
+    /**
+     * GET /mcp/servers — lists every configured server with the current
+     * user's connection status. Used by the MCP Servers DataView admin page.
+     */
+    public function listServers(): \WP_REST_Response
+    {
+        $userId = get_current_user_id();
+        $out = [];
+        foreach (ServerRegistry::all() as $server) {
+            $authType = $server->authType();
+            $connected = $authType === 'oauth'
+                ? TokenStore::userHasToken($server->name, $userId)
+                : true;
+
+            $out[] = [
+                'id' => $server->name, // DataViews needs a stable id field
+                'name' => $server->name,
+                'label' => $server->displayLabel(),
+                'url' => $server->url,
+                'auth_type' => $authType,
+                'enabled' => $server->enabled,
+                'connected' => $connected,
+                'requires_oauth' => $authType === 'oauth',
+                'callback_url' => $authType === 'oauth' ? self::callbackUrl($server->name) : null,
+            ];
+        }
+
+        return new \WP_REST_Response($out);
+    }
+
     public function connect(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
     {
         $server = ServerRegistry::get($request['name']);
@@ -80,7 +116,7 @@ class McpAuthEndpoint
             return new \WP_Error('not_found', 'MCP server not configured for OAuth', ['status' => 404]);
         }
 
-        $settingsUrl = admin_url('admin.php?page=gds-assistant');
+        $settingsUrl = admin_url('admin.php?page=gds-assistant-mcp');
 
         if ($error = $request->get_param('error')) {
             $desc = $request->get_param('error_description') ?: $error;
