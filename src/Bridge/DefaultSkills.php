@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 5;
+    private const VERSION = 6;
 
     public static function maybeInstall(): void
     {
@@ -123,195 +123,127 @@ class DefaultSkills
     private static function linkQualityAuditPrompt(): string
     {
         return <<<'PROMPT'
-Audit the quality of internal links across this site's content. This is NOT about HTTP 404 checks on external URLs — it's about finding sloppy/placeholder links and links that point to pages that don't make sense for the anchor text.
+Audit my site's internal link quality — flag sloppy/placeholder links and links where the anchor text doesn't match the target page. (This is NOT a 404 check on external URLs.)
 
-## 1. Scope the audit first — DO NOT skip this step
-
-Before listing posts, confirm with the user:
-- Which post types? (offer the site's public post types — use `gds/post-types-list` if unsure)
+**Before you start**, ask me:
+- Which post types to scan?
 - Scope: all, recent only (last 90 days), or drafts only?
-- Language filter if multilingual?
+- Language filter if the site is multilingual?
 
-Use `gds/content-list` with `_fields=id,title,status,link,content,lang` (fetches rendered content inline — no per-post reads needed). Paginate as needed.
+Then use `gds/content-list` with `_fields=id,title,status,link,content,lang` to pull everything in one paginated call. Warn me before proceeding if the result is >100 posts — large sets may need multi-pass review.
 
-**Warn the user before proceeding if the candidate set is larger than 100 posts.** The issue isn't tool cost (content comes back inline) but LLM context — very large sets may need multi-pass review. Ask if they want to limit scope or proceed in batches.
+**For each link in each post**, extract from `<a href>` AND block attributes (button.url, image.link, ACF link fields). Categorize:
 
-## 2. Categorize every link
-
-For each post's rendered content (and block attributes), extract all links — both `<a href>` and block attributes like `button.url`, `image.link`, ACF link fields. For each link, classify:
-
-**Placeholder / broken** (report always):
-- `href="#"` or `href=""` with no legitimate purpose (intentional JS-handled links rare — flag them for review)
+**Placeholder / broken** — report always:
+- `href="#"` or `href=""` with no legitimate purpose
 - `href="javascript:..."`
-- `href="http://..."` when the site uses https (mixed-content risk)
-- Trailing-slash inconsistencies on known routes
-- URLs with `?p=123` (raw post IDs) when a pretty permalink exists
+- `href="http://..."` on an https site (mixed-content risk)
+- `?p=123` raw post IDs instead of pretty permalinks
 
-**Internal dead links** (report always):
-- Links to the site's own domain pointing to a slug that no longer exists (check via `gds/content-list` with search/slug, or try a targeted `gds/content-read`). Cache lookups so we don't re-query the same slug.
-- Links to pages with status != publish (drafts/trash) from published content
+**Internal dead links** — report always:
+- Pointing to slugs that no longer exist (verify via `gds/content-list`)
+- From published content, pointing to drafts/trashed posts
 
-**Language mismatches** (multilingual sites only):
-- A Finnish post linking to an English page when a Finnish translation exists (`gds/translations-create` or `gds/content-list` with `lang` can confirm). Often an oversight during translation.
+**Language mismatches** — multilingual sites only:
+- Finnish post → English page when a Finnish translation exists (`gds/translations-create` or `gds/content-list` with `lang` confirms). Common oversight during translation.
 
-**Semantic mismatches** (the judgment call — use LLM reasoning here):
+**Semantic mismatches** — use your judgment:
 - Anchor text vs. target page topic. "Read more about pricing" linking to `/about-us` is suspect.
-- "Click here" / "more" / "here" anchors — flag as low-quality even if the target is fine (a11y + SEO smell)
-- CTA links on related sections that point to unrelated landing pages
+- "Click here" / "more" / "here" anchors (a11y + SEO smell)
+- CTA links in related-content sections pointing to unrelated pages
 
-When in doubt, surface it as a "review needed" item rather than silently passing it.
+When in doubt, flag as "review needed" rather than silently passing.
 
-## 3. Report findings
-
-Group by issue type, sort by severity (dead > language mismatch > placeholder > anchor-text smell):
+**Report back** grouped by issue type, sorted by severity (dead > language > placeholder > anchor-smell). Example:
 
 ```
-## Placeholder / dead hrefs (3)
-- Post "Pricing" (id:123) — <a href="#">Learn more</a> — anchor: "Learn more", href is placeholder
-- ...
-
 ## Internal dead links (2)
 - Post "Services" (id:456) — links to /old-page (404 — page doesn't exist)
 - ...
 
 ## Language mismatches (5)
-- /fi/palvelut (id:789) — link "Our team" → /about-us (English). Finnish translation exists at /fi/tiimi (id:790).
-- ...
-
-## Semantic review needed (6)
-- Post "Blog post" (id:901) — "Read our case study" → /about. Should this be a specific case, or the main about page?
+- /fi/palvelut (id:789) — "Our team" → /about-us (English). Finnish translation exists at /fi/tiimi (id:790).
 - ...
 ```
 
-For each item, include: post title + id, the anchor text, the href, and why it's flagged.
+Each item: post title + id, anchor text, href, and why it's flagged.
 
-## 4. Offer next steps
+**Don't auto-fix anything.** After the report, offer:
+- Suggest replacement URLs for dead links?
+- Fix language-consistent URLs?
+- Save as a draft report post?
+- Fix a specific issue now? (will require per-change approval)
 
-**Do NOT auto-fix anything.** Offer:
-- "Want me to suggest replacement URLs for the internal dead links?"
-- "Want me to propose corrected language-consistent URLs?" (use the translations tools to find the right target)
-- "Want me to save this audit as a draft report post?"
-- "Should I fix a specific issue now?" (will require approval per fix)
-
-## Constraints
-
-- Don't rewrite post content without per-change approval
-- For semantic-mismatch items, explain your reasoning ("anchor says X, target page is about Y") so the user can judge
-- Never invent replacement URLs — only suggest pages that actually exist (verified via gds/content-list)
-- If the site has >100 posts, suggest running the audit in batches by post type or date range — don't try to reason about 500 posts at once
+Never invent replacement URLs — only suggest pages that actually exist. For semantic items, explain your reasoning so I can judge. If the site has >100 posts, suggest batching by post type or date range.
 PROMPT;
     }
 
     private static function createContentPrompt(): string
     {
         return <<<'PROMPT'
-Create new site content by matching the structure, style, and conventions of existing content. Follow this procedure strictly — NEVER skip straight to creation.
+Help me create new content that matches the site's existing structure and style. Don't skip straight to creation — follow this:
 
-## 1. Clarify the ask
+**First, ask me**:
+- Content type? (page, post, case study, service, product — use `gds/post-types-list` if unsure)
+- Topic / subject?
+- Which language(s)? (check available languages in the system prompt)
+- Any specific reference page to mirror, or should you pick 2-3 similar ones?
 
-Before any tool calls, confirm with the user:
-- **What type** of content? (page, post, case study, service, product — use `gds/post-types-list` if unsure which are available)
-- **What topic / subject** is it about?
-- **Which language(s)** should it exist in? (check available languages in the system prompt context)
-- **Any reference** they want us to mirror? (URL of a similar page, or they can say "pick 2-3 similar")
+Don't proceed until all four are clear.
 
-Do not proceed until all four are clear.
+**Then find 2-3 similar existing posts** via `gds/content-list` with `type=<post_type>`, `per_page=10`, `_fields=id,title,status,link`, relevant `search` term. Show me the candidates and confirm which to use as templates before reading them in full.
 
-## 2. Find similar existing content (at least 2-3 examples)
+**Read each chosen template** with `gds/content-read` — get content, taxonomies, ACF fields, featured_media. Note:
+- Block types used and in what order
+- Common patterns (hero → intro → feature grid → CTA? heading hierarchy? word count per section?)
+- ACF values populated (what kinds of stats, quotes, teaser images are typical?)
 
-Use `gds/content-list` with `type=<post_type>`, `per_page=10`, `_fields=id,title,status,link`, and a relevant `search` term. Pick 2-3 PUBLISHED items that best match the topic.
+**Understand each block type** you plan to use via `gds/blocks-get` with `name=<block/name>`, `search_post_type=<post_type>`, `max_post_examples=3`, `include_examples=true`. Read the attribute schema, variations, and real examples. Never hallucinate block attributes — check the schema.
 
-Show the user the candidates and confirm which ones to use as templates before reading them in full.
+**Honor the site's design tokens** via `gds/theme-json` — color palette slugs, typography presets, spacing scale. Prefer slugs over raw values: `backgroundColor: "primary"` over `backgroundColor: "#0066cc"`.
 
-## 3. Read the templates deeply
+**Check ACF fields** via `gds/acf-fields` with the post type filter — see what's required and what types. If templates had meaningful ACF values, propose similar for the new post.
 
-For each chosen reference:
-- `gds/content-read` with `type=<post_type>` and `id=<id>` — get full content, taxonomies, ACF fields, featured_media
-- Note which block types appear (parse the wp:block comments in content.rendered, or use the block structure if returned)
-- Note common patterns: hero → intro → feature grid → CTA? Heading hierarchy? Typical word count per section?
-- Note ACF field values — what kinds of statistics, quotes, teaser images are usually populated?
+**For multilingual sites**, ask if I want translations. Check whether a similar translated page exists (`gds/content-list` with `lang`). Use `gds/translations-create` to create linked translations — never invent translated content; ask me or copy from an existing translation.
 
-## 4. Understand the blocks before using them
+**Draft but DO NOT create yet**. Propose:
+- Title(s) and slug(s)
+- Block-by-block outline (human-readable plan, not YAML/JSON)
+- ACF field values
+- Taxonomies
+- Featured image plan
 
-For EACH block type you plan to use:
-- `gds/blocks-get` with `name=<block/name>`, `search_post_type=<post_type>`, `max_post_examples=3`, `include_examples=true`
-- Read the attribute schema (types, defaults, enums)
-- Read the variations — many blocks have official variations that change style/layout
-- Read the examples — see how real site content uses the block
+Wait for my approval. Then use `gds/content-create` with `status=draft` (never publish unless I explicitly say so). Returns new post ID + edit_url + preview_url.
 
-**Never hallucinate block attributes.** If unsure whether a block supports a given prop, check the schema.
-
-## 5. Understand the site's design tokens
-
-Use `gds/theme-json` (or the equivalent resource) to find:
-- Color palette slugs (use these, not hex values, so theme updates flow through)
-- Font sizes / typography presets
-- Spacing scale
-
-Prefer slugs over raw values: `backgroundColor: "primary"` over `backgroundColor: "#0066cc"`.
-
-## 6. Understand the content type's ACF fields (if any)
-
-`gds/acf-fields` with the post type filter — see what fields exist, whether they're required, their types (text, repeater, image, etc.). If the template posts had meaningful ACF values, propose similar structure for the new post.
-
-## 7. Check for multilingual requirements
-
-If the site has multiple languages:
-- Ask the user if they want translations created
-- Check whether a translation of a similar page exists in the target language (via `gds/content-list` with `lang` filter)
-- Use `gds/translations-create` to create linked translations if requested — NEVER invent translated content; ask the user for translated titles/copy or copy from an existing translation template
-
-## 8. Draft — DO NOT create yet
-
-Propose the draft to the user:
-- Title(s)
-- Slug(s)
-- Block-by-block outline showing which block types, with what content (still as text, not YAML/JSON — a human-readable plan)
-- ACF field values (if applicable)
-- Taxonomies (services, industries, tags)
-- Featured image plan (existing media ID, new upload, or TBD)
-
-Wait for user approval or revisions.
-
-## 9. Create (with approval)
-
-Use `gds/content-create` (status=draft by default — NEVER publish unless explicitly asked). Returns the new post ID + edit_url + preview_url.
-
-If ACF fields were specified, they're set in the same call via the `fields` parameter.
-
-If translations were requested, use `gds/translations-create` to link them — copies the source + creates linked translations.
-
-## Constraints
-
-- **Mark invented facts clearly.** Plausible placeholder content is fine for drafts (client names, statistics, testimonials, quotes, prices, dates) as long as you wrap each placeholder in `[brackets]` or prefix with `TODO:`. Never present invented facts as real — the reviewer needs to see at a glance which parts need human verification before publish. Example: "Served [15+ Nordic retailers]" or "TODO: insert real client quote here".
-- **Never publish without explicit "publish it" from the user.** Always draft first. If any `[brackets]` / `TODO:` markers remain, remind the user to fill them in before publishing.
-- **Mirror, don't clone** — match the structure and style, but the body content should be new and relevant to the topic at hand.
-- **Match the voice of existing content.** Formal vs. casual, first vs. third person — infer from the references and stay consistent.
-- **Ask first when the gap is structural.** If a reference post has a "Client quote" section and this is a real client engagement, ask for the quote. If it's a demo / fictional topic, use `[placeholder quote]` and continue.
-- Create ONE draft first. If the user wants variations, generate them AFTER seeing the first one.
+**Constraints**:
+- Plausible placeholder content is fine for drafts (client names, stats, testimonials, quotes, prices, dates) — but wrap each placeholder in `[brackets]` or prefix with `TODO:` so I can spot what needs filling in. Never present invented facts as real. Example: "Served [15+ Nordic retailers]" or "TODO: insert real client quote here".
+- Never publish without explicit "publish it" from me. If any `[brackets]` / `TODO:` markers remain, remind me before publishing.
+- Mirror, don't clone — body content should be new and relevant to the topic.
+- Match the voice (formal/casual, first/third person) of the references.
+- Ask when a structural gap is real (client quote, real stats). For demos/fictional topics, use `[placeholders]`.
+- One draft first. Generate variations only after I see the first one.
 PROMPT;
     }
 
     private static function reportBugPrompt(): string
     {
         return <<<'PROMPT'
-Report a bug, bad session, or quality issue to the site administrator.
+I want to report a bug or quality issue with this assistant session. Please help me send a report to the site admin.
 
-Use this when:
-- The user says "this isn't working", "bad response", "that was wrong", "/report-bug", etc.
-- You (the assistant) recognize the session went badly (hallucinated IDs/titles, stuck in a loop, contradicted the user, misunderstood a basic request repeatedly)
+**First, check your tool list.** If `gds/mail-send` is NOT available, don't try to draft a report or use any other path — just tell me exactly:
 
-## 1. Get the complaint
+> Bug reporting needs a standard or full tier model so the email draft is reliable. Please switch via the model selector at the bottom of the chat (e.g. Claude Sonnet, GPT-5.4 Mini, or Gemini Pro) and re-run `/report-bug`.
 
-If the user already described what went wrong, use their words. Otherwise ASK ONCE briefly: "Anything specific you want me to flag, or should I summarize what I noticed?" — don't dig further than one round, this is a quick reporting flow.
+Then stop. Don't fabricate a report.
 
-## 2. Draft the email
+**If `gds/mail-send` IS available**, continue:
 
-Recipient: the site admin email from the "## This conversation" section of your context. If it's missing, stop and ask the user for an address.
+Ask me briefly: "Anything specific you want me to flag, or should I summarize what I noticed?" — if I've already described the issue in the conversation, skip asking. Don't dig further than one round, this is quick.
 
-Subject format: `[AI Assistant] Bug: <one-line summary>` (≤70 chars)
-
-Body (markdown):
+Then draft an email using `gds/mail-send`:
+- **to**: the site admin email from the "## This conversation" section of your context (if missing, ask me)
+- **subject**: `[AI Assistant] Bug: <one-line summary>` (≤70 chars)
+- **body** (plain text, `html: false`):
 
 ```
 # Assistant bug report
@@ -322,7 +254,7 @@ Body (markdown):
 
 ## What went wrong
 
-<user's description if provided, otherwise your concise summary>
+<my description if provided, otherwise your concise summary>
 
 ## Recent exchange
 
@@ -338,30 +270,9 @@ Admin can view the full session via:
 `wp gds-assistant audit show <uuid>`
 ```
 
-## 3. Send
+I'll see the full email in the approval prompt before it sends. If I deny, don't argue — just acknowledge and ask what I'd like to change.
 
-Use `gds/mail-send`:
-- `to`: [<admin email>]
-- `subject`: the line above
-- `body`: the markdown above (plain text is fine — `html: false`)
-
-The user will see the full email in the approval prompt. Let them approve or deny — do not argue if they deny.
-
-### If gds/mail-send is not available
-
-Some weaker/cheaper models don't have access to `gds/mail-send` (the tool is restricted to standard-tier and above because drafting coherent email requires reliable instruction-following). If you look at your tool list and don't see `gds/mail-send`, DO NOT try to send the report some other way. Instead, tell the user exactly this:
-
-> Bug reporting needs a standard or full tier model so the email draft is reliable. Please switch via the model selector at the bottom of the chat (e.g. Claude Sonnet, GPT-5.4 Mini, or Gemini Flash) and re-run `/report-bug`.
-
-Then stop. Don't fabricate a report or try a workaround.
-
-## Constraints
-
-- **ALWAYS go through gds/mail-send**, never some other path.
-- **Do NOT include sensitive data** the user may not want shared (draft post contents, form submissions, customer PII, credentials) unless directly relevant to the bug. If unsure, leave it out and note "see audit log" instead.
-- **Don't embellish.** If you don't know what went wrong, say so — the admin will look up the session via the UUID.
-- **Keep it short.** One issue per report. Admins triage many of these; brevity helps.
-- If the admin email isn't in your context, ASK for it instead of guessing.
+**Don't include sensitive data** I may not want shared (draft post contents, form submissions, customer PII, credentials) unless directly relevant to the bug. If unsure, leave it out and note "see audit log" instead. Keep it short — one issue per report. If you don't know what went wrong, say so honestly — the admin will look up the session via the UUID.
 PROMPT;
     }
 }
