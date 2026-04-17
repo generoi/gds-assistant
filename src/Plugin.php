@@ -133,6 +133,9 @@ class Plugin
 
         $conversationEndpoint = new Api\ConversationEndpoint($this);
         $conversationEndpoint->register();
+
+        $mcpAuthEndpoint = new Api\McpAuthEndpoint;
+        $mcpAuthEndpoint->register();
     }
 
     public function registerPostTypes(): void
@@ -244,6 +247,11 @@ class Plugin
         // Memory tools (persistent knowledge base)
         $registry->register(new Bridge\MemoryToolProvider);
 
+        // Remote MCP server tools (Asana, Figma, etc.) — only registers if
+        // gds-assistant/mcp_servers or GDS_ASSISTANT_MCP_SERVERS is set.
+        if (! empty(Mcp\ServerRegistry::all())) {
+            $registry->register(new Bridge\McpToolProvider);
+        }
     }
 
     private function getPublishedSkills(): array
