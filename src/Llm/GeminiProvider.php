@@ -55,10 +55,15 @@ class GeminiProvider implements LlmProviderInterface
                 ['functionDeclarations' => self::convertTools($tools)],
             ];
 
-            // Enable Google Search grounding. Gemini 2.5+ supports combining
-            // google_search with function calling (earlier models couldn't).
-            // Filter can disable if restricting to gds/web-fetch only.
-            if (apply_filters('gds-assistant/gemini_web_tools', true)) {
+            // Google Search grounding is DISABLED by default because Gemini
+            // rejects multi-tool payloads on most 2.5 variants with:
+            //   "Multiple tools are supported only when they are all search tools."
+            // Even though the 2026 docs claim function calling + google_search
+            // can be combined, it only works on Gemini 3 / 2.5-pro reliably.
+            // Cross-provider web access via gds/web-fetch works uniformly and
+            // doesn't trigger this restriction, so prefer that. Sites running
+            // exclusively on Gemini 3 Pro can re-enable via the filter.
+            if (apply_filters('gds-assistant/gemini_web_tools', false)) {
                 $payload['tools'][] = ['google_search' => new \stdClass];
             }
         }

@@ -19,21 +19,39 @@ class ToolRestrictor
      */
     public static function filter(array $tools, string $tier): array
     {
-        if ($tier === 'full') {
-            return $tools;
+        $tierRank = ['read' => 1, 'standard' => 2, 'full' => 3];
+        $currentRank = $tierRank[$tier] ?? 2;
+
+        $filtered = [];
+        foreach ($tools as $tool) {
+            // Explicit min_tier annotation wins over risk-based classification.
+            // Abilities can set `min_tier: 'read'` to opt into all tiers even
+            // when marked destructive (web-fetch), or `min_tier: 'standard'`
+            // to require stronger models (mail-send).
+            $minTier = $tool['min_tier'] ?? null;
+
+            if ($minTier) {
+                $requiredRank = $tierRank[$minTier] ?? $currentRank;
+            } else {
+                // Fall back to risk-based classification: safe → 1 (read),
+                // moderate → 2 (standard), dangerous → 3 (full).
+                $risk = self::classifyRisk($tool);
+                $requiredRank = match ($risk) {
+                    'safe' => 1,
+                    'moderate' => 2,
+                    default => 3,
+                };
+            }
+
+            // min_tier is an internal routing flag — don't leak it to the LLM.
+            unset($tool['min_tier']);
+
+            if ($currentRank >= $requiredRank) {
+                $filtered[] = $tool;
+            }
         }
 
-        $allowedRisks = match ($tier) {
-            'read' => ['safe'],
-            'standard' => ['safe', 'moderate'],
-            default => ['safe', 'moderate'],
-        };
-
-        return array_values(array_filter($tools, function (array $tool) use ($allowedRisks) {
-            $risk = self::classifyRisk($tool);
-
-            return in_array($risk, $allowedRisks, true);
-        }));
+        return array_values($filtered);
     }
 
     /**

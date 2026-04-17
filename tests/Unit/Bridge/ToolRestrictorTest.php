@@ -130,6 +130,40 @@ class ToolRestrictorTest extends TestCase
         ]));
     }
 
+    public function test_min_tier_overrides_risk_based_filtering(): void
+    {
+        $tools = [
+            // Destructive by default = dangerous = full-tier only. But
+            // explicit min_tier: read opts it back into all tiers (web-fetch).
+            ['name' => 'gds__web-fetch', 'description' => '[DESTRUCTIVE] Fetch', 'min_tier' => 'read'],
+            // Destructive + min_tier: standard — hidden from read but
+            // visible on standard+ (mail-send).
+            ['name' => 'gds__mail-send', 'description' => '[DESTRUCTIVE] Send mail', 'min_tier' => 'standard'],
+        ];
+
+        $read = array_column(ToolRestrictor::filter($tools, 'read'), 'name');
+        $this->assertContains('gds__web-fetch', $read, 'min_tier:read should make tool visible on read tier');
+        $this->assertNotContains('gds__mail-send', $read, 'min_tier:standard should hide tool on read tier');
+
+        $standard = array_column(ToolRestrictor::filter($tools, 'standard'), 'name');
+        $this->assertContains('gds__web-fetch', $standard);
+        $this->assertContains('gds__mail-send', $standard);
+
+        $full = array_column(ToolRestrictor::filter($tools, 'full'), 'name');
+        $this->assertContains('gds__web-fetch', $full);
+        $this->assertContains('gds__mail-send', $full);
+    }
+
+    public function test_min_tier_is_stripped_from_output(): void
+    {
+        $tools = [
+            ['name' => 'gds__web-fetch', 'description' => '[DESTRUCTIVE] Fetch', 'min_tier' => 'read'],
+        ];
+        $filtered = ToolRestrictor::filter($tools, 'read');
+        $this->assertCount(1, $filtered);
+        $this->assertArrayNotHasKey('min_tier', $filtered[0], 'min_tier is internal and must not leak into LLM payload');
+    }
+
     public function test_risk_level_filter(): void
     {
         add_filter('gds-assistant/tool_risk_level', function ($risk, $tool) {

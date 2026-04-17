@@ -63,11 +63,20 @@ class AbilitiesToolProvider implements ToolProviderInterface
                 $inputSchema['properties'] = (object) [];
             }
 
-            $this->toolCache[] = [
+            $entry = [
                 'name' => self::toToolName($name),
                 'description' => $description,
                 'input_schema' => $inputSchema,
             ];
+
+            // Pass through `min_tier` so ToolRestrictor can gate tools that
+            // need solid instruction-following. Not sent to the LLM — used
+            // only by our filtering layer.
+            if (! empty($annotations['min_tier'])) {
+                $entry['min_tier'] = (string) $annotations['min_tier'];
+            }
+
+            $this->toolCache[] = $entry;
         }
 
         return $this->toolCache;
@@ -82,6 +91,22 @@ class AbilitiesToolProvider implements ToolProviderInterface
         }
 
         $ability = wp_get_ability($abilityName);
+
+        // LLMs sometimes normalize tool names (hyphens → underscores) before
+        // calling them — e.g. `gds__mail-send` becomes `gds__mail_send`. If
+        // the exact match fails, try swapping underscores back to hyphens
+        // in the ability-suffix part (after the namespace `/`).
+        if (! $ability && str_contains($abilityName, '/')) {
+            [$ns, $suffix] = explode('/', $abilityName, 2);
+            $fallback = $ns.'/'.str_replace('_', '-', $suffix);
+            if ($fallback !== $abilityName) {
+                $ability = wp_get_ability($fallback);
+                if ($ability) {
+                    $abilityName = $fallback;
+                }
+            }
+        }
+
         if (! $ability) {
             return new \WP_Error('ability_not_found', "Ability not found: {$abilityName}");
         }
