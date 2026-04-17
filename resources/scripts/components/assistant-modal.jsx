@@ -392,12 +392,21 @@ function Thread({
           </span>
           <button
             className="gds-assistant__approval-btn gds-assistant__approval-btn--approve"
-            onClick={onApproveToolCall}
+            onClick={() => onApproveToolCall()}
           >
             {pendingApprovals.length > 1 ?
               `Approve (${pendingApprovals.length})`
             : 'Approve'}
           </button>
+          {pendingApprovals[0]?.trustableHost && (
+            <button
+              className="gds-assistant__approval-btn gds-assistant__approval-btn--trust"
+              onClick={() => onApproveToolCall({ trustHost: true })}
+              title={`Approve and never ask again for ${pendingApprovals[0].trustableHost}`}
+            >
+              Approve & trust {pendingApprovals[0].trustableHost}
+            </button>
+          )}
           <button
             className="gds-assistant__approval-btn gds-assistant__approval-btn--deny"
             onClick={onDenyToolCall}

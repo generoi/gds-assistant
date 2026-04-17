@@ -1167,6 +1167,11 @@ abbr.gds-tool {
   color: #fff;
 }
 
+.gds-assistant__approval-btn--trust {
+  background: #2271b1;
+  color: #fff;
+}
+
 @media (max-width: 480px) {
   .gds-assistant__panel {
     width: calc(100vw - 16px);
