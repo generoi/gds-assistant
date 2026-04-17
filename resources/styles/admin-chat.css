@@ -110,7 +110,24 @@
    inline transform positioning. CSS !important beats plain inline
    styles from Radix — so these win even when floating-ui runs its
    autoUpdate tick and rewrites `style="transform: translate(...)"`.
-   The position values come from CSS vars the JS sets on the element. */
+
+   Two classes are needed:
+   - .gds-assistant__panel-wrapper--moved on the data-radix-popper-content-wrapper
+     parent (kills its transform so position:fixed on the panel is truly
+     viewport-relative)
+   - .gds-assistant__panel--moved on the panel itself
+   The class names start with `.gds-assistant` so the postcss prefix pass
+   leaves them un-prefixed (they'd otherwise require `.gds-assistant`
+   ancestor, which the wrapper doesn't have). */
+.gds-assistant__panel-wrapper--moved {
+  transform: none !important;
+  inset: 0 !important;
+  min-width: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  pointer-events: none !important;
+}
+
 .gds-assistant__panel--moved {
   position: fixed !important;
   top: var(--gds-panel-top, 0) !important;
@@ -120,6 +137,7 @@
   transform: none !important;
   animation: none !important;
   margin: 0 !important;
+  pointer-events: auto !important;
 }
 
 /* Resize handle — top-left corner; panel is anchored bottom-right so

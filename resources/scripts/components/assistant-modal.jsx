@@ -8,7 +8,7 @@ import {
   useMessage,
 } from '@assistant-ui/react';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
-import {useState, useEffect, useCallback, useRef} from '@wordpress/element';
+import {useState, useEffect, useCallback, useRef, useMemo} from '@wordpress/element';
 import {
   onUsageUpdate,
   setModel,
@@ -122,16 +122,22 @@ function getStoredPanelSize() {
  */
 function applyPanelPosition(node, top, left) {
   if (!node) return;
-  node.classList.add('gds-assistant__panel--moved');
   node.style.setProperty('--gds-panel-top', `${top}px`);
   node.style.setProperty('--gds-panel-left', `${left}px`);
+  // Radix wraps Content in <div data-radix-popper-content-wrapper> that
+  // itself has transform. When a parent has transform, our position:fixed
+  // on the panel becomes relative to the wrapper, not the viewport — so
+  // we tag the wrapper too. CSS rule for this class flattens the wrapper.
+  const wrapper = node.closest('[data-radix-popper-content-wrapper]');
+  if (wrapper) wrapper.classList.add('gds-assistant__panel-wrapper--moved');
 }
 
 function clearPanelPosition(node) {
   if (!node) return;
-  node.classList.remove('gds-assistant__panel--moved');
   node.style.removeProperty('--gds-panel-top');
   node.style.removeProperty('--gds-panel-left');
+  const wrapper = node.closest('[data-radix-popper-content-wrapper]');
+  if (wrapper) wrapper.classList.remove('gds-assistant__panel-wrapper--moved');
 }
 
 /**
@@ -170,6 +176,19 @@ export function AssistantModal({
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
 
+  // Track moved state in React so the --moved class is part of the
+  // className prop — React strips DOM classes that aren't in the prop
+  // on re-render, which was wiping our override class mid-drag.
+  const [isMoved, setIsMoved] = useState(() => !!getStoredPanelPosition());
+
+  const panelClassName = useMemo(
+    () =>
+      `gds-assistant gds-assistant__panel${
+        isMoved ? ' gds-assistant__panel--moved' : ''
+      }`,
+    [isMoved],
+  );
+
   // Callback ref: fires every time the panel element mounts (the modal
   // uses a portal + may unmount on close, so a plain useEffect only runs
   // once). Applies the stored size + position whenever a new panel node
@@ -184,7 +203,8 @@ export function AssistantModal({
     }
     const pos = getStoredPanelPosition();
     if (pos) {
-      applyPanelPosition(node, pos.top, pos.left);
+      node.style.setProperty('--gds-panel-top', `${pos.top}px`);
+      node.style.setProperty('--gds-panel-left', `${pos.left}px`);
     }
   }, []);
 
@@ -208,8 +228,10 @@ export function AssistantModal({
     const startX = e.clientX;
     const startY = e.clientY;
 
-    // Pin the panel at its current visual location before Radix can
-    // re-render and move it elsewhere.
+    // Pin the panel at its current visual location. Flip React state so
+    // the --moved class is rendered via the className prop (React would
+    // strip a DOM-only class on next render).
+    setIsMoved(true);
     applyPanelPosition(panel, startTop, startLeft);
 
     const clamp = (top, left) => ({
@@ -250,6 +272,7 @@ export function AssistantModal({
     } catch {
       // noop
     }
+    setIsMoved(false);
     const panel = panelRef.current;
     if (panel) {
       clearPanelPosition(panel);
@@ -332,7 +355,7 @@ export function AssistantModal({
 
       <AssistantModalPrimitive.Content
         ref={setPanelRef}
-        className="gds-assistant gds-assistant__panel"
+        className={panelClassName}
         sideOffset={16}
       >
         <div
