@@ -345,13 +345,9 @@ export function useAssistantRuntime() {
             // its inner markdown as plain text.
             const inputForTitle =
               event.data.input && Object.keys(event.data.input).length > 0
-                ? JSON.stringify(event.data.input, null, 2)
+                ? JSON.stringify(event.data.input)
                 : "(no arguments)";
-            // Escape for the attribute: &quot; and newlines as literal \n
-            // survive the HTML sanitizer, which is enough for a tooltip.
-            const titleSafe = inputForTitle
-              .replace(/&/g, "&amp;")
-              .replace(/"/g, "&quot;");
+            const titleSafe = sanitizeForTitle(inputForTitle);
             turnParts[
               idx
             ].text += `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._<!--t:${toolId}-->`;
@@ -370,9 +366,7 @@ export function useAssistantRuntime() {
               const resultPreview = event.data.result
                 ? JSON.stringify(event.data.result).slice(0, 800)
                 : "(empty)";
-              const resultSafe = resultPreview
-                .replace(/&/g, "&amp;")
-                .replace(/"/g, "&quot;");
+              const resultSafe = sanitizeForTitle(resultPreview);
               // Find the abbr tag associated with this tool call and append result
               const abbrRe = new RegExp(
                 `(<abbr class="gds-tool" title=")(.*?)(">)([\\s\\S]*?<!--t:${toolId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`
@@ -380,7 +374,7 @@ export function useAssistantRuntime() {
               const abbrMatch = turnParts[idx].text.match(abbrRe);
               if (abbrMatch) {
                 const inputTitle = abbrMatch[2];
-                const newTitle = `${inputTitle}\n\n→ ${resultSafe}`;
+                const newTitle = `${inputTitle} → ${resultSafe}`;
                 turnParts[idx].text = turnParts[idx].text.replace(
                   abbrRe,
                   `$1${newTitle}$3$4`
@@ -605,18 +599,15 @@ export function useAssistantRuntime() {
           } else if (block.type === "tool_use") {
             const toolLabel = (block.name || "").replace("__", "/");
             const inputStr = block.input && Object.keys(block.input).length > 0
-              ? JSON.stringify(block.input, null, 2)
+              ? JSON.stringify(block.input)
               : "(no arguments)";
             const resultStr = toolResultMap[block.id] || "";
-            let titleContent = inputStr
-              .replace(/&/g, "&amp;")
-              .replace(/"/g, "&quot;");
+            let titleRaw = inputStr;
             if (resultStr) {
-              titleContent += `\n\n→ ${resultStr
-                .replace(/&/g, "&amp;")
-                .replace(/"/g, "&quot;")}`;
+              titleRaw += ` → ${resultStr}`;
             }
-            const toolText = `\n**Tool:** <abbr class="gds-tool" title="${titleContent}">\`${toolLabel}\`</abbr> **Done** \u2713`;
+            const titleSafe = sanitizeForTitle(titleRaw);
+            const toolText = `\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> **Done** \u2713`;
             parts.push({ type: "text", text: toolText });
           }
         }
@@ -844,6 +835,20 @@ export function useAssistantRuntime() {
  * digits are always 24-hour and the date reads consistently regardless of
  * the browser UI language.
  */
+/**
+ * Sanitize a string for use in an HTML title attribute inside markdown.
+ * Replaces " with ' (not &quot; — markdown processors decode entities
+ * before the HTML parser sees them, breaking the attribute).
+ * Strips newlines to keep the tooltip compact.
+ */
+function sanitizeForTitle(str) {
+  return str
+    .replace(/"/g, "'")
+    .replace(/&/g, "&amp;")
+    .replace(/\n/g, " ")
+    .slice(0, 1200);
+}
+
 export function formatMessageTime(ts) {
   const d = new Date(ts);
   const now = new Date();
