@@ -79,7 +79,45 @@ class SettingsPage
             'default' => true,
         ]);
 
+        // Trusted web-fetch hosts. Managed by gds-mcp's WebFetchAbility but
+        // exposed here so admins can review/edit/revoke user-approved hosts.
+        register_setting('gds_assistant', 'gds_mcp_trusted_web_hosts', [
+            'type' => 'array',
+            'default' => [],
+            'sanitize_callback' => [self::class, 'sanitizeTrustedHosts'],
+        ]);
+
         // API keys are env-only for security — not stored in DB
+    }
+
+    /**
+     * Sanitize the trusted web-fetch hosts list: accepts a newline or
+     * comma-separated string from the textarea, normalizes to lowercase
+     * hostnames without scheme/path, deduplicates.
+     */
+    public static function sanitizeTrustedHosts(mixed $input): array
+    {
+        if (is_string($input)) {
+            $input = preg_split('/[\s,]+/', $input) ?: [];
+        }
+        if (! is_array($input)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($input as $entry) {
+            $entry = trim((string) $entry);
+            if ($entry === '') {
+                continue;
+            }
+            // Strip scheme and path if user pasted a full URL.
+            $host = wp_parse_url(str_contains($entry, '://') ? $entry : "https://{$entry}", PHP_URL_HOST);
+            if ($host) {
+                $clean[] = strtolower($host);
+            }
+        }
+
+        return array_values(array_unique($clean));
     }
 
     public function enqueueAssets(string $hookSuffix): void
@@ -140,6 +178,20 @@ class SettingsPage
                     <input type="checkbox" name="gds_assistant_auto_memory" value="1" <?php checked($autoMemory); ?>>
                     <?php esc_html_e('Auto-learn: Allow the assistant to save useful facts it discovers to memory', 'gds-assistant'); ?>
                 </label>
+
+                <h2><?php esc_html_e('Trusted web-fetch hosts', 'gds-assistant'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('Hosts the assistant can fetch without asking for approval each time. One per line. Hosts approved via the chat\'s "Approve & trust" button appear here. The current site and any WordPress-allowed redirect hosts are implicitly trusted.', 'gds-assistant'); ?>
+                </p>
+                <?php
+                $trustedHosts = (array) get_option('gds_mcp_trusted_web_hosts', []);
+                ?>
+                <textarea
+                    name="gds_mcp_trusted_web_hosts"
+                    rows="6"
+                    class="large-text code"
+                    placeholder="example.com&#10;docs.example.org"
+                ><?php echo esc_textarea(implode("\n", $trustedHosts)); ?></textarea>
 
                 <h2><?php esc_html_e('Providers', 'gds-assistant'); ?></h2>
                 <p class="description"><?php esc_html_e('API keys are configured via environment variables in your .env file. The chat widget only loads when at least one provider is configured.', 'gds-assistant'); ?></p>

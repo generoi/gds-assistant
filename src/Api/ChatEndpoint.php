@@ -339,7 +339,16 @@ class ChatEndpoint
         }
 
         if (str_starts_with($content, '__tool_approved__:')) {
-            return [substr($content, strlen('__tool_approved__:')), true];
+            $rest = substr($content, strlen('__tool_approved__:'));
+            // Optional "|trust:host" suffix signals trust-on-approval.
+            $parts = explode('|trust:', $rest, 2);
+            $toolUseId = $parts[0];
+            $trustHost = $parts[1] ?? '';
+            if ($trustHost !== '') {
+                do_action('gds-assistant/approve_with_trust', $trustHost);
+            }
+
+            return [$toolUseId, true];
         }
         if (str_starts_with($content, '__tool_denied__:')) {
             return [substr($content, strlen('__tool_denied__:')), false];

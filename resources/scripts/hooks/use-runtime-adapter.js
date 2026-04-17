@@ -442,6 +442,7 @@ export function useAssistantRuntime() {
                   toolUseId: event.data.tool_use_id,
                   toolName: event.data.tool_name,
                   input: event.data.input,
+                  trustableHost: event.data.trustable_host || null,
                 },
               ];
             });
@@ -794,12 +795,17 @@ export function useAssistantRuntime() {
   // batch-resolves ALL currently-pending stubs when any one is approved or
   // denied (see ChatEndpoint::handleToolApproval), so one click covers the
   // whole queue.
-  const approveToolCall = useCallback(() => {
+  const approveToolCall = useCallback((options = {}) => {
     setPendingApprovals((q) => {
       if (!q.length) return q;
       const [first, ...rest] = q;
+      // If the user clicked "Approve & trust domain", append a |trust:HOST
+      // suffix so the server can persist the host to the trusted list.
+      const trust = options.trustHost && first.trustableHost
+        ? `|trust:${first.trustableHost}`
+        : "";
       onNewRef.current?.({
-        content: `__tool_approved__:${first.toolUseId}`,
+        content: `__tool_approved__:${first.toolUseId}${trust}`,
       });
       return rest;
     });

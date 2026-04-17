@@ -151,11 +151,31 @@ class MessageLoop
                 }
                 $riskLevel = ToolRestrictor::classifyRisk($toolDef);
 
-                if ($riskLevel === 'dangerous' || ($riskLevel === 'moderate' && $isDestructive)) {
+                $needsApproval = $riskLevel === 'dangerous' || ($riskLevel === 'moderate' && $isDestructive);
+
+                // Per-invocation override: abilities can declare themselves
+                // destructive statically but exempt specific inputs dynamically
+                // (e.g. web-fetch auto-approves trusted hosts).
+                $needsApproval = apply_filters(
+                    'gds-assistant/tool_requires_approval',
+                    $needsApproval,
+                    $abilityName,
+                    $toolInput,
+                );
+
+                if ($needsApproval) {
+                    // If tool input contains a URL, surface its host so the
+                    // UI can offer an "Approve & trust domain" option.
+                    $trustableHost = null;
+                    if (! empty($toolInput['url'])) {
+                        $trustableHost = wp_parse_url((string) $toolInput['url'], PHP_URL_HOST) ?: null;
+                    }
+
                     $onEvent('tool_approval_required', [
                         'tool_use_id' => $toolUse['id'],
                         'tool_name' => $abilityName,
                         'input' => $toolInput,
+                        'trustable_host' => $trustableHost,
                     ]);
 
                     $toolResults[] = [
