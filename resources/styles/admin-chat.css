@@ -42,9 +42,10 @@
  */
 
 .gds-assistant {
-  /* Ensure we sit above WP admin elements */
-  position: relative;
-  z-index: 100100;
+  /* Base typography only — DO NOT set z-index here. The chat trigger and
+     panel have their own 100100 below; putting z-index on this base class
+     affects any WP admin page wrapper also tagged `.gds-assistant` (Memory,
+     Skills, MCP Servers…), pushing those above WP modals' backdrops. */
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, sans-serif;
   font-size: 14px;
