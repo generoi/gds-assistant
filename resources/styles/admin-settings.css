@@ -1,5 +1,18 @@
 @import '@wordpress/dataviews/build-style/style.css';
 
+/* @wordpress/components Modal runs a 0.08s opacity fade-in on the backdrop.
+   Under React Strict Mode (double-mount in dev) the animation can stall at
+   opacity: 0, leaving the page behind the modal fully visible and not
+   dimmed. Skip the fade — backdrop appears fully shaded immediately.
+
+   The selector starts with `body` so postcss-prefix-selector skips adding
+   its `.gds-assistant ` prefix (which wouldn't match since the overlay is
+   portaled to body, outside any gds-assistant container). */
+body .components-modal__screen-overlay {
+  animation: none !important;
+  opacity: 1 !important;
+}
+
 .gds-assistant-badge {
   display: inline-block;
   padding: 2px 8px;
