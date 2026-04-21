@@ -348,9 +348,12 @@ export function useAssistantRuntime() {
                 ? JSON.stringify(event.data.input)
                 : "(no arguments)";
             const titleSafe = sanitizeForTitle(inputForTitle);
+            // ​ (zero-width space) wraps the toolId as an invisible
+            // marker so tool_result can find and replace it. HTML comments
+            // (<!--...-->) were confusing streamdown's markdown parser.
             turnParts[
               idx
-            ].text += `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._<!--t:${toolId}-->`;
+            ].text += `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._​${toolId}​`;
             break;
           }
 
@@ -367,9 +370,11 @@ export function useAssistantRuntime() {
                 ? JSON.stringify(event.data.result).slice(0, 800)
                 : "(empty)";
               const resultSafe = sanitizeForTitle(resultPreview);
-              // Find the abbr tag associated with this tool call and append result
+              // Find the abbr tag for this tool and append the result to its title.
+              // Marker: zero-width spaces (​) wrap the toolId after _Running..._.
+              const escapedId = toolId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const abbrRe = new RegExp(
-                `(<abbr class="gds-tool" title=")(.*?)(">)([\\s\\S]*?<!--t:${toolId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`
+                `(<abbr class="gds-tool" title=")(.*?)(">)([\\s\\S]*?​${escapedId}​)`
               );
               const abbrMatch = turnParts[idx].text.match(abbrRe);
               if (abbrMatch) {
@@ -382,7 +387,7 @@ export function useAssistantRuntime() {
               }
             }
 
-            const marker = `_Running..._<!--t:${toolId}-->`;
+            const marker = `_Running..._​${toolId}​`;
             const pos = toolId ? turnParts[idx].text.indexOf(marker) : -1;
             if (pos !== -1) {
               turnParts[idx].text =
@@ -390,13 +395,14 @@ export function useAssistantRuntime() {
                 status +
                 turnParts[idx].text.slice(pos + marker.length);
             } else {
-              // Fallback for events without an id
+              // Fallback for events without an id: find last _Running..._ and
+              // consume through the next ​ pair (or just the text if absent).
               const fallback = turnParts[idx].text.lastIndexOf("_Running..._");
               if (fallback !== -1) {
                 const after = turnParts[idx].text.slice(fallback);
-                const endOfMarker = after.indexOf("-->");
+                const zwsEnd = after.indexOf("​", after.indexOf("​") + 1);
                 const markerLen =
-                  endOfMarker !== -1 ? endOfMarker + 3 : "_Running..._".length;
+                  zwsEnd !== -1 ? zwsEnd + 1 : "_Running..._".length;
                 turnParts[idx].text =
                   turnParts[idx].text.slice(0, fallback) +
                   status +
@@ -852,6 +858,8 @@ function sanitizeForTitle(str) {
     .replace(/"/g, "'")
     .replace(/&/g, "&amp;")
     .replace(/\n/g, " ")
+    .replace(/\[/g, "(")
+    .replace(/\]/g, ")")
     .slice(0, 1200);
 }
 
