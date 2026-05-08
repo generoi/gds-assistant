@@ -52,10 +52,14 @@ class AbilitiesToolProviderTest extends TestCase
         }
     }
 
-    public function test_handles_gds_prefixed_names(): void
+    public function test_handles_only_tools_in_catalog(): void
     {
-        $this->assertTrue($this->provider->handles('gds__posts-list'));
-        $this->assertTrue($this->provider->handles('gds__help'));
+        $tools = $this->provider->getTools();
+        if (empty($tools)) {
+            $this->markTestSkipped('No tools registered (gds-mcp not loaded).');
+        }
+        // Anything in the catalog is handled — anything else is not.
+        $this->assertTrue($this->provider->handles($tools[0]['name']));
         $this->assertFalse($this->provider->handles('other__posts-list'));
         $this->assertFalse($this->provider->handles('random-tool'));
     }
@@ -79,14 +83,23 @@ class AbilitiesToolProviderTest extends TestCase
         $this->assertWPError($result);
     }
 
-    public function test_skips_non_gds_abilities(): void
+    public function test_includes_only_mcp_public_abilities(): void
     {
         $tools = $this->provider->getTools();
         if (empty($tools)) {
             $this->markTestSkipped('No tools registered (gds-mcp not loaded).');
         }
         foreach ($tools as $tool) {
-            $this->assertStringStartsWith('gds__', $tool['name']);
+            // Tool name is the LLM-safe form (gds__posts-list); convert back
+            // to the ability name and assert the source ability is mcp.public.
+            $abilityName = AbilitiesToolProvider::toAbilityName($tool['name']);
+            $ability = wp_get_ability($abilityName);
+            $this->assertNotNull($ability, "Ability {$abilityName} should be registered");
+            $meta = $ability->get_meta();
+            $this->assertNotEmpty(
+                $meta['mcp']['public'] ?? null,
+                "Ability {$abilityName} should have mcp.public=true"
+            );
         }
     }
 }
