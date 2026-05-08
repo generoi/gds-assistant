@@ -30,12 +30,14 @@ class AbilitiesToolProvider implements ToolProviderInterface
             /** @var WP_Ability $ability */
             $name = $ability->get_name();
 
-            // Only include gds/* abilities (our MCP tools)
-            if (! str_starts_with($name, 'gds/')) {
+            // Trust whichever namespaces opted in via mcp.public meta. gds-mcp
+            // marks its own gds/* abilities; other plugins (e.g. WooCommerce
+            // via gds-mcp's bridge) opt in the same way.
+            $meta = $ability->get_meta();
+            if (empty($meta['mcp']['public'])) {
                 continue;
             }
 
-            $meta = $ability->get_meta();
             $annotations = $meta['annotations'] ?? [];
 
             // Build description with annotations
@@ -129,7 +131,17 @@ class AbilitiesToolProvider implements ToolProviderInterface
 
     public function handles(string $name): bool
     {
-        return str_starts_with($name, 'gds'.self::SEPARATOR);
+        // Match against the tool list this provider actually exposes — no
+        // hardcoded namespace, since `mcp.public` may include gds/, woocommerce/
+        // and others. Falling back to wp_get_ability() would risk colliding
+        // with peer providers (e.g. mcp_*/skill_*).
+        foreach ($this->getTools() as $tool) {
+            if ($tool['name'] === $name) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
