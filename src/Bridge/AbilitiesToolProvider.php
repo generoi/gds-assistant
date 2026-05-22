@@ -30,11 +30,10 @@ class AbilitiesToolProvider implements ToolProviderInterface
             /** @var WP_Ability $ability */
             $name = $ability->get_name();
 
-            // Trust whichever namespaces opted in via mcp.public meta. gds-mcp
-            // marks its own gds/* abilities; other plugins (e.g. WooCommerce
-            // via gds-mcp's bridge) opt in the same way.
+            // Trust abilities that explicitly opted into MCP, and abilities
+            // exposed through WP 7.0's REST-backed abilities registry.
             $meta = $ability->get_meta();
-            if (empty($meta['mcp']['public'])) {
+            if (empty($meta['mcp']['public']) && empty($meta['show_in_rest'])) {
                 continue;
             }
 

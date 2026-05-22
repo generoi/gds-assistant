@@ -16,7 +16,7 @@
   "require-dev": {
     "laravel/pint": "^1.29",
     "phpunit/phpunit": "^9.0",
-    "wp-phpunit/wp-phpunit": "^6.6",
+    "wp-phpunit/wp-phpunit": "^7.0",
     "yoast/phpunit-polyfills": "^2.0"
   },
   "autoload": {
