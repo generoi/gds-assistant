@@ -60,11 +60,16 @@ final class CredentialResolver
 
     private static function getConnector(string $connectorId): ?array
     {
-        if (! function_exists('wp_get_connector')) {
+        if (! function_exists('wp_get_connectors')) {
             return null;
         }
 
-        $connector = wp_get_connector($connectorId);
+        $connectors = wp_get_connectors();
+        if (! is_array($connectors) || ! isset($connectors[$connectorId])) {
+            return null;
+        }
+
+        $connector = $connectors[$connectorId];
         if (is_object($connector)) {
             $connector = get_object_vars($connector);
         }

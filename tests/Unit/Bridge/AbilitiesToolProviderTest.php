@@ -109,36 +109,43 @@ class AbilitiesToolProviderTest extends TestCase
             $this->markTestSkipped('WP Abilities API not available.');
         }
 
-        wp_register_ability_category('gds-assistant-test', [
-            'label' => 'GDS Assistant Test',
-            'description' => 'Test abilities for assistant provider coverage.',
-        ]);
+        add_action('wp_abilities_api_categories_init', function (): void {
+            wp_register_ability_category('gds-assistant-test', [
+                'label' => 'GDS Assistant Test',
+                'description' => 'Test abilities for assistant provider coverage.',
+            ]);
+        });
 
-        wp_register_ability('gds-assistant-test/rest-visible', [
-            'label' => 'REST Visible',
-            'description' => 'Test ability exposed through the WP 7.0 abilities REST API.',
-            'category' => 'gds-assistant-test',
-            'input_schema' => [
-                'type' => 'object',
-                'default' => [],
-            ],
-            'output_schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'ok' => ['type' => 'boolean'],
+        add_action('wp_abilities_api_init', function (): void {
+            wp_register_ability('gds-assistant-test/rest-visible', [
+                'label' => 'REST Visible',
+                'description' => 'Test ability exposed through the WP 7.0 abilities REST API.',
+                'category' => 'gds-assistant-test',
+                'input_schema' => [
+                    'type' => 'object',
+                    'default' => [],
                 ],
-            ],
-            'permission_callback' => '__return_true',
-            'execute_callback' => fn () => ['ok' => true],
-            'meta' => [
-                'show_in_rest' => true,
-                'annotations' => [
-                    'readonly' => true,
-                    'destructive' => false,
-                    'idempotent' => true,
+                'output_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'ok' => ['type' => 'boolean'],
+                    ],
                 ],
-            ],
-        ]);
+                'permission_callback' => '__return_true',
+                'execute_callback' => fn () => ['ok' => true],
+                'meta' => [
+                    'show_in_rest' => true,
+                    'annotations' => [
+                        'readonly' => true,
+                        'destructive' => false,
+                        'idempotent' => true,
+                    ],
+                ],
+            ]);
+        });
+
+        do_action('wp_abilities_api_categories_init');
+        do_action('wp_abilities_api_init');
 
         $provider = new AbilitiesToolProvider;
 
