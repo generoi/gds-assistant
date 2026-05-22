@@ -249,7 +249,7 @@ Then draft an email using `gds/mail-send`:
 # Assistant bug report
 
 **Conversation ID:** <uuid from "## This conversation" in your context>
-**Model:** <model key from footer, e.g. anthropic:sonnet>
+**Model:** <model key from footer, e.g. wordpress:capable>
 **Time:** <current human-readable timestamp>
 
 ## What went wrong

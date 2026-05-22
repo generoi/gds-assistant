@@ -85,6 +85,10 @@ class Plugin
             return;
         }
 
+        if (! Llm\AiSupport::isEnabled()) {
+            return;
+        }
+
         // Don't load widget if no AI provider is configured
         if (! Llm\ProviderRegistry::hasAnyProvider()) {
             return;
