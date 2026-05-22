@@ -32,7 +32,7 @@ function timeAgo(dateStr) {
  *
  * @param {number} input  Input tokens.
  * @param {number} output Output tokens.
- * @param {string} model  Model key (e.g. "wordpress:capable").
+ * @param {string} model  Model key (e.g. "anthropic:sonnet").
  * @return {string} Formatted cost.
  */
 function estimateCost(input, output, model) {
