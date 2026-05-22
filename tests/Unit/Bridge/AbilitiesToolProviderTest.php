@@ -83,7 +83,7 @@ class AbilitiesToolProviderTest extends TestCase
         $this->assertWPError($result);
     }
 
-    public function test_includes_only_mcp_public_abilities(): void
+    public function test_includes_only_public_abilities(): void
     {
         $tools = $this->provider->getTools();
         if (empty($tools)) {
@@ -96,10 +96,59 @@ class AbilitiesToolProviderTest extends TestCase
             $ability = wp_get_ability($abilityName);
             $this->assertNotNull($ability, "Ability {$abilityName} should be registered");
             $meta = $ability->get_meta();
-            $this->assertNotEmpty(
-                $meta['mcp']['public'] ?? null,
-                "Ability {$abilityName} should have mcp.public=true"
+            $this->assertTrue(
+                ! empty($meta['mcp']['public']) || ! empty($meta['show_in_rest']),
+                "Ability {$abilityName} should have mcp.public=true or show_in_rest=true"
             );
+        }
+    }
+
+    public function test_includes_wp70_rest_exposed_abilities_without_mcp_meta(): void
+    {
+        if (! function_exists('wp_register_ability') || ! function_exists('wp_register_ability_category')) {
+            $this->markTestSkipped('WP Abilities API not available.');
+        }
+
+        wp_register_ability_category('gds-assistant-test', [
+            'label' => 'GDS Assistant Test',
+            'description' => 'Test abilities for assistant provider coverage.',
+        ]);
+
+        wp_register_ability('gds-assistant-test/rest-visible', [
+            'label' => 'REST Visible',
+            'description' => 'Test ability exposed through the WP 7.0 abilities REST API.',
+            'category' => 'gds-assistant-test',
+            'input_schema' => [
+                'type' => 'object',
+                'default' => [],
+            ],
+            'output_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'ok' => ['type' => 'boolean'],
+                ],
+            ],
+            'permission_callback' => '__return_true',
+            'execute_callback' => fn () => ['ok' => true],
+            'meta' => [
+                'show_in_rest' => true,
+                'annotations' => [
+                    'readonly' => true,
+                    'destructive' => false,
+                    'idempotent' => true,
+                ],
+            ],
+        ]);
+
+        $provider = new AbilitiesToolProvider;
+
+        $this->assertContains(
+            'gds-assistant-test__rest-visible',
+            array_column($provider->getTools(), 'name')
+        );
+
+        if (function_exists('wp_unregister_ability')) {
+            wp_unregister_ability('gds-assistant-test/rest-visible');
         }
     }
 }
