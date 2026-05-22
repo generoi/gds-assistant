@@ -138,44 +138,24 @@ class ContextCompressor
         // Build conversation text for the summarizer
         $conversationText = self::buildConversationText($oldMessages);
 
-        // Use cheapest available provider
-        $modelKey = self::getCheapestModel();
-        if (! $modelKey) {
-            return null; // No provider available, fall back to mechanical summary
-        }
-
-        $resolved = ProviderRegistry::resolve($modelKey, 4096);
-        if (! $resolved) {
+        if (! AiSupport::supportsCoreTextGeneration()) {
             return null;
         }
-
-        $provider = $resolved['provider'];
 
         // Make a non-streaming summary call
         $summaryMessages = [
             ['role' => 'user', 'content' => "Here is a conversation to summarize:\n\n{$conversationText}"],
         ];
 
-        $result = '';
         try {
-            $blocks = $provider->stream(
-                $summaryMessages,
-                [], // no tools
-                function (string $type, array $data) use (&$result) {
-                    if ($type === 'text_delta') {
-                        $result .= $data['text'] ?? '';
-                    }
-                },
-                self::SUMMARY_PROMPT,
+            $result = CoreAiProvider::generateText(
+                messages: $summaryMessages,
+                systemPrompt: self::SUMMARY_PROMPT,
+                maxTokens: 4096,
+                modelPreference: ProviderRegistry::coreModelPreference('wordpress:fast'),
             );
-
-            // Extract text from content blocks
-            if (! $result) {
-                foreach ($blocks as $block) {
-                    if (($block['type'] ?? '') === 'text') {
-                        $result .= $block['text'] ?? '';
-                    }
-                }
+            if (is_wp_error($result)) {
+                return null;
             }
         } catch (\Throwable $e) {
             error_log('[gds-assistant] LLM summary failed: '.$e->getMessage());
@@ -183,7 +163,7 @@ class ContextCompressor
             return null;
         }
 
-        return $result ?: null;
+        return (string) $result ?: null;
     }
 
     // ── Level 1: Smart tool result truncation ───────────────────
@@ -400,23 +380,6 @@ class ContextCompressor
     }
 
     // ── Helpers ──────────────────────────────────────────────────
-
-    private static function getCheapestModel(): ?string
-    {
-        $available = ProviderRegistry::getAvailable();
-
-        // Priority: Gemini Flash > Haiku > anything else
-        $preferences = ['gemini:gemini-flash', 'anthropic:haiku', 'groq:llama-scout'];
-        foreach ($preferences as $key) {
-            [$provider] = explode(':', $key);
-            if (isset($available[$provider])) {
-                return $key;
-            }
-        }
-
-        // Fall back to default
-        return ProviderRegistry::getDefaultModelKey();
-    }
 
     private static function buildConversationText(array $messages): string
     {

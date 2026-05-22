@@ -5,20 +5,20 @@ AI chat assistant built into the WordPress admin. Talk to it in natural language
 ### What it does
 
 - **Chat with AI in your admin** — a floating chat widget on every admin page. Ask it to do things like "create a draft campaign page" or "find all pages with broken links" and it actually does them using your site's real data.
-- **Multiple AI providers** — supports Claude (Anthropic), GPT (OpenAI), Gemini (Google), Mistral, Groq, xAI, and DeepSeek. Pick the model that fits the task — cheap and fast for quick queries, powerful for complex operations. Switch mid-conversation.
+- **WordPress-native AI** — uses the WordPress 7 AI Client and Connectors APIs for provider routing and credentials. Configure providers once under Settings > Connectors.
 - **Skills** — save reusable prompts as skills (like macros). Create them through the chat or in WP Admin under Tools > AI Skills. Invoke with `/skill-name`. Each skill can have a preferred model — e.g. use a cheap model for lookups, a smart one for content creation.
 - **Conversation history** — past chats are saved and searchable. Pick up where you left off. See how much each conversation cost.
 - **Cost tracking** — live token count and estimated cost displayed as you chat. Price indicators ($-$$$$) next to each model so you know what you're spending.
 - **Works with your content** — the assistant can list, create, update, and delete posts, pages, products, media, translations, forms, blocks, and more. It sees your actual site structure and uses real WordPress APIs.
 
-Built on [assistant-ui](https://www.assistant-ui.com/) for the chat UI and the [WordPress Abilities API](https://github.com/WordPress/abilities-api) for tool execution.
+Built on [assistant-ui](https://www.assistant-ui.com/), the WordPress AI Client, WordPress Connectors, and the WordPress Abilities API.
 
 ## Requirements
 
 - PHP >= 8.3
-- WordPress >= 6.8
+- WordPress >= 7.0
 - [generoi/gds-mcp](https://github.com/generoi/gds-mcp) (provides WordPress tools)
-- At least one AI provider API key configured
+- At least one WordPress AI provider connector configured
 
 ## Installation
 
@@ -31,71 +31,33 @@ wp plugin activate gds-assistant
 
 ## Configuration
 
-All configuration via environment variables and filters. No settings page.
+Configure AI providers through WordPress core under Settings > Connectors. The assistant does not store provider API keys.
 
-### Environment Variables
+### AI Providers
 
-Set API keys for the providers you want to use. The chat widget only loads if at least one provider is configured.
+Install and configure a WordPress 7 AI provider plugin, then add its credentials under Settings > Connectors. Core handles provider discovery, credential source priority, and model routing.
 
-#### Provider API Keys
+The chat widget only loads when `wp_supports_ai()` is true and `wp_ai_client_prompt()` supports text generation.
 
-Each provider checks multiple env var names (first match wins):
-
-| Provider               | Env vars (checked in order)                                                 | Get a key                                               |
-| ---------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **Anthropic** (Claude) | `GDS_ASSISTANT_ANTHROPIC_KEY`, `GDS_ASSISTANT_API_KEY`, `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/) |
-| **OpenAI**             | `GDS_ASSISTANT_OPENAI_KEY`, `OPENAI_API_KEY`                                | [platform.openai.com](https://platform.openai.com/)     |
-| **Google Gemini**      | `GDS_ASSISTANT_GEMINI_KEY`, `GOOGLE_AI_API_KEY`                             | [aistudio.google.com](https://aistudio.google.com/)     |
-| **Mistral**            | `GDS_ASSISTANT_MISTRAL_KEY`, `MISTRAL_API_KEY`                              | [console.mistral.ai](https://console.mistral.ai/)       |
-| **Groq**               | `GDS_ASSISTANT_GROQ_KEY`, `GROQ_API_KEY`                                    | [console.groq.com](https://console.groq.com/)           |
-| **xAI** (Grok)         | `GDS_ASSISTANT_XAI_KEY`, `XAI_API_KEY`                                      | [console.x.ai](https://console.x.ai/)                   |
-| **DeepSeek**           | `GDS_ASSISTANT_DEEPSEEK_KEY`, `DEEPSEEK_API_KEY`                            | [platform.deepseek.com](https://platform.deepseek.com/) |
-
-#### Other Settings
+### Other Settings
 
 ```env
-# Optional — override the default provider (first available is used otherwise)
-GDS_ASSISTANT_DEFAULT_PROVIDER=anthropic
-
 # Optional — default max output tokens (default: 4096)
 GDS_ASSISTANT_MAX_TOKENS=4096
 ```
 
-#### Example .env
-
-```env
-# Anthropic (Claude) — primary provider
-GDS_ASSISTANT_ANTHROPIC_KEY=sk-ant-api03-...
-
-# OpenAI — secondary provider
-GDS_ASSISTANT_OPENAI_KEY=sk-proj-...
-
-# Gemini — cheap option for quick queries
-GDS_ASSISTANT_GEMINI_KEY=AIza...
-```
-
 ### Available Models
 
-Models are grouped by provider in the chat widget dropdown. Only providers with configured API keys appear.
+The assistant exposes WordPress AI Client preferences, not vendor-specific transports:
 
-| Provider      | Model Key                 | Label          | Notes                          |
-| ------------- | ------------------------- | -------------- | ------------------------------ |
-| **Anthropic** | `anthropic:haiku`         | Haiku          | Fast, cheap                    |
-|               | `anthropic:sonnet`        | Sonnet         | Best balance (default)         |
-|               | `anthropic:opus`          | Opus           | Most capable                   |
-|               | `anthropic:haiku-advisor` | Haiku+Advisor  | Haiku executor + Opus advisor  |
-|               | `anthropic:advisor`       | Sonnet+Advisor | Sonnet executor + Opus advisor |
-| **OpenAI**    | `openai:gpt-4.1-mini`     | GPT-4.1 Mini   | Fast, affordable               |
-|               | `openai:gpt-4.1`          | GPT-4.1        | Strong tool use                |
-|               | `openai:o4-mini`          | o4 Mini        | Reasoning model                |
-| **Gemini**    | `gemini:gemini-flash`     | Flash 2.5      | Very cheap                     |
-|               | `gemini:gemini-pro`       | Pro 2.5        | Near-Opus quality              |
-| **Mistral**   | `mistral:mistral-large`   | Large          | EU-hosted                      |
-| **Groq**      | `groq:llama-scout`        | Llama Scout    | Ultra-fast inference           |
-|               | `groq:llama-maverick`     | Llama Maverick | Larger Llama model             |
-| **xAI**       | `xai:grok-3`              | Grok 3         | Full model                     |
-|               | `xai:grok-3-fast`         | Grok 3 Fast    | Faster variant                 |
-| **DeepSeek**  | `deepseek:deepseek-chat`  | DeepSeek Chat  | Cheapest option                |
+| Model Key            | Label                       | Notes                                     |
+| -------------------- | --------------------------- | ----------------------------------------- |
+| `wordpress:auto`     | Auto                        | Let WordPress choose any suitable model   |
+| `wordpress:fast`     | Fast available model        | Preference list for lower-cost responses  |
+| `wordpress:balanced` | Balanced available model    | Preference list for general assistant use |
+| `wordpress:capable`  | Most capable available model | Preference list for harder tool planning  |
+
+Legacy skill model keys such as `anthropic:sonnet` are mapped to the closest WordPress preference.
 
 ### Filters
 
@@ -107,21 +69,13 @@ Models are grouped by provider in the chat widget dropdown. Only providers with 
 | `gds-assistant/rate_limit`         | `['requests' => 20, 'window' => 300]` | Per-user rate limit                         |
 | `gds-assistant/system_prompt`      | (auto-generated)                      | Customize the system prompt                 |
 | `gds-assistant/tools`              | (all registered)                      | Filter available tools                      |
-| `gds-assistant/provider`           | (from registry)                       | Override the LLM provider instance          |
-| `gds-assistant/register_providers` | —                                     | Action to register custom providers         |
 | `gds-assistant/register_tools`     | —                                     | Action to register custom tool providers    |
 
 ## Architecture
 
-### LLM Providers
+### AI Client
 
-Three provider implementations ship out of the box:
-
-- **AnthropicProvider** — Claude models with streaming + advisor tool support
-- **OpenAiCompatibleProvider** — Covers OpenAI, Mistral, Groq, xAI, and DeepSeek (same API format, different base URLs)
-- **GeminiProvider** — Google Gemini with function calling
-
-The `ProviderRegistry` auto-discovers available providers from env vars and exposes them to the frontend model selector. Add custom providers via the `gds-assistant/register_providers` action.
+`CoreAiProvider` is the only LLM transport. It uses `wp_ai_client_prompt()` for generation and asks the model for structured JSON tool calls. Provider plugins, API keys, model routing, and AI availability are handled by WordPress core.
 
 ### Tool Bridge
 

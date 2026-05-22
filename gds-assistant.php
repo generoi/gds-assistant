@@ -5,6 +5,7 @@ Plugin Name:  GDS Assistant
 Plugin URI:   https://genero.fi
 Description:  AI-powered admin assistant with WordPress tool access
 Version:      0.1.0
+Requires at least: 7.0
 Author:       Genero
 Author URI:   https://genero.fi/
 License:      MIT License

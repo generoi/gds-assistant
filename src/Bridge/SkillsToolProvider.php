@@ -27,7 +27,7 @@ class SkillsToolProvider implements ToolProviderInterface
                         'slug' => ['type' => 'string', 'description' => 'Short slash-command slug (e.g. "translate-product")'],
                         'description' => ['type' => 'string', 'description' => 'Brief description of what the skill does'],
                         'prompt' => ['type' => 'string', 'description' => 'The full prompt template. Can include {{placeholders}} that the user fills in.'],
-                        'model' => ['type' => 'string', 'description' => 'Preferred model key (e.g. "gemini:gemini-flash", "anthropic:sonnet"). Auto-switches when skill is invoked. Leave empty for user\'s current selection.'],
+                        'model' => ['type' => 'string', 'description' => 'Preferred WordPress AI Client model key (wordpress:auto, wordpress:fast, wordpress:balanced, wordpress:capable). Legacy provider keys are mapped automatically. Leave empty for the user\'s current selection.'],
                         'schedule' => ['type' => 'string', 'description' => 'Auto-run schedule: "hourly", "daily", "weekly", or empty to disable.', 'enum' => ['', 'hourly', 'daily', 'weekly']],
                     ],
                     'required' => ['title', 'prompt'],

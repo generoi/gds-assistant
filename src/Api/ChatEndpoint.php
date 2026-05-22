@@ -5,6 +5,7 @@ namespace GeneroWP\Assistant\Api;
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
+use GeneroWP\Assistant\Llm\AiSupport;
 use GeneroWP\Assistant\Llm\ContextCompressor;
 use GeneroWP\Assistant\Llm\MessageLoop;
 use GeneroWP\Assistant\Llm\ProviderRegistry;
@@ -40,7 +41,7 @@ class ChatEndpoint
                 'model' => [
                     'type' => 'string',
                     'default' => '',
-                    'description' => 'Model key in "provider:model" format (e.g. "anthropic:sonnet", "openai:gpt-4.1-mini").',
+                    'description' => 'WordPress AI Client model preference (e.g. "wordpress:auto", "wordpress:fast", "wordpress:capable"). Legacy provider keys are mapped automatically.',
                 ],
                 'max_tokens' => [
                     'type' => 'integer',
@@ -63,9 +64,15 @@ class ChatEndpoint
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
+        if (! AiSupport::isEnabled()) {
+            return new WP_REST_Response([
+                'error' => AiSupport::unavailableMessage(),
+            ], 403);
+        }
+
         if (! ProviderRegistry::hasAnyProvider()) {
             return new WP_REST_Response([
-                'error' => 'No AI provider configured. Set an API key in .env (e.g. GDS_ASSISTANT_ANTHROPIC_KEY).',
+                'error' => 'No AI provider configured. Configure a provider in Settings > Connectors or set an API key in the environment.',
             ], 500);
         }
 
@@ -155,9 +162,6 @@ class ChatEndpoint
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
             );
         }
-
-        // Allow filter to override the provider
-        $provider = apply_filters('gds-assistant/provider', $provider);
 
         // Build tool registry
         $toolRegistry = new ToolRegistry;

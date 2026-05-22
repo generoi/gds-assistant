@@ -203,19 +203,36 @@ class SettingsPage
                 ><?php echo esc_textarea(implode("\n", $trustedHosts)); ?></textarea>
 
                 <h2><?php esc_html_e('Providers', 'gds-assistant'); ?></h2>
-                <p class="description"><?php esc_html_e('API keys are configured via environment variables in your .env file. The chat widget only loads when at least one provider is configured.', 'gds-assistant'); ?></p>
+                <p class="description">
+                    <?php esc_html_e('Provider credentials are managed by WordPress 7 connectors and consumed through the WordPress AI Client.', 'gds-assistant'); ?>
+                    <?php if (admin_url('options-general.php?page=connectors')) { ?>
+                        <a href="<?php echo esc_url(admin_url('options-general.php?page=connectors')); ?>"><?php esc_html_e('Open Settings > Connectors', 'gds-assistant'); ?></a>
+                    <?php } ?>
+                </p>
+                <?php if (! ProviderRegistry::hasAnyProvider()) { ?>
+                    <div class="notice notice-warning inline">
+                        <p><?php esc_html_e('No usable AI provider is currently available. Configure a WordPress connector and make sure AI support is enabled.', 'gds-assistant'); ?></p>
+                    </div>
+                <?php } ?>
                 <table class="form-table">
-                    <?php foreach (self::getAllProviderConfigs() as $name => $config) { ?>
-                        <?php $hasKey = ProviderRegistry::getApiKey($name); ?>
+                    <?php foreach (self::getProviderConfigs() as $name => $config) { ?>
+                        <?php
+                        $credential = ProviderRegistry::getCredentialInfo($name);
+                        $hasKey = ! empty($credential['key']);
+                        ?>
                         <tr>
                             <th scope="row"><?php echo esc_html($config['label']); ?></th>
                             <td>
                                 <?php if ($hasKey) { ?>
                                     <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                                    <?php esc_html_e('Configured', 'gds-assistant'); ?>
+                                    <?php echo esc_html(self::credentialLabel($credential['source'])); ?>
                                 <?php } else { ?>
                                     <span class="dashicons dashicons-minus" style="color: #999;"></span>
-                                    <code><?php echo esc_html($config['env'][0] ?? ''); ?></code>
+                                    <?php if (! empty($config['core'])) { ?>
+                                        <?php esc_html_e('WordPress AI Client is unavailable', 'gds-assistant'); ?>
+                                    <?php } else { ?>
+                                        <code><?php echo esc_html($config['env'][0] ?? ''); ?></code>
+                                    <?php } ?>
                                 <?php } ?>
                             </td>
                         </tr>
@@ -259,16 +276,38 @@ class SettingsPage
     /**
      * Get all provider configs (not just available ones).
      */
-    private static function getAllProviderConfigs(): array
+    private static function getProviderConfigs(): array
     {
-        ProviderRegistry::registerDefaults();
+        return [
+            'wordpress' => [
+                'label' => __('WordPress AI Client', 'gds-assistant'),
+                'core' => true,
+            ],
+        ];
+    }
 
-        // Access via reflection since getAvailable() filters by key
-        $available = [];
-        $reflect = new \ReflectionClass(ProviderRegistry::class);
-        $prop = $reflect->getProperty('providers');
-        $prop->setAccessible(true);
-
-        return $prop->getValue();
+    private static function credentialLabel(string $source): string
+    {
+        return match (true) {
+            str_starts_with($source, 'wordpress:') => __('Configured through WordPress AI Client', 'gds-assistant'),
+            str_starts_with($source, 'connector:env:') => sprintf(
+                __('Connector environment variable: %s', 'gds-assistant'),
+                substr($source, strlen('connector:env:')),
+            ),
+            str_starts_with($source, 'connector:constant:') => sprintf(
+                __('Connector constant: %s', 'gds-assistant'),
+                substr($source, strlen('connector:constant:')),
+            ),
+            str_starts_with($source, 'connector:database:') => __('Connector database credential', 'gds-assistant'),
+            str_starts_with($source, 'legacy:env:') => sprintf(
+                __('Legacy environment variable: %s', 'gds-assistant'),
+                substr($source, strlen('legacy:env:')),
+            ),
+            str_starts_with($source, 'legacy:constant:') => sprintf(
+                __('Legacy constant: %s', 'gds-assistant'),
+                substr($source, strlen('legacy:constant:')),
+            ),
+            default => __('Configured', 'gds-assistant'),
+        };
     }
 }
