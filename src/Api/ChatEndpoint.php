@@ -41,7 +41,7 @@ class ChatEndpoint
                 'model' => [
                     'type' => 'string',
                     'default' => '',
-                    'description' => 'WordPress AI Client model preference (e.g. "wordpress:auto", "wordpress:fast", "wordpress:capable"). Legacy provider keys are mapped automatically.',
+                    'description' => 'Model key in "provider:model" format (e.g. "anthropic:sonnet", "openai:gpt-4.1-mini").',
                 ],
                 'max_tokens' => [
                     'type' => 'integer',
@@ -72,7 +72,7 @@ class ChatEndpoint
 
         if (! ProviderRegistry::hasAnyProvider()) {
             return new WP_REST_Response([
-                'error' => 'No AI provider configured. Configure a provider in Settings > Connectors or set an API key in the environment.',
+                'error' => 'No AI provider configured. Configure a WordPress connector or set a provider API key in the environment.',
             ], 500);
         }
 
@@ -162,6 +162,9 @@ class ChatEndpoint
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
             );
         }
+
+        // Allow filter to override the provider
+        $provider = apply_filters('gds-assistant/provider', $provider);
 
         // Build tool registry
         $toolRegistry = new ToolRegistry;

@@ -204,14 +204,14 @@ class SettingsPage
 
                 <h2><?php esc_html_e('Providers', 'gds-assistant'); ?></h2>
                 <p class="description">
-                    <?php esc_html_e('Provider credentials are managed by WordPress 7 connectors and consumed through the WordPress AI Client.', 'gds-assistant'); ?>
+                    <?php esc_html_e('WordPress 7 connectors are checked first for provider credentials. Legacy environment variables remain supported for streaming chat providers.', 'gds-assistant'); ?>
                     <?php if (admin_url('options-general.php?page=connectors')) { ?>
                         <a href="<?php echo esc_url(admin_url('options-general.php?page=connectors')); ?>"><?php esc_html_e('Open Settings > Connectors', 'gds-assistant'); ?></a>
                     <?php } ?>
                 </p>
                 <?php if (! ProviderRegistry::hasAnyProvider()) { ?>
                     <div class="notice notice-warning inline">
-                        <p><?php esc_html_e('No usable AI provider is currently available. Configure a WordPress connector and make sure AI support is enabled.', 'gds-assistant'); ?></p>
+                        <p><?php esc_html_e('No usable AI provider is currently available. Configure a WordPress connector or set a provider API key in the environment.', 'gds-assistant'); ?></p>
                     </div>
                 <?php } ?>
                 <table class="form-table">
@@ -278,12 +278,13 @@ class SettingsPage
      */
     private static function getProviderConfigs(): array
     {
-        return [
-            'wordpress' => [
-                'label' => __('WordPress AI Client', 'gds-assistant'),
-                'core' => true,
-            ],
-        ];
+        ProviderRegistry::registerDefaults();
+
+        $reflect = new \ReflectionClass(ProviderRegistry::class);
+        $prop = $reflect->getProperty('providers');
+        $prop->setAccessible(true);
+
+        return $prop->getValue();
     }
 
     private static function credentialLabel(string $source): string
@@ -298,7 +299,7 @@ class SettingsPage
                 __('Connector constant: %s', 'gds-assistant'),
                 substr($source, strlen('connector:constant:')),
             ),
-            str_starts_with($source, 'connector:database:') => __('Connector database credential', 'gds-assistant'),
+            str_starts_with($source, 'connector:option:') => __('Connector database credential', 'gds-assistant'),
             str_starts_with($source, 'legacy:env:') => sprintf(
                 __('Legacy environment variable: %s', 'gds-assistant'),
                 substr($source, strlen('legacy:env:')),
