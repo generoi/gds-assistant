@@ -71,6 +71,35 @@ class MemoryToolProviderTest extends TestCase
         $this->assertWPError($result);
     }
 
+    public function test_save_memory_enforces_entry_count_cap(): void
+    {
+        // Tighten the cap so the test is cheap.
+        add_filter('gds-assistant/max_memory_entries', fn () => 2);
+
+        $ids = [];
+        foreach (['One', 'Two'] as $title) {
+            $r = $this->provider->executeTool('assistant__memory-save', [
+                'title' => $title,
+                'content' => 'fact',
+            ]);
+            $this->assertArrayHasKey('id', $r);
+            $ids[] = $r['id'];
+        }
+
+        // Third save hits the cap.
+        $result = $this->provider->executeTool('assistant__memory-save', [
+            'title' => 'Three',
+            'content' => 'fact',
+        ]);
+        $this->assertWPError($result);
+        $this->assertSame('memory_full', $result->get_error_code());
+
+        remove_all_filters('gds-assistant/max_memory_entries');
+        foreach ($ids as $id) {
+            wp_delete_post($id, true);
+        }
+    }
+
     public function test_list_memories(): void
     {
         $postId = wp_insert_post([

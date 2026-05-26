@@ -93,6 +93,19 @@ class MemoryToolProvider implements ToolProviderInterface
             return new \WP_Error('invalid_input', 'Title max 200 chars, content max 5000 chars');
         }
 
+        // Cap the total number of entries. Memory is injected into every
+        // future system prompt, so an unbounded store is both a cost/context
+        // sink and a larger prompt-injection surface. Matches the load limit
+        // in SystemPrompt::getMemoryEntries().
+        $max = (int) apply_filters('gds-assistant/max_memory_entries', 50);
+        $published = (int) (wp_count_posts('assistant_memory')->publish ?? 0);
+        if ($published >= $max) {
+            return new \WP_Error(
+                'memory_full',
+                sprintf('Memory is full (%d/%d entries). Delete an outdated entry with assistant__memory-forget before saving a new one.', $published, $max),
+            );
+        }
+
         $postId = wp_insert_post([
             'post_type' => 'assistant_memory',
             'post_title' => $title,
