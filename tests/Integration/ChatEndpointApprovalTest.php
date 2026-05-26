@@ -4,6 +4,7 @@ namespace GeneroWP\Assistant\Tests\Integration;
 
 use GeneroWP\Assistant\Api\ChatEndpoint;
 use GeneroWP\Assistant\Plugin;
+use GeneroWP\Assistant\Storage\AuditLog;
 use GeneroWP\Assistant\Tests\TestCase;
 use ReflectionMethod;
 
@@ -121,6 +122,42 @@ class ChatEndpointApprovalTest extends TestCase
         $this->assertTrue($toolResult['is_error']);
         $decoded = json_decode($toolResult['content'], true);
         $this->assertStringContainsString('denied', $decoded['error']);
+    }
+
+    public function test_denied_action_is_audit_logged(): void
+    {
+        // Approved (gated) actions execute here rather than in MessageLoop, and
+        // denials never reach MessageLoop at all — so this path must log both,
+        // or the most sensitive actions leave no audit trail.
+        AuditLog::createTables();
+        $userId = $this->createAdminUser();
+        wp_set_current_user($userId);
+        $uuid = 'approval-audit-'.uniqid();
+
+        $storedMessages = [
+            ['role' => 'assistant', 'content' => [
+                ['type' => 'tool_use', 'id' => 'toolu_d', 'name' => 'gds__terms-delete', 'input' => ['id' => 5]],
+            ]],
+            ['role' => 'user', 'content' => [
+                ['type' => 'tool_result', 'tool_use_id' => 'toolu_d', 'content' => json_encode(['status' => 'pending_approval']), 'is_error' => false],
+            ]],
+        ];
+
+        $this->handleToolApproval->invokeArgs($this->endpoint, [
+            $storedMessages,
+            'toolu_d',
+            false, // denied
+            fn () => null,
+            $uuid,
+            $userId,
+        ]);
+
+        $entries = (new AuditLog)->getForConversation($uuid);
+        $this->assertCount(1, $entries, 'A denied action must leave an audit entry.');
+        $this->assertSame('gds/terms-delete', $entries[0]['tool_name']);
+        $this->assertSame(1, (int) $entries[0]['is_destructive']);
+        $decoded = json_decode($entries[0]['tool_result'], true);
+        $this->assertSame('denied', $decoded['decision'] ?? null);
     }
 
     public function test_approval_with_unknown_tool_id(): void

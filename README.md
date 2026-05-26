@@ -107,6 +107,9 @@ Models are grouped by provider in the chat widget dropdown. Only providers with 
 | `gds-assistant/rate_limit`         | `['requests' => 20, 'window' => 300]` | Per-user rate limit                         |
 | `gds-assistant/system_prompt`      | (auto-generated)                      | Customize the system prompt                 |
 | `gds-assistant/tools`              | (all registered)                      | Filter available tools                      |
+| `gds-assistant/tool_risk_level`    | (name/annotation based)               | Override a tool's risk classification (`safe`/`moderate`/`dangerous`) |
+| `gds-assistant/tool_requires_approval` | (risk based)                      | Per-invocation override for whether a tool call needs user approval. Used to gate irreversible writes — e.g. a `gds/forms-update` that rewrites the field structure, or any `gds/terms-update` (no revisions). |
+| `gds-assistant/confirm_on_approval` | `['gds/forms-update']`               | Abilities whose data-layer destructive guard accepts a `confirm_destructive` flag; the flag is injected when the user approves the call |
 | `gds-assistant/provider`           | (from registry)                       | Override the LLM provider instance          |
 | `gds-assistant/register_providers` | —                                     | Action to register custom providers         |
 | `gds-assistant/register_tools`     | —                                     | Action to register custom tool providers    |
