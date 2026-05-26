@@ -130,6 +130,17 @@ class ToolRestrictorTest extends TestCase
         ]));
     }
 
+    public function test_classify_risk_terms_delete_is_dangerous_by_name(): void
+    {
+        // Even without the [DESTRUCTIVE] annotation prefix, the name-based
+        // fallback must classify term deletion as dangerous — it must not be
+        // shadowed by the terms create/update pattern.
+        $this->assertSame('dangerous', ToolRestrictor::classifyRisk([
+            'name' => 'gds__terms-delete',
+            'description' => 'Delete terms',
+        ]));
+    }
+
     public function test_min_tier_overrides_risk_based_filtering(): void
     {
         $tools = [

@@ -108,14 +108,15 @@ class ToolRestrictor
             return 'moderate';
         }
 
-        // Terms writes — moderate (no revisions)
-        if (preg_match('/^gds__terms-(create|update|delete)$/', $name)) {
-            return 'moderate';
-        }
-
-        // Terms delete specifically — dangerous (irreversible)
+        // Terms delete — dangerous (irreversible, no revisions). Checked
+        // before the create/update pattern so it isn't shadowed.
         if ($name === 'gds__terms-delete') {
             return 'dangerous';
+        }
+
+        // Terms create/update — moderate (no revisions)
+        if (preg_match('/^gds__terms-(create|update)$/', $name)) {
+            return 'moderate';
         }
 
         // Menus, forms, translations — moderate

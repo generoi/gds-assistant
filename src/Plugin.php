@@ -53,6 +53,12 @@ class Plugin
         add_action('rest_api_init', [$this, 'registerRestRoutes']);
         add_action('enqueue_block_editor_assets', [$this, 'enqueueSkillEditorAssets']);
         add_action('gds-assistant/register_tools', [$this, 'registerToolProviders']);
+
+        // Force human approval for irreversible writes (form field structure,
+        // taxonomy terms) that aren't flagged destructive and would otherwise
+        // execute silently. See Bridge\DestructiveGuard.
+        add_filter('gds-assistant/tool_requires_approval', [Bridge\DestructiveGuard::class, 'requiresApproval'], 10, 3);
+
         add_action('gds_assistant_cleanup', [$this, 'runCleanup']);
         add_action('gds_assistant_run_scheduled_skills', [Cron\SkillScheduler::class, 'run']);
 
@@ -175,6 +181,10 @@ class Plugin
             'single' => true,
             'type' => 'string',
             'default' => '',
+            // Scheduled skills run unattended with the author's privileges, so
+            // only administrators may set a schedule. SkillScheduler also
+            // re-checks the author's capability at run time.
+            'auth_callback' => fn () => current_user_can('manage_options'),
         ]);
 
         register_post_type('assistant_memory', [

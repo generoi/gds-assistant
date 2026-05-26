@@ -3,6 +3,7 @@
 namespace GeneroWP\Assistant\Api;
 
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
+use GeneroWP\Assistant\Bridge\DestructiveGuard;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Llm\AiSupport;
@@ -85,6 +86,14 @@ class ChatEndpoint
             ], 429);
         }
 
+        // Daily token budget — backstop against runaway cost.
+        $budgetCheck = TokenBudget::check($userId);
+        if (is_wp_error($budgetCheck)) {
+            return new WP_REST_Response([
+                'error' => $budgetCheck->get_error_message(),
+            ], 429);
+        }
+
         $messages = $request->get_param('messages');
         $conversationId = $request->get_param('conversation_id');
 
@@ -148,6 +157,7 @@ class ChatEndpoint
             $messages = $this->handleToolApproval(
                 $messages, $toolUseId, $approved,
                 fn (string $type, array $data) => $this->sendSSE($type, $data),
+                $conversationId, $userId,
             );
         } else {
             // User sent a regular message (not an approval click). If the
@@ -235,6 +245,9 @@ class ChatEndpoint
                 'input_tokens' => $loop->getInputTokens(),
                 'output_tokens' => $loop->getOutputTokens(),
             ]);
+
+            // Count this request's tokens against the user's daily budget.
+            TokenBudget::record($userId, $loop->getInputTokens() + $loop->getOutputTokens());
 
             // Persist conversation (only set title on first save)
             $updateData = [
@@ -384,9 +397,12 @@ class ChatEndpoint
         string $toolUseId,
         bool $approved,
         callable $onEvent,
+        string $conversationUuid = '',
+        int $userId = 0,
     ): array {
         $toolRegistry = new ToolRegistry;
         do_action('gds-assistant/register_tools', $toolRegistry);
+        $auditLog = new AuditLog;
 
         // Collect all (tool_use_id → [name, input]) pairs that currently have
         // a pending_approval tool_result.
@@ -451,12 +467,32 @@ class ChatEndpoint
         foreach ($pendingIds as $id) {
             $info = $pending[$id] ?? null;
             if ($approved && $info && ! empty($info['name'])) {
-                $result = $toolRegistry->executeTool($info['name'], $info['input']);
+                // The user just approved this action — pass the human
+                // confirmation downstream so abilities with a data-layer
+                // destructive guard (e.g. gds/forms-update) allow it through.
+                $input = DestructiveGuard::injectConfirmation($info['name'], $info['input']);
+                $result = $toolRegistry->executeTool($info['name'], $input);
                 $isError = is_wp_error($result);
                 $resultContent = $isError ? ['error' => $result->get_error_message()] : $result;
             } else {
                 $isError = true;
                 $resultContent = ['error' => 'User denied this action'];
+            }
+
+            // Record the decision. Approved executions run here (not in
+            // MessageLoop), so without this the most sensitive — gated,
+            // destructive — actions would never reach the audit log. Denials
+            // are logged too, so a blocked attempt leaves a trace.
+            if ($info && ! empty($info['name'])) {
+                $auditLog->log(
+                    $conversationUuid,
+                    $userId,
+                    AbilitiesToolProvider::toAbilityName($info['name']),
+                    $info['input'] ?? [],
+                    $approved ? $resultContent : ['decision' => 'denied'],
+                    $isError,
+                    true, // approval is only required for destructive/gated tools
+                );
             }
 
             $onEvent('tool_result', [
