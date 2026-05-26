@@ -1325,7 +1325,10 @@ function AssistantMessage() {
       <MessagePrimitive.Content
         components={{
           Text: AssistantMessageText,
-          ToolCallUI: ToolCallFallback,
+          // assistant-ui routes tool-call parts through `tools.Fallback`
+          // (not `ToolCallUI` — that key was a no-op, which is why tool calls
+          // previously only appeared as the adapter's inline text).
+          tools: {Fallback: ToolCallFallback},
         }}
       />
       <MessageTimestamp />
