@@ -211,6 +211,10 @@ class Plugin
         // in init (not activation) because activation hooks don't fire
         // when updating via Composer — and the version gate makes it cheap.
         Bridge\DefaultSkills::maybeInstall();
+
+        // Migrate the audit-log schema (e.g. the undo_state column) on
+        // Composer upgrades where activation hooks don't fire. Version-gated.
+        Storage\AuditLog::maybeUpgrade();
     }
 
     public function tagAssistantUpload(\WP_Post $attachment): void
@@ -260,6 +264,9 @@ class Plugin
 
         // Memory tools (persistent knowledge base)
         $registry->register(new Bridge\MemoryToolProvider);
+
+        // Undo tools (restore a previous change from the audit-log snapshot)
+        $registry->register(new Bridge\UndoToolProvider);
 
         // Remote MCP server tools (Asana, Figma, etc.) — only registers if
         // gds-assistant/mcp_servers or GDS_ASSISTANT_MCP_SERVERS is set.

@@ -206,6 +206,17 @@ class MessageLoop
                 );
 
                 $isError = is_wp_error($result);
+
+                // Peel off the `_undo` snapshot an ability may attach: it's
+                // stored on the audit row for later restore, but must NOT reach
+                // the LLM, the SSE stream, or the saved conversation (it can be
+                // large and is internal-only).
+                $undoState = null;
+                if (! $isError && is_array($result) && isset($result['_undo'])) {
+                    $undoState = $result['_undo'];
+                    unset($result['_undo']);
+                }
+
                 $resultContent = $isError
                     ? ['error' => $result->get_error_message()]
                     : $result;
@@ -220,6 +231,7 @@ class MessageLoop
                         $result,
                         $isError,
                         $isDestructive,
+                        $undoState,
                     );
                 }
 
