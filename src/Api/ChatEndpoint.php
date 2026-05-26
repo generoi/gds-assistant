@@ -466,6 +466,7 @@ class ChatEndpoint
         $newResults = [];
         foreach ($pendingIds as $id) {
             $info = $pending[$id] ?? null;
+            $undoState = null;
             if ($approved && $info && ! empty($info['name'])) {
                 // The user just approved this action — pass the human
                 // confirmation downstream so abilities with a data-layer
@@ -473,6 +474,13 @@ class ChatEndpoint
                 $input = DestructiveGuard::injectConfirmation($info['name'], $info['input']);
                 $result = $toolRegistry->executeTool($info['name'], $input);
                 $isError = is_wp_error($result);
+
+                // Peel the `_undo` snapshot off before it reaches the LLM/UI.
+                if (! $isError && is_array($result) && isset($result['_undo'])) {
+                    $undoState = $result['_undo'];
+                    unset($result['_undo']);
+                }
+
                 $resultContent = $isError ? ['error' => $result->get_error_message()] : $result;
             } else {
                 $isError = true;
@@ -492,6 +500,7 @@ class ChatEndpoint
                     $approved ? $resultContent : ['decision' => 'denied'],
                     $isError,
                     true, // approval is only required for destructive/gated tools
+                    $undoState,
                 );
             }
 
