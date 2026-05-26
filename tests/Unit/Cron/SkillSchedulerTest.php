@@ -2,7 +2,9 @@
 
 namespace GeneroWP\Assistant\Tests\Unit\Cron;
 
+use GeneroWP\Assistant\Cron\SkillScheduler;
 use GeneroWP\Assistant\Tests\TestCase;
+use ReflectionMethod;
 
 class SkillSchedulerTest extends TestCase
 {
@@ -105,5 +107,41 @@ class SkillSchedulerTest extends TestCase
         $this->assertSame('', get_post_meta($postId, '_assistant_schedule', true));
 
         wp_delete_post($postId, true);
+    }
+
+    public function test_pending_approval_tools_detects_unexecuted_gated_actions(): void
+    {
+        $method = new ReflectionMethod(SkillScheduler::class, 'pendingApprovalTools');
+        $method->setAccessible(true);
+
+        $messages = [
+            ['role' => 'user', 'content' => 'do the thing'],
+            ['role' => 'assistant', 'content' => [
+                ['type' => 'tool_use', 'id' => 't1', 'name' => 'gds__forms-update', 'input' => []],
+            ]],
+            ['role' => 'user', 'content' => [
+                ['type' => 'tool_result', 'tool_use_id' => 't1', 'content' => json_encode([
+                    'status' => 'pending_approval',
+                    'tool_name' => 'gds/forms-update',
+                ])],
+            ]],
+        ];
+
+        $pending = $method->invoke(null, $messages);
+        $this->assertSame(['gds/forms-update'], $pending);
+    }
+
+    public function test_pending_approval_tools_empty_when_all_executed(): void
+    {
+        $method = new ReflectionMethod(SkillScheduler::class, 'pendingApprovalTools');
+        $method->setAccessible(true);
+
+        $messages = [
+            ['role' => 'user', 'content' => [
+                ['type' => 'tool_result', 'tool_use_id' => 't1', 'content' => json_encode(['ok' => true])],
+            ]],
+        ];
+
+        $this->assertSame([], $method->invoke(null, $messages));
     }
 }
