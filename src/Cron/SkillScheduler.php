@@ -72,10 +72,27 @@ class SkillScheduler
         $provider = $resolved['provider'];
         $modelId = $resolved['modelId'];
 
+        // Scheduled skills run unattended with the author's identity. Only
+        // administrators may schedule (enforced on the _assistant_schedule
+        // meta auth_callback), so a non-admin author here means a stale or
+        // tampered schedule — skip it rather than run with no cap enforcement.
+        $authorId = (int) $skill->post_author;
+        if (! $authorId || ! user_can($authorId, 'manage_options')) {
+            error_log("[gds-assistant] Skipping scheduled skill '{$skill->post_title}': author #{$authorId} is not an administrator (scheduling requires manage_options).");
+            update_post_meta($skill->ID, '_assistant_last_run', time());
+
+            return;
+        }
+
         // Create conversation for the result
         $store = new ConversationStore;
-        $adminId = self::getAdminUserId();
-        $conversationId = $store->create($adminId, $modelId);
+        $conversationId = $store->create($authorId, $modelId);
+
+        // Execute as the author so ability capability checks resolve against a
+        // real user — WP-Cron has no current user otherwise, which (combined
+        // with the abilities' permission callbacks) decides what may run.
+        $previousUser = get_current_user_id();
+        wp_set_current_user($authorId);
 
         // Build tools
         $toolRegistry = new ToolRegistry;
@@ -87,7 +104,7 @@ class SkillScheduler
             $toolRegistry,
             $auditLog,
             $conversationId,
-            $adminId,
+            $authorId,
         );
 
         $messages = [
@@ -102,7 +119,16 @@ class SkillScheduler
                 $systemPrompt,
             );
 
-            $title = '[Scheduled] '.$skill->post_title.' - '.wp_date('Y-m-d H:i');
+            // A scheduled run has no human to approve gated actions, so the
+            // loop leaves them as pending_approval stubs. Surface that instead
+            // of letting the skill silently appear to "do nothing".
+            $pending = self::pendingApprovalTools($updatedMessages);
+            if ($pending) {
+                $updatedMessages[] = ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'Note: this scheduled run requested actions that require human approval and were NOT executed: '.implode(', ', $pending).'. Open this conversation and approve them, or run the skill interactively.']]];
+            }
+
+            $prefix = $pending ? '[Scheduled][Needs approval] ' : '[Scheduled] ';
+            $title = $prefix.$skill->post_title.' - '.wp_date('Y-m-d H:i');
 
             $store->update($conversationId, [
                 'messages' => $updatedMessages,
@@ -120,15 +146,38 @@ class SkillScheduler
                     ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'Error: '.$e->getMessage()]]],
                 ],
             ]);
+        } finally {
+            wp_set_current_user($previousUser);
         }
 
         update_post_meta($skill->ID, '_assistant_last_run', time());
     }
 
-    private static function getAdminUserId(): int
+    /**
+     * Collect the (deduplicated) names of tools the loop left awaiting human
+     * approval — i.e. tool_result blocks with a pending_approval status.
+     *
+     * @return string[]
+     */
+    private static function pendingApprovalTools(array $messages): array
     {
-        $admins = get_users(['role' => 'administrator', 'number' => 1, 'fields' => 'ID']);
+        $names = [];
+        foreach ($messages as $msg) {
+            if (($msg['role'] ?? '') !== 'user' || ! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as $block) {
+                if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
+                    continue;
+                }
+                $content = is_string($block['content'] ?? null) ? $block['content'] : '';
+                $decoded = json_decode($content, true);
+                if (is_array($decoded) && ($decoded['status'] ?? '') === 'pending_approval') {
+                    $names[] = $decoded['tool_name'] ?? 'unknown';
+                }
+            }
+        }
 
-        return ! empty($admins) ? (int) $admins[0] : 1;
+        return array_values(array_unique($names));
     }
 }
