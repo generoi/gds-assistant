@@ -67,7 +67,7 @@ class AuditLog
         bool $isError = false,
         bool $isDestructive = false,
         ?array $undoState = null,
-    ): void {
+    ): array {
         global $wpdb;
 
         $resultJson = null;
@@ -105,6 +105,10 @@ class AuditLog
         ]);
 
         do_action('gds-assistant/tool_executed', $toolName, $input, $result, $userId);
+
+        // Return the new row id + whether an undo snapshot was actually stored
+        // (it may be dropped if oversized), so the chat can show an Undo button.
+        return ['id' => (int) $wpdb->insert_id, 'undoable' => $undoJson !== null];
     }
 
     /**

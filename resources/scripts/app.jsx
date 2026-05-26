@@ -14,6 +14,8 @@ export function App() {
     approveToolCall,
     denyToolCall,
     pendingApprovals,
+    undoableActions,
+    undoAction,
   } = useAssistantRuntime();
   const [context, setContext] = useState('');
 
@@ -62,6 +64,8 @@ export function App() {
         onApproveToolCall={approveToolCall}
         onDenyToolCall={denyToolCall}
         pendingApprovals={pendingApprovals}
+        undoableActions={undoableActions}
+        onUndo={undoAction}
       />
     </AssistantRuntimeProvider>
   );

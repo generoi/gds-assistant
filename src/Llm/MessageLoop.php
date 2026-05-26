@@ -222,8 +222,9 @@ class MessageLoop
                     : $result;
 
                 // Audit log
+                $logged = ['id' => 0, 'undoable' => false];
                 if ($this->auditLog) {
-                    $this->auditLog->log(
+                    $logged = $this->auditLog->log(
                         $this->conversationUuid,
                         $this->userId,
                         $abilityName,
@@ -235,11 +236,18 @@ class MessageLoop
                     );
                 }
 
-                $onEvent('tool_result', [
+                $resultEvent = [
                     'tool_use_id' => $toolUse['id'],
                     'result' => $resultContent,
                     'is_error' => $isError,
-                ]);
+                ];
+                // Tell the UI this action can be undone (drives the Undo button).
+                if ($logged['undoable'] && $logged['id']) {
+                    $resultEvent['undoable'] = true;
+                    $resultEvent['audit_id'] = $logged['id'];
+                    $resultEvent['undo_label'] = $undoState['label'] ?? 'Undo this action';
+                }
+                $onEvent('tool_result', $resultEvent);
 
                 // Keep the full result — ContextCompressor handles
                 // oversized tool results with structure-aware summarization
