@@ -139,6 +139,9 @@ export function useAssistantRuntime() {
   // Kept as state (not ref) so mutations trigger re-renders and the
   // Approve/Deny UI appears/disappears correctly. Ordered by arrival.
   const [pendingApprovals, setPendingApprovals] = useState([]);
+  // Map of tool_use_id -> { auditId, label, undone, caveats?, error? } for
+  // actions the server reported as reversible. Drives the per-tool Undo button.
+  const [undoableActions, setUndoableActions] = useState({});
   const abortRef = useRef(null);
   const onNewRef = useRef(null);
 
@@ -334,93 +337,66 @@ export function useAssistantRuntime() {
               flushTurn();
               sawToolResultInTurn = false;
             }
-            const idx = ensureTextPart();
             const toolLabel = event.data.name?.replace("__", "/") || "unknown";
             const toolId = event.data.id || "";
-            // Compact one-liner — full input in an <abbr title=…> so the
-            // browser shows a native tooltip on hover. Markdown processors
-            // don't parse markdown inside raw HTML blocks, so we keep the
-            // bold/code formatting OUTSIDE the abbr tag and only wrap the
-            // tool name. Much simpler than nested <details> which rendered
-            // its inner markdown as plain text.
-            const inputForTitle =
-              event.data.input && Object.keys(event.data.input).length > 0
-                ? JSON.stringify(event.data.input)
-                : "(no arguments)";
-            const titleSafe = sanitizeForTitle(inputForTitle);
-            // ​ (zero-width space) wraps the toolId as an invisible
-            // marker so tool_result can find and replace it. HTML comments
-            // (<!--...-->) were confusing streamdown's markdown parser.
-            turnParts[
-              idx
-            ].text += `\n\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> _Running..._​${toolId}​`;
+            // Emit a real tool-call content part — assistant-ui renders it via
+            // the ToolCallUI component (ToolCallFallback), which shows running/
+            // done/error state and (when undoable) an Undo button.
+            turnParts.push({
+              type: "tool-call",
+              toolCallId: toolId,
+              toolName: toolLabel,
+              args:
+                event.data.input && typeof event.data.input === "object"
+                  ? event.data.input
+                  : {},
+            });
+            // Any text after this tool starts a fresh text part.
+            currentTextIdx = -1;
+            updateCurrentTurn();
             break;
           }
 
           case "tool_result": {
-            const idx = ensureTextPart();
-            const status = event.data.is_error
-              ? "**Error**"
-              : "**Done** \u2713";
             const toolId = event.data.tool_use_id || "";
 
-            // Update the abbr title to include the result alongside input
-            if (toolId) {
-              const resultPreview = event.data.result
-                ? JSON.stringify(event.data.result).slice(0, 800)
-                : "(empty)";
-              const resultSafe = sanitizeForTitle(resultPreview);
-              // Find the abbr tag for this tool and append the result to its title.
-              // Marker: zero-width spaces (​) wrap the toolId after _Running..._.
-              const escapedId = toolId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const abbrRe = new RegExp(
-                `(<abbr class="gds-tool" title=")(.*?)(">)([\\s\\S]*?​${escapedId}​)`
-              );
-              const abbrMatch = turnParts[idx].text.match(abbrRe);
-              if (abbrMatch) {
-                const inputTitle = abbrMatch[2];
-                const newTitle = `${inputTitle} → ${resultSafe}`;
-                turnParts[idx].text = turnParts[idx].text.replace(
-                  abbrRe,
-                  `$1${newTitle}$3$4`
-                );
-              }
+            // Attach the result to the matching tool-call part so it flips
+            // from "Running" to Done/Error.
+            const tc = toolId
+              ? turnParts.find(
+                  (p) => p.type === "tool-call" && p.toolCallId === toolId,
+                )
+              : null;
+            if (tc) {
+              tc.result = event.data.result ?? {};
+              tc.isError = !!event.data.is_error;
             }
 
-            const marker = `_Running..._​${toolId}​`;
-            const pos = toolId ? turnParts[idx].text.indexOf(marker) : -1;
-            if (pos !== -1) {
-              turnParts[idx].text =
-                turnParts[idx].text.slice(0, pos) +
-                status +
-                turnParts[idx].text.slice(pos + marker.length);
-            } else {
-              // Fallback for events without an id: find last _Running..._ and
-              // consume through the next ​ pair (or just the text if absent).
-              const fallback = turnParts[idx].text.lastIndexOf("_Running..._");
-              if (fallback !== -1) {
-                const after = turnParts[idx].text.slice(fallback);
-                const zwsEnd = after.indexOf("​", after.indexOf("​") + 1);
-                const markerLen =
-                  zwsEnd !== -1 ? zwsEnd + 1 : "_Running..._".length;
-                turnParts[idx].text =
-                  turnParts[idx].text.slice(0, fallback) +
-                  status +
-                  turnParts[idx].text.slice(fallback + markerLen);
-              }
+            // Record undo info (keyed by tool id) so ToolCallFallback can show
+            // an Undo button. Only present when the action is reversible.
+            if (event.data.undoable && event.data.audit_id && toolId) {
+              setUndoableActions((prev) => ({
+                ...prev,
+                [toolId]: {
+                  auditId: event.data.audit_id,
+                  label: event.data.undo_label || "Undo this action",
+                  undone: false,
+                },
+              }));
             }
 
             // Drop this tool from the pending-approval queue if it was
             // there (server resolves pending stubs into real results).
-            if (event.data.tool_use_id) {
+            if (toolId) {
               setPendingApprovals((q) =>
-                q.filter((p) => p.toolUseId !== event.data.tool_use_id),
+                q.filter((p) => p.toolUseId !== toolId),
               );
             }
             // Don't flush here — the LLM may be running multiple tools in
             // parallel. Flush only when the LLM continues with new text
             // (handled in `text_delta`) or when the whole response ends.
             sawToolResultInTurn = true;
+            updateCurrentTurn();
             break;
           }
 
@@ -604,18 +580,22 @@ export function useAssistantRuntime() {
           if (block.type === "text" && block.text) {
             parts.push({ type: "text", text: block.text });
           } else if (block.type === "tool_use") {
-            const toolLabel = (block.name || "").replace("__", "/");
-            const inputStr = block.input && Object.keys(block.input).length > 0
-              ? JSON.stringify(block.input)
-              : "(no arguments)";
-            const resultStr = toolResultMap[block.id] || "";
-            let titleRaw = inputStr;
-            if (resultStr) {
-              titleRaw += ` → ${resultStr}`;
+            // Restore as a real tool-call part (matching the live stream).
+            // No Undo button on history — the stored conversation doesn't
+            // carry the audit-log id; undo is offered on live actions only.
+            let result = toolResultMap[block.id] || "";
+            try {
+              result = result ? JSON.parse(result) : {};
+            } catch (e) {
+              /* keep the raw string if it isn't JSON */
             }
-            const titleSafe = sanitizeForTitle(titleRaw);
-            const toolText = `\n**Tool:** <abbr class="gds-tool" title="${titleSafe}">\`${toolLabel}\`</abbr> **Done** \u2713`;
-            parts.push({ type: "text", text: toolText });
+            parts.push({
+              type: "tool-call",
+              toolCallId: block.id,
+              toolName: (block.name || "").replace("__", "/"),
+              args: block.input || {},
+              result,
+            });
           }
         }
 
@@ -645,6 +625,17 @@ export function useAssistantRuntime() {
             ? part.source.url
             : `data:${part.source.media_type};base64,${part.source.data}`;
         return { type: "image", image: url };
+      }
+      if (part.type === "tool-call") {
+        return {
+          type: "tool-call",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          args: part.args || {},
+          argsText: JSON.stringify(part.args || {}),
+          result: part.result,
+          isError: part.isError,
+        };
       }
       return part;
     });
@@ -804,7 +795,7 @@ export function useAssistantRuntime() {
   const approveToolCall = useCallback((options = {}) => {
     setPendingApprovals((q) => {
       if (!q.length) return q;
-      const [first, ...rest] = q;
+      const [first] = q;
       // If the user clicked "Approve & trust domain", append a |trust:HOST
       // suffix so the server can persist the host to the trusted list.
       const trust = options.trustHost && first.trustableHost
@@ -813,19 +804,59 @@ export function useAssistantRuntime() {
       onNewRef.current?.({
         content: `__tool_approved__:${first.toolUseId}${trust}`,
       });
-      return rest;
+      // The server batch-resolves the WHOLE pending queue from one approval
+      // (see ChatEndpoint::handleToolApproval), so clear all of it — not just
+      // the first — otherwise the approval bar lingers for the siblings.
+      // If anything is still genuinely pending server-side, the next message
+      // re-surfaces it (resurfacePendingApprovals).
+      return [];
     });
   }, []);
 
   const denyToolCall = useCallback(() => {
     setPendingApprovals((q) => {
       if (!q.length) return q;
-      const [first, ...rest] = q;
+      const [first] = q;
       onNewRef.current?.({
         content: `__tool_denied__:${first.toolUseId}`,
       });
-      return rest;
+      // Denial is batch-resolved server-side too — clear the whole queue.
+      return [];
     });
+  }, []);
+
+  // Undo a single past action by its audit-log id. Direct REST call (no chat
+  // turn) — see Api\UndoEndpoint. Updates the per-tool undo state so the
+  // button can show "Undone" / surface caveats.
+  const undoAction = useCallback(async (toolCallId, auditId) => {
+    const { restUrl, nonce } = window.gdsAssistant || {};
+    setUndoableActions((prev) =>
+      prev[toolCallId]
+        ? { ...prev, [toolCallId]: { ...prev[toolCallId], pending: true, error: null } }
+        : prev,
+    );
+    try {
+      const res = await fetch(`${restUrl}undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-WP-Nonce": nonce },
+        body: JSON.stringify({ id: auditId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setUndoableActions((prev) => {
+        if (!prev[toolCallId]) return prev;
+        const entry =
+          res.ok && data.undone
+            ? { ...prev[toolCallId], pending: false, undone: true, caveats: data.caveats || [] }
+            : { ...prev[toolCallId], pending: false, error: data.error || "Undo failed" };
+        return { ...prev, [toolCallId]: entry };
+      });
+    } catch (e) {
+      setUndoableActions((prev) =>
+        prev[toolCallId]
+          ? { ...prev, [toolCallId]: { ...prev[toolCallId], pending: false, error: String(e) } }
+          : prev,
+      );
+    }
   }, []);
 
   const runtime = useExternalStoreRuntime(adapter);
@@ -836,6 +867,8 @@ export function useAssistantRuntime() {
     approveToolCall,
     denyToolCall,
     pendingApprovals,
+    undoableActions,
+    undoAction,
   };
 }
 
@@ -847,22 +880,6 @@ export function useAssistantRuntime() {
  * digits are always 24-hour and the date reads consistently regardless of
  * the browser UI language.
  */
-/**
- * Sanitize a string for use in an HTML title attribute inside markdown.
- * Replaces " with ' (not &quot; — markdown processors decode entities
- * before the HTML parser sees them, breaking the attribute).
- * Strips newlines to keep the tooltip compact.
- */
-function sanitizeForTitle(str) {
-  return str
-    .replace(/"/g, "'")
-    .replace(/&/g, "&amp;")
-    .replace(/\n/g, " ")
-    .replace(/\[/g, "(")
-    .replace(/\]/g, ")")
-    .slice(0, 1200);
-}
-
 export function formatMessageTime(ts) {
   const d = new Date(ts);
   const now = new Date();

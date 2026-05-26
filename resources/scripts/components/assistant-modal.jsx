@@ -8,7 +8,15 @@ import {
   useMessage,
 } from '@assistant-ui/react';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
-import {useState, useEffect, useCallback, useRef, useMemo} from '@wordpress/element';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  createContext,
+  useContext,
+} from '@wordpress/element';
 import {
   onUsageUpdate,
   setModel,
@@ -162,6 +170,11 @@ function getStoredPanelPosition() {
   }
 }
 
+// Carries per-tool undo state ({toolCallId -> {auditId,label,undone,...}}) and
+// the undo trigger down to ToolCallFallback, which assistant-ui instantiates
+// deep in the tree (so props can't reach it directly).
+const UndoContext = createContext({undoableActions: {}, onUndo: null});
+
 export function AssistantModal({
   onNewChat,
   onLoadConversation,
@@ -170,7 +183,13 @@ export function AssistantModal({
   onApproveToolCall,
   onDenyToolCall,
   pendingApprovals,
+  undoableActions,
+  onUndo,
 }) {
+  const undoContextValue = useMemo(
+    () => ({undoableActions: undoableActions || {}, onUndo}),
+    [undoableActions, onUndo],
+  );
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
   // Also open when a conversation is resumed
   const triggerRef = useRef(null);
@@ -366,17 +385,19 @@ export function AssistantModal({
           title="Drag to resize"
           aria-label="Resize chat panel"
         />
-        <Thread
-          onNewChat={onNewChat}
-          onLoadConversation={onLoadConversation}
-          systemContext={systemContext}
-          onSystemContextChange={onSystemContextChange}
-          onApproveToolCall={onApproveToolCall}
-          onDenyToolCall={onDenyToolCall}
-          pendingApprovals={pendingApprovals}
-          onHeaderMouseDown={onHeaderMouseDown}
-          resetPanelPosition={resetPanelPosition}
-        />
+        <UndoContext.Provider value={undoContextValue}>
+          <Thread
+            onNewChat={onNewChat}
+            onLoadConversation={onLoadConversation}
+            systemContext={systemContext}
+            onSystemContextChange={onSystemContextChange}
+            onApproveToolCall={onApproveToolCall}
+            onDenyToolCall={onDenyToolCall}
+            pendingApprovals={pendingApprovals}
+            onHeaderMouseDown={onHeaderMouseDown}
+            resetPanelPosition={resetPanelPosition}
+          />
+        </UndoContext.Provider>
       </AssistantModalPrimitive.Content>
     </AssistantModalPrimitive.Root>
   );
@@ -1418,9 +1439,11 @@ function summarizeArgs(args) {
     .join(' ');
 }
 
-function ToolCallFallback({toolName, args, result, isError, status}) {
+function ToolCallFallback({toolCallId, toolName, args, result, isError, status}) {
   const needsApproval = status?.type === 'requires-action';
   const argsHint = summarizeArgs(args);
+  const {undoableActions, onUndo} = useContext(UndoContext);
+  const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
@@ -1452,6 +1475,27 @@ function ToolCallFallback({toolName, args, result, isError, status}) {
               Error
             </span>
           )}
+          {/* Per-action Undo (only for reversible, successful actions). */}
+          {undo && onUndo && !needsApproval && !isError && (
+            undo.undone ?
+              <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--undone">
+                Undone
+              </span>
+            : <button
+                type="button"
+                className="gds-assistant__tool-undo-btn"
+                disabled={undo.pending}
+                title={undo.label}
+                onClick={(e) => {
+                  // Inside <summary>: don't toggle the details on click.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onUndo(toolCallId, undo.auditId);
+                }}
+              >
+                {undo.pending ? 'Undoing…' : '↩ Undo'}
+              </button>
+          )}
         </summary>
         {args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">
@@ -1464,6 +1508,18 @@ function ToolCallFallback({toolName, args, result, isError, status}) {
               result
             : JSON.stringify(result, null, 2)}
           </pre>
+        )}
+        {undo?.undone && undo.caveats?.length > 0 && (
+          <div className="gds-assistant__tool-undo-caveats">
+            {undo.caveats.map((c, i) => (
+              <div key={i}>⚠ {c}</div>
+            ))}
+          </div>
+        )}
+        {undo?.error && (
+          <div className="gds-assistant__tool-undo-error">
+            Undo failed: {undo.error}
+          </div>
         )}
       </details>
     </div>

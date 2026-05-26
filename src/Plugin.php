@@ -146,6 +146,9 @@ class Plugin
 
         $mcpAuthEndpoint = new Api\McpAuthEndpoint;
         $mcpAuthEndpoint->register();
+
+        $undoEndpoint = new Api\UndoEndpoint;
+        $undoEndpoint->register();
     }
 
     public function registerPostTypes(): void

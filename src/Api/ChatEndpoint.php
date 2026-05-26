@@ -491,8 +491,9 @@ class ChatEndpoint
             // MessageLoop), so without this the most sensitive — gated,
             // destructive — actions would never reach the audit log. Denials
             // are logged too, so a blocked attempt leaves a trace.
+            $logged = ['id' => 0, 'undoable' => false];
             if ($info && ! empty($info['name'])) {
-                $auditLog->log(
+                $logged = $auditLog->log(
                     $conversationUuid,
                     $userId,
                     AbilitiesToolProvider::toAbilityName($info['name']),
@@ -504,11 +505,17 @@ class ChatEndpoint
                 );
             }
 
-            $onEvent('tool_result', [
+            $resultEvent = [
                 'tool_use_id' => $id,
                 'result' => $resultContent,
                 'is_error' => $isError,
-            ]);
+            ];
+            if ($logged['undoable'] && $logged['id']) {
+                $resultEvent['undoable'] = true;
+                $resultEvent['audit_id'] = $logged['id'];
+                $resultEvent['undo_label'] = $undoState['label'] ?? 'Undo this action';
+            }
+            $onEvent('tool_result', $resultEvent);
 
             $newResults[$id] = [
                 'content' => json_encode($resultContent),

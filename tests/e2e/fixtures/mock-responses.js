@@ -69,9 +69,36 @@ const TOOL_APPROVAL_RESPONSE = [
   '',
 ].join('\n');
 
+// A reversible action: tool_result carries undoable + audit_id + undo_label,
+// which drives the per-tool Undo button on the tool-call message.
+const TOOL_UNDO_RESPONSE = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-undo","model":"anthropic:sonnet"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"Creating the draft page."}',
+  '',
+  'event: tool_use_start',
+  'data: {"id":"toolu_undo1","name":"gds__content-create","input":{"type":"pages","title":"Undo Test"}}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"toolu_undo1","result":{"id":123,"title":"Undo Test"},"is_error":false,"undoable":true,"audit_id":555,"undo_label":"Remove the created page"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"\\n\\nCreated the draft page."}',
+  '',
+  'event: usage',
+  'data: {"input_tokens":800,"output_tokens":40}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
 module.exports = {
   SIMPLE_TEXT_RESPONSE,
   TOOL_CALL_RESPONSE,
   ERROR_RESPONSE,
   TOOL_APPROVAL_RESPONSE,
+  TOOL_UNDO_RESPONSE,
 };
