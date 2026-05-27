@@ -31,7 +31,7 @@ class EditorToolProvider implements ToolProviderInterface
         return [
             [
                 'name' => 'editor__read_selection',
-                'description' => 'Inspect the open editor. Returns selected_blocks (the selection as Gutenberg markup with clientIds; empty if nothing selected), outline (every block incl. nested: clientId, name, depth, text snippet, plus attributes for non-text blocks like images/galleries/logos), and media (attachment id → {title, url, filename}). Match blocks by content, not a remembered clientId — they change after each edit, so re-read before each edit.',
+                'description' => 'Inspect the open editor. Returns selected_blocks (the selection as Gutenberg markup with clientIds; empty if nothing selected), outline (every block incl. nested: clientId, name, depth, text snippet, attributes for non-text blocks like images/galleries/logos, and invalid/unrecognized flags for blocks the editor can\'t validate), and media (attachment id → {title, url, filename}). Match blocks by content, not a remembered clientId — they change after each edit, so re-read before each edit.',
                 'input_schema' => ['type' => 'object', 'properties' => (object) []],
             ],
             [
@@ -82,6 +82,21 @@ class EditorToolProvider implements ToolProviderInterface
                     'properties' => [
                         'title' => ['type' => 'string', 'description' => 'New post title.'],
                     ],
+                ],
+            ],
+            [
+                'name' => 'editor__recover_block',
+                'description' => 'Recover blocks the editor flags as "unexpected or invalid content" (invalid in the outline): recreates each from its parsed attributes so it re-serialises to valid markup, like the editor\'s "Attempt Block Recovery". Undoable. Unregistered blocks (unrecognized/core/missing) can\'t be recovered this way — convert those to a Custom HTML block with editor__replace_blocks instead.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'client_ids' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'clientIds of invalid blocks to recover (from editor__read_selection).',
+                        ],
+                    ],
+                    'required' => ['client_ids'],
                 ],
             ],
         ];
