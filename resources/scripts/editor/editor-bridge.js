@@ -80,6 +80,8 @@ export async function executeClientTool(toolName, input = {}) {
         return updateBlockAttributes(input);
       case 'editor__update_post':
         return updatePost(input);
+      case 'editor__recover_block':
+        return recoverBlock(input);
       default:
         return {error: `Unknown editor tool: ${toolName}`};
     }
@@ -208,6 +210,10 @@ async function readSelection() {
         depth: (be.getBlockParents?.(id) || []).length,
         text,
       };
+      // Surface validation state so the model can find blocks the editor flags
+      // as "unexpected or invalid content" and offer to recover them.
+      if (block.isValid === false) entry.invalid = true;
+      if (block.name === 'core/missing') entry.unrecognized = true;
       if (!text) {
         const attrs = compactAttributes(block.attributes);
         if (attrs && Object.keys(attrs).length) entry.attributes = attrs;
@@ -418,4 +424,52 @@ function updateBlockAttributes(input = {}) {
     .dispatch('core/block-editor')
     .updateBlockAttributes(clientId, input.attributes || {});
   return {ok: true, client_id: clientId};
+}
+
+// Recover invalid blocks the editor flags as "unexpected or invalid content":
+// recreate each from its parsed attributes/innerBlocks so save() regenerates
+// valid markup (the same thing the editor's "Attempt Block Recovery" does).
+// Undoable via the editor history. Unregistered blocks (core/missing) can't be
+// recreated — they need converting to Custom HTML instead.
+function recoverBlock(input = {}) {
+  const ids =
+    Array.isArray(input.client_ids) ? input.client_ids
+    : input.client_id ? [input.client_id]
+    : [];
+  if (!ids.length) return {error: 'No client_ids provided to recover.'};
+
+  const be = wpData().select('core/block-editor');
+  const blocks = wpBlocks();
+  const dispatch = wpData().dispatch('core/block-editor');
+  const recovered = [];
+  const failed = [];
+
+  for (const id of ids) {
+    const block = be.getBlock?.(id);
+    if (!block) {
+      failed.push({client_id: id, reason: 'not found'});
+      continue;
+    }
+    if (block.name === 'core/missing' || !blocks.getBlockType?.(block.name)) {
+      const name = block.attributes?.originalName || block.name;
+      failed.push({
+        client_id: id,
+        reason: `block type "${name}" is not registered — can't auto-recover; convert it to a Custom HTML block (editor__replace_blocks) instead`,
+      });
+      continue;
+    }
+    const fresh = blocks.createBlock(
+      block.name,
+      block.attributes,
+      block.innerBlocks,
+    );
+    dispatch.replaceBlock(id, fresh);
+    recovered.push({
+      client_id: id,
+      new_client_id: fresh.clientId,
+      name: block.name,
+    });
+  }
+
+  return {ok: recovered.length > 0, recovered, failed};
 }

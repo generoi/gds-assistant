@@ -16,6 +16,7 @@ class EditorToolProviderTest extends TestCase
         $this->assertContains('editor__insert_blocks', $names);
         $this->assertContains('editor__update_block_attributes', $names);
         $this->assertContains('editor__update_post', $names);
+        $this->assertContains('editor__recover_block', $names);
     }
 
     public function test_is_client_tool_matches_only_editor_prefix(): void
