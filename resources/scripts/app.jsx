@@ -5,7 +5,10 @@ import {
   useAssistantRuntime,
   newChat,
   setSystemContext,
+  getPersistedConversationId,
 } from './hooks/use-runtime-adapter';
+
+const OPEN_KEY = 'gds-assistant-open';
 
 export function App() {
   const {
@@ -42,6 +45,14 @@ export function App() {
           new CustomEvent('gds-assistant-resume', {detail: {uuid: resumeUuid}}),
         );
       }, 200);
+    } else if (localStorage.getItem(OPEN_KEY) === '1') {
+      // The chat was left open on the previous wp-admin page — restore its
+      // active thread so reopening lands on the same conversation. The modal
+      // reopens itself via defaultOpen (see assistant-modal).
+      const activeUuid = getPersistedConversationId();
+      if (activeUuid) {
+        loadConversation(activeUuid);
+      }
     }
 
     // Listen for resume events from the conversations DataView

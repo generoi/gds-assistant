@@ -190,6 +190,26 @@ export function AssistantModal({
     () => ({undoableActions: undoableActions || {}, onUndo}),
     [undoableActions, onUndo],
   );
+
+  // Persist open/closed state so the panel reopens itself after a full-page
+  // wp-admin navigation. Root is uncontrolled (Cmd+K and resume click the
+  // trigger), so defaultOpen seeds the initial state on mount and onOpenChange
+  // records every subsequent toggle.
+  const initialOpen = useMemo(() => {
+    try {
+      return localStorage.getItem('gds-assistant-open') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+  const handleOpenChange = useCallback((open) => {
+    try {
+      localStorage.setItem('gds-assistant-open', open ? '1' : '0');
+    } catch {
+      // Ignore storage failures (private mode, quota).
+    }
+  }, []);
+
   // Keyboard shortcut: Cmd+K / Ctrl+K to toggle modal
   // Also open when a conversation is resumed
   const triggerRef = useRef(null);
@@ -366,7 +386,10 @@ export function AssistantModal({
   }, []);
 
   return (
-    <AssistantModalPrimitive.Root>
+    <AssistantModalPrimitive.Root
+      defaultOpen={initialOpen}
+      onOpenChange={handleOpenChange}
+    >
       <AssistantModalPrimitive.Trigger
         ref={triggerRef}
         className="gds-assistant gds-assistant__trigger"
@@ -1116,6 +1139,35 @@ function Composer() {
       }
     });
   }, [threadRuntime, wasStopped]);
+
+  // Persist the composer draft across full-page wp-admin navigations: restore
+  // a saved draft on mount, then mirror every composer change to localStorage.
+  // Subscribing (vs. hooking onChange) also captures the clear-on-send and
+  // clear-on-skill-select transitions, so the draft is dropped once it's sent.
+  useEffect(() => {
+    const composer = threadRuntime.composer;
+    if (!composer?.subscribe || !composer.getState) return undefined;
+    try {
+      const saved = localStorage.getItem('gds-assistant-draft');
+      if (saved && !composer.getState().text && composer.setText) {
+        composer.setText(saved);
+      }
+    } catch {
+      // Ignore storage failures (private mode, quota).
+    }
+    return composer.subscribe(() => {
+      try {
+        const text = composer.getState().text || '';
+        if (text) {
+          localStorage.setItem('gds-assistant-draft', text);
+        } else {
+          localStorage.removeItem('gds-assistant-draft');
+        }
+      } catch {
+        // Ignore storage failures.
+      }
+    });
+  }, [threadRuntime]);
 
   const handleCancel = useCallback(() => {
     threadRuntime.cancelRun();
