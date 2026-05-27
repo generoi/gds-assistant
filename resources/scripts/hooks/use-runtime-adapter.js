@@ -32,6 +32,15 @@ export function getPersistedConversationId() {
   }
 }
 
+// Stable, unique ids for messages so assistant-ui keys them consistently
+// (prevents remounts on unrelated re-renders) and so a streaming turn can own
+// its message by id rather than by position.
+let messageIdSeq = 0;
+function nextMessageId() {
+  messageIdSeq += 1;
+  return `gds-msg-${Date.now().toString(36)}-${messageIdSeq.toString(36)}`;
+}
+
 const sessionUsage = {
   inputTokens: 0,
   outputTokens: 0,
@@ -229,6 +238,7 @@ export function useAssistantRuntime() {
 
     if (!isControlMsg) {
       const userMsg = {
+        id: nextMessageId(),
         role: "user",
         content: contentBlocks,
         timestamp: Date.now(),
@@ -297,45 +307,48 @@ export function useAssistantRuntime() {
         }
       };
 
-      /** Flush current turn as an assistant message and start a new turn. */
+      // Whether the CURRENT turn already owns a message in `messages`. A fresh
+      // stream (notably the follow-up after a tool approval) starts without
+      // one, so its first content must PUSH a new message rather than overwrite
+      // the previous turn's — otherwise the approval turn's tool-call card gets
+      // wiped by the "Done"/result text that follows.
+      // We key the turn's message by id (not "the last assistant message" or a
+      // mutable flag): setMessages updaters run batched/deferred, so a flag they
+      // read would be stale by the time React flushes them.
+      let currentTurnMessageId = null;
+
+      /** Seal the current turn so the next content starts a new message. */
       const flushTurn = () => {
-        if (!turnParts.length) return;
-        const contentParts = turnParts.map((p) => ({ ...p }));
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: contentParts,
-            timestamp: turnTimestamp ?? Date.now(),
-          },
-        ]);
+        currentTurnMessageId = null;
         turnParts = [];
         currentTextIdx = -1;
         turnTimestamp = null;
       };
 
-      /** Update the current turn's assistant message in-place (for streaming). */
+      /** Render the current turn's parts into its own assistant message. */
       const updateCurrentTurn = () => {
+        if (!turnParts.length) return;
         touchTurnTimestamp();
         const contentParts = turnParts.map((p) => ({ ...p }));
         const timestamp = turnTimestamp;
+        if (!currentTurnMessageId) {
+          currentTurnMessageId = nextMessageId();
+        }
+        const msgId = currentTurnMessageId;
         setMessages((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === "assistant") {
-            updated[lastIdx] = {
-              role: "assistant",
-              content: contentParts,
-              timestamp: updated[lastIdx].timestamp ?? timestamp,
-            };
-          } else {
-            updated.push({
-              role: "assistant",
-              content: contentParts,
-              timestamp,
-            });
+          const idx = prev.findIndex((m) => m.id === msgId);
+          const message = {
+            id: msgId,
+            role: "assistant",
+            content: contentParts,
+            timestamp: (idx >= 0 ? prev[idx].timestamp : null) ?? timestamp,
+          };
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = message;
+            return updated;
           }
-          return updated;
+          return [...prev, message];
         });
       };
 
@@ -386,15 +399,56 @@ export function useAssistantRuntime() {
             const toolId = event.data.tool_use_id || "";
 
             // Attach the result to the matching tool-call part so it flips
-            // from "Running" to Done/Error.
+            // from "Running" to Done/Error. Match the first part that's still
+            // unfilled, so when a model reuses one id across calls each result
+            // lands on its own card rather than all stacking on the first.
             const tc = toolId
               ? turnParts.find(
-                  (p) => p.type === "tool-call" && p.toolCallId === toolId,
+                  (p) =>
+                    p.type === "tool-call" &&
+                    p.toolCallId === toolId &&
+                    p.result === undefined,
                 )
               : null;
             if (tc) {
               tc.result = event.data.result ?? {};
               tc.isError = !!event.data.is_error;
+            } else if (toolId) {
+              // Approval flow: the tool-call card lives in an earlier, already
+              // rendered message (the approval turn), not this fresh turn.
+              // Update the first unfilled match in place so it flips from
+              // "Approval required" to Done/Error and the Undo button appears.
+              let patched = false;
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (
+                    patched ||
+                    m.role !== "assistant" ||
+                    !Array.isArray(m.content)
+                  ) {
+                    return m;
+                  }
+                  let changed = false;
+                  const content = m.content.map((p) => {
+                    if (
+                      !patched &&
+                      p.type === "tool-call" &&
+                      p.toolCallId === toolId &&
+                      p.result === undefined
+                    ) {
+                      patched = true;
+                      changed = true;
+                      return {
+                        ...p,
+                        result: event.data.result ?? {},
+                        isError: !!event.data.is_error,
+                      };
+                    }
+                    return p;
+                  });
+                  return changed ? { ...m, content } : m;
+                }),
+              );
             }
 
             // Record undo info (keyed by tool id) so ToolCallFallback can show
@@ -417,36 +471,47 @@ export function useAssistantRuntime() {
                 q.filter((p) => p.toolUseId !== toolId),
               );
             }
-            // Don't flush here — the LLM may be running multiple tools in
-            // parallel. Flush only when the LLM continues with new text
-            // (handled in `text_delta`) or when the whole response ends.
-            sawToolResultInTurn = true;
-            updateCurrentTurn();
+            // Only advance the current turn when the result belonged to THIS
+            // turn. In the approval flow the result patched an earlier message,
+            // so touching the current (empty) turn would render a stray bubble.
+            if (tc) {
+              // Don't flush here — the LLM may be running multiple tools in
+              // parallel. Flush only when the LLM continues with new text
+              // (handled in `text_delta`) or when the whole response ends.
+              sawToolResultInTurn = true;
+              updateCurrentTurn();
+            }
             break;
           }
 
           case "tool_approval_required": {
-            const idx = ensureTextPart();
-            turnParts[
-              idx
-            ].text += `\n\n**Approval required:** \`${event.data.tool_name}\``;
-            if (event.data.input && Object.keys(event.data.input).length > 0) {
-              turnParts[idx].text += `\n\`\`\`json\n${JSON.stringify(
-                event.data.input,
-                null,
-                2,
-              )}\n\`\`\``;
-            }
-            turnParts[idx].text += "\n_Waiting for approval..._";
+            const toolLabel =
+              event.data.tool_name?.replace("__", "/") || "unknown";
+            const toolId = event.data.tool_use_id || "";
+            // Render as a real tool-call card in the "approval required" state
+            // (not verbose text) — ToolCallFallback shows it compactly, and
+            // after approval the follow-up tool_result updates this very card
+            // in place so it flips to Done and surfaces the Undo button.
+            turnParts.push({
+              type: "tool-call",
+              toolCallId: toolId,
+              toolName: toolLabel,
+              args:
+                event.data.input && typeof event.data.input === "object"
+                  ? event.data.input
+                  : {},
+            });
+            currentTextIdx = -1;
+            updateCurrentTurn();
             // Enqueue unless we already have this id (dedupe on resurface).
             setPendingApprovals((q) => {
-              if (q.some((p) => p.toolUseId === event.data.tool_use_id)) {
+              if (q.some((p) => p.toolUseId === toolId)) {
                 return q;
               }
               return [
                 ...q,
                 {
-                  toolUseId: event.data.tool_use_id,
+                  toolUseId: toolId,
                   toolName: event.data.tool_name,
                   input: event.data.input,
                   trustableHost: event.data.trustable_host || null,
@@ -509,6 +574,7 @@ export function useAssistantRuntime() {
         setMessages((prev) => [
           ...prev,
           {
+            id: nextMessageId(),
             role: "assistant",
             content: [{ type: "text", text: `**Error:** ${err.message}` }],
           },
@@ -594,7 +660,11 @@ export function useAssistantRuntime() {
                   .map((p) => p.text)
                   .join("");
           if (!text) return acc;
-          acc.push({ role: "user", content: [{ type: "text", text }] });
+          acc.push({
+            id: nextMessageId(),
+            role: "user",
+            content: [{ type: "text", text }],
+          });
           return acc;
         }
 
@@ -632,7 +702,7 @@ export function useAssistantRuntime() {
 
         if (!parts.length) return acc;
 
-        acc.push({ role: "assistant", content: parts });
+        acc.push({ id: nextMessageId(), role: "assistant", content: parts });
         return acc;
       }, []);
 
@@ -647,7 +717,11 @@ export function useAssistantRuntime() {
   }, []);
 
   const convertMessage = useCallback((msg) => {
-    // Convert our server format to assistant-ui's expected format
+    // assistant-ui keys content parts by toolCallId and throws "Duplicate key
+    // … in tapResources" if two collide in one message. Some models/connectors
+    // (seen with Gemini) reuse a single tool id across distinct calls in a
+    // turn, so suffix repeats to keep React keys unique without dropping any.
+    const seenToolIds = new Set();
     const content = (msg.content || []).map((part) => {
       if (part.type === "image" && part.source) {
         // Our format: {type:'image', source:{type:'url',url}} or {type:'base64',data}
@@ -658,9 +732,16 @@ export function useAssistantRuntime() {
         return { type: "image", image: url };
       }
       if (part.type === "tool-call") {
+        let toolCallId = part.toolCallId || "";
+        if (toolCallId && seenToolIds.has(toolCallId)) {
+          let n = 2;
+          while (seenToolIds.has(`${toolCallId}#${n}`)) n++;
+          toolCallId = `${toolCallId}#${n}`;
+        }
+        seenToolIds.add(toolCallId);
         return {
           type: "tool-call",
-          toolCallId: part.toolCallId,
+          toolCallId,
           toolName: part.toolName,
           args: part.args || {},
           argsText: JSON.stringify(part.args || {}),
@@ -671,6 +752,7 @@ export function useAssistantRuntime() {
       return part;
     });
     return {
+      id: msg.id,
       role: msg.role,
       content,
       // Pass a real Date when we have a timestamp; use epoch (`new Date(0)`)

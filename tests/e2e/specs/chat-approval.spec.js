@@ -3,6 +3,8 @@ const {
   TOOL_APPROVAL_RESPONSE,
   TOOL_APPROVAL_RESOLVED,
   TOOL_DENIAL_RESOLVED,
+  TOOL_APPROVAL_DELETE_RESPONSE,
+  TOOL_APPROVAL_DELETE_RESOLVED,
 } = require('../fixtures/mock-responses.js');
 
 /**
@@ -60,8 +62,80 @@ test.describe('Chat tool approval', () => {
     await bar.locator('.gds-assistant__approval-btn--deny').click();
 
     await expect(bar).toBeHidden({timeout: 5000});
+    // No assistant message should claim the cache was cleared. (Count-based:
+    // the deny flow legitimately yields multiple assistant messages, so a bare
+    // not.toContainText would trip Playwright's strict-mode multi-match check.)
     await expect(
-      page.locator('.gds-assistant__message--assistant'),
-    ).not.toContainText('Cache cleared');
+      page.locator('.gds-assistant__message--assistant', {
+        hasText: 'Cache cleared',
+      }),
+    ).toHaveCount(0);
+  });
+});
+
+/**
+ * The approval render path itself: a pending action shows as a compact
+ * tool-call card (not verbose "```json … Waiting for approval```" text), and
+ * after approval that SAME card stays in the thread, flips to Done, and gains
+ * an Undo button. Guards the regression where approved tools left no record
+ * and no way to undo.
+ */
+test.describe('Chat approval rendering', () => {
+  test.beforeEach(async ({page}) => {
+    await page.route('**/gds-assistant/v1/chat', (route) => {
+      const body = route.request().postData() || '';
+      let response = TOOL_APPROVAL_DELETE_RESPONSE;
+      if (body.includes('__tool_approved__')) {
+        response = TOOL_APPROVAL_DELETE_RESOLVED;
+      }
+      route.fulfill({
+        status: 200,
+        headers: {'Content-Type': 'text/event-stream'},
+        body: response,
+      });
+    });
+    await page.goto('/wp-admin/');
+    await page.click('.gds-assistant__trigger');
+    await page.locator('.gds-assistant__input').fill('Delete page 13589');
+    await page.click('.gds-assistant__send');
+  });
+
+  test('pending approval renders as a compact tool-call card', async ({
+    page,
+  }) => {
+    const card = page.locator('.gds-assistant__tool-call--approval').first();
+    await expect(card).toBeVisible({timeout: 5000});
+    await expect(card.locator('.gds-assistant__tool-call-name')).toContainText(
+      'gds/content-delete',
+    );
+    await expect(card).toContainText('Approval required');
+
+    // The old verbose text rendering must be gone.
+    const messages = page.locator('.gds-assistant__message--assistant');
+    await expect(messages).not.toContainText('Waiting for approval');
+    await expect(messages).not.toContainText('```json');
+  });
+
+  test('approving keeps the card and surfaces an Undo button', async ({
+    page,
+  }) => {
+    await expect(
+      page.locator('.gds-assistant__tool-call--approval').first(),
+    ).toBeVisible({timeout: 5000});
+
+    await page.locator('.gds-assistant__approval-btn--approve').first().click();
+
+    // The card persists (history) and flips out of the approval state…
+    const card = page.locator('.gds-assistant__tool-call').first();
+    await expect(card).toBeVisible({timeout: 5000});
+    await expect(card).toContainText('gds/content-delete');
+    // …gaining an Undo button now that the reversible action has run.
+    await expect(
+      page.locator('.gds-assistant__tool-undo-btn').first(),
+    ).toBeVisible({timeout: 5000});
+    // And the follow-up text streams in.
+    await expect(
+      page.locator('.gds-assistant__message--assistant').last(),
+    ).toContainText('Deleted page 13589');
   });
 });

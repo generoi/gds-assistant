@@ -245,16 +245,23 @@
 }
 
 .gds-assistant__header-btn {
-  width: 26px;
   height: 26px;
+  padding: 0 7px;
   border: none;
   border-radius: 5px;
   background: transparent;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #999;
+  gap: 4px;
+  color: #757575;
+  font-size: 12px;
+  line-height: 1;
+
+  & svg {
+    flex: 0 0 auto;
+  }
 
   &:hover {
     background: #f0f0f0;
@@ -265,6 +272,21 @@
     background: #f0f6fc;
     color: #2271b1;
   }
+
+  /* Close sits at the far right, visually separated, hover hints dismissal */
+  &.gds-assistant__header-btn--close {
+    margin-left: 4px;
+
+    &:hover {
+      background: #fcf0f1;
+      color: #d63638;
+    }
+  }
+}
+
+.gds-assistant__header-btn-label {
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* History list */
@@ -655,6 +677,78 @@ abbr.gds-tool {
   display: flex;
   gap: 2px;
   align-items: center;
+}
+
+/* "⋯" overflow menu in the header (holds context + export) */
+.gds-assistant__more {
+  position: relative;
+  display: inline-flex;
+}
+
+.gds-assistant__more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  min-width: 180px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #dcdcde;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.gds-assistant__more-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: #1e1e1e;
+  cursor: pointer;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+}
+
+/* Header for the slide-in panels (skills, history, context) with a close (×) */
+.gds-assistant__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.gds-assistant__panel-head-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #757575;
+}
+
+.gds-assistant__panel-head-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #757575;
+  cursor: pointer;
+
+  &:hover {
+    background: #f0f0f0;
+    color: #1e1e1e;
+  }
 }
 
 /* Override .wp-core-ui select via panel scope (Radix portals to body) */
@@ -1237,6 +1331,52 @@ abbr.gds-tool {
   overflow: auto;
   border-top: 1px solid #eee;
   background: #f9f9f9;
+}
+
+/* Per-action Undo: a subtle text link in the tool-call summary, not a button */
+.gds-assistant__tool-undo-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 11px;
+  line-height: 1;
+  color: #757575;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gds-assistant__tool-undo-btn:hover:not(:disabled) {
+  color: #2271b1;
+}
+
+.gds-assistant__tool-undo-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
+.gds-assistant__tool-call-status--undone {
+  color: #757575;
+  font-style: italic;
+}
+
+.gds-assistant__tool-undo-caveats {
+  padding: 6px 10px;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  color: #8a6d00;
+  background: #fffbf0;
+}
+
+.gds-assistant__tool-undo-error {
+  padding: 6px 10px;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  color: #d63638;
 }
 
 /* Approval bar */
