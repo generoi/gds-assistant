@@ -650,20 +650,16 @@ class ChatEndpoint
             ? " Custom hex is disabled here.\n"
             : "\n";
 
-        $parts = [];
+        // The volatile selection snapshot (which blocks are selected) is
+        // deliberately NOT included here: it would change this system block on
+        // every selection change and invalidate the prompt cache for the whole
+        // system + tools prefix. `editor__read_selection` returns the live
+        // selection AND post context, and the guidance above already says to
+        // read before editing — so the model gets it without churning the cache.
         if (! empty($ctx['post_id'])) {
-            $parts[] = 'post #'.(int) $ctx['post_id'].' ('.preg_replace('/[^a-z0-9_-]/i', '', (string) ($ctx['post_type'] ?? 'post')).')';
+            $type = preg_replace('/[^a-z0-9_-]/i', '', (string) ($ctx['post_type'] ?? 'post'));
+            $out .= 'Editing post #'.(int) $ctx['post_id'].' ('.$type.'). Call `editor__read_selection` for the current selection and document state.'."\n";
         }
-        $count = (int) ($ctx['selected_block_count'] ?? 0);
-        if ($count > 0) {
-            $types = array_map(fn ($t) => preg_replace('/[^a-z0-9\/_-]/i', '', (string) $t), (array) ($ctx['selected_block_types'] ?? []));
-            $parts[] = $count.' block(s) selected'.($types ? ' ['.implode(', ', array_slice($types, 0, 8)).']' : '');
-        } elseif (! empty($ctx['has_text_selection'])) {
-            $parts[] = 'text highlighted within a block';
-        } else {
-            $parts[] = 'nothing selected';
-        }
-        $out .= 'Current selection: '.implode('; ', $parts).".\n";
 
         return $out;
     }

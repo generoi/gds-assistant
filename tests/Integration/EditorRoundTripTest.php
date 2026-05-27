@@ -29,6 +29,35 @@ class EditorRoundTripTest extends TestCase
         return $m->invoke(new ChatEndpoint(Plugin::getInstance()), $messages, $results, $onEvent, 'conv-1', get_current_user_id());
     }
 
+    private function editorPrompt(array $ctx): string
+    {
+        $m = new \ReflectionMethod(ChatEndpoint::class, 'editorContextPrompt');
+        $m->setAccessible(true);
+
+        return $m->invoke(new ChatEndpoint(Plugin::getInstance()), $ctx);
+    }
+
+    /**
+     * The open-editor system prompt must NOT vary with the current selection —
+     * baking the selection snapshot in would change the cached system block on
+     * every selection change and bust the prompt cache for the whole
+     * system + tools prefix. The model gets selection via editor__read_selection.
+     */
+    public function test_editor_context_prompt_is_selection_invariant(): void
+    {
+        $base = ['has_editor' => true, 'post_id' => 7, 'post_type' => 'page', 'custom_colors' => true];
+
+        $oneSelected = $this->editorPrompt($base + ['selected_block_count' => 1, 'selected_block_types' => ['core/heading']]);
+        $threeSelected = $this->editorPrompt($base + ['selected_block_count' => 3, 'selected_block_types' => ['core/paragraph']]);
+        $nothing = $this->editorPrompt($base + ['selected_block_count' => 0]);
+
+        $this->assertSame($oneSelected, $threeSelected);
+        $this->assertSame($oneSelected, $nothing);
+        $this->assertStringNotContainsString('block(s) selected', $oneSelected);
+        // The stable post anchor is fine (changes only when you switch posts).
+        $this->assertStringContainsString('post #7', $oneSelected);
+    }
+
     public function test_client_result_replaces_pending_stub_and_emits_event(): void
     {
         $messages = [
