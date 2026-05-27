@@ -66,9 +66,10 @@ test.describe('Chat Widget', () => {
     ).toBeVisible({timeout: 5000});
 
     await page.click('[title="More"]');
-    const item = page
-      .locator('.gds-assistant__more-item', {hasText: 'Copy chat'})
-      .first();
+    // Select by the stable title, not the label — the label flips to "Copied!"
+    // on click, so a hasText:'Copy chat' filter would stop matching the very
+    // element we're asserting on.
+    const item = page.locator('[title="Copy chat to clipboard"]');
     await item.click();
     await expect(item).toContainText('Copied!', {timeout: 3000});
   });
