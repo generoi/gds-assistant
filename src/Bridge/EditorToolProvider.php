@@ -31,7 +31,7 @@ class EditorToolProvider implements ToolProviderInterface
         return [
             [
                 'name' => 'editor__read_selection',
-                'description' => 'Inspect the open editor. Returns selected_blocks (the selection as Gutenberg markup with clientIds; empty if nothing selected), outline (every block incl. nested: clientId, name, depth, text snippet, attributes for non-text blocks like images/galleries/logos, and invalid/unrecognized flags for blocks the editor can\'t validate), and media (attachment id → {title, url, filename}). Match blocks by content, not a remembered clientId — they change after each edit, so re-read before each edit.',
+                'description' => 'Inspect the open editor. Returns post (the open document\'s status, slug, featured image id, language and translations {lang: postId}), selected_blocks (the selection as Gutenberg markup with clientIds; empty if nothing selected), outline (every block incl. nested: clientId, name, depth, text snippet, attributes for non-text blocks like images/galleries/logos, and invalid/unrecognized flags for blocks the editor can\'t validate), and media (attachment id → {title, url, filename}, including the featured image). Match blocks by content, not a remembered clientId — they change after each edit, so re-read before each edit.',
                 'input_schema' => ['type' => 'object', 'properties' => (object) []],
             ],
             [
@@ -76,11 +76,17 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__update_post',
-                'description' => 'Update the open post\'s own fields (currently: title — the title field above the content, not a block).',
+                'description' => 'Update the open post\'s own fields live (unsaved + undoable) — not blocks. Supports title, slug, excerpt, template, featured_media (attachment id; 0 clears it), author (user id), and meta (object; only reaches keys registered with show_in_rest — plugin data like Yoast SEO is NOT here, use its sidebar). Does not publish/save; status changes are out of scope.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
                         'title' => ['type' => 'string', 'description' => 'New post title.'],
+                        'slug' => ['type' => 'string', 'description' => 'URL slug.'],
+                        'excerpt' => ['type' => 'string', 'description' => 'Post excerpt.'],
+                        'template' => ['type' => 'string', 'description' => 'Page template slug.'],
+                        'featured_media' => ['type' => 'integer', 'description' => 'Featured image attachment id (0 to clear).'],
+                        'author' => ['type' => 'integer', 'description' => 'Author user id.'],
+                        'meta' => ['type' => 'object', 'description' => 'Registered meta key/value pairs to merge.'],
                     ],
                 ],
             ],
