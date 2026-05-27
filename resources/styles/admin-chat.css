@@ -937,6 +937,43 @@ abbr.gds-tool {
   }
 }
 
+/* Voice-to-text mic — mirrors the attach button; turns red + pulses while
+   actively listening for dictation. */
+.gds-assistant__mic {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #757575;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.1s ease;
+  padding: 0;
+
+  &:hover {
+    color: #2271b1;
+  }
+
+  &--listening {
+    color: #d63638;
+    animation: gds-assistant-mic-pulse 1.3s infinite ease-in-out;
+  }
+}
+
+@keyframes gds-assistant-mic-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .gds-assistant__send,
 .gds-assistant__cancel {
   width: 32px;
