@@ -960,15 +960,17 @@ abbr.gds-tool {
   &:hover {
     color: #2271b1;
   }
+}
 
-  /* Active/recording state — solid fill + white icon + pulsing ring. The
-     :hover variant keeps it red so hovering doesn't flip it back to blue. */
-  &--listening,
-  &--listening:hover {
-    background: #d63638;
-    color: #fff;
-    animation: gds-assistant-mic-pulse 1.4s infinite;
-  }
+/* Active/recording state — solid fill + white icon + pulsing ring. Written as a
+   standalone selector (not `&--listening`): this build uses native CSS nesting,
+   which can't concatenate text onto `&`, so the SCSS-style form silently drops.
+   The :hover variant keeps it red so hovering doesn't flip it back to blue. */
+.gds-assistant__mic--listening,
+.gds-assistant__mic--listening:hover {
+  background: #d63638;
+  color: #fff;
+  animation: gds-assistant-mic-pulse 1.4s infinite;
 }
 
 @keyframes gds-assistant-mic-pulse {

@@ -33,8 +33,11 @@ test.describe('Voice input', () => {
     await expect(mic).toBeVisible();
     await mic.click();
 
-    // Active/recording state is reflected on the button while listening.
+    // Active/recording state is reflected on the button while listening —
+    // assert the rendered style, not just the class, so a CSS rule that fails
+    // to compile (e.g. bad nesting) is caught.
     await expect(mic).toHaveClass(/gds-assistant__mic--listening/);
+    await expect(mic).toHaveCSS('background-color', 'rgb(214, 54, 56)');
     await expect(page.locator('.gds-assistant__input')).toHaveValue(
       /hello from voice/,
       {timeout: 3000},
