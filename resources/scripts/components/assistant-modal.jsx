@@ -5,8 +5,10 @@ import {
   MessagePrimitive,
   AttachmentPrimitive,
   useThreadRuntime,
+  useComposerRuntime,
   useMessage,
 } from '@assistant-ui/react';
+import {useVoiceInput} from '../hooks/use-voice-input';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -1268,6 +1270,59 @@ function UsageBar() {
   );
 }
 
+// ── Voice-to-text mic ───────────────────────────────────────
+
+function MicButton() {
+  const composer = useComposerRuntime();
+  // The text already in the composer when dictation starts — the transcript is
+  // appended to it so we never clobber what the user typed.
+  const baseRef = useRef('');
+  const {supported, listening, start, stop} = useVoiceInput({
+    onResult: (transcript) => {
+      const base = baseRef.current;
+      const sep = base && !/\s$/.test(base) ? ' ' : '';
+      composer.setText(base + sep + transcript);
+    },
+  });
+
+  if (!supported) return null;
+
+  const handle = () => {
+    if (listening) {
+      stop();
+      return;
+    }
+    baseRef.current = composer.getState?.()?.text || '';
+    start();
+  };
+
+  return (
+    <button
+      type="button"
+      className={`gds-assistant__mic${listening ? ' gds-assistant__mic--listening' : ''}`}
+      onClick={handle}
+      title={listening ? 'Stop dictation' : 'Dictate (voice to text)'}
+      aria-pressed={listening}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="23" />
+        <line x1="8" y1="23" x2="16" y2="23" />
+      </svg>
+    </button>
+  );
+}
+
 // ── Composer with Send/Stop toggle ──────────────────────────
 
 function Composer() {
@@ -1385,6 +1440,7 @@ function Composer() {
         rows={1}
         onChange={handleInputChange}
       />
+      <MicButton />
       {isRunning ?
         <button
           type="button"
