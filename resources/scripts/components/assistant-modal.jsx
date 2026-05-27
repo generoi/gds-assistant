@@ -576,7 +576,8 @@ function Thread({
   const handleCopyChat = useCallback(() => {
     const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
     if (!md) return;
-    navigator.clipboard.writeText(md).then(() => {
+    copyToClipboard(md).then((ok) => {
+      if (!ok) return;
       setChatCopied(true);
       setTimeout(() => setChatCopied(false), 1500);
     });
@@ -711,6 +712,7 @@ function Thread({
                   type="button"
                   role="menuitem"
                   className="gds-assistant__more-item"
+                  title="Copy chat to clipboard"
                   onClick={handleCopyChat}
                 >
                   {chatCopied ? 'Copied!' : 'Copy chat to clipboard'}
@@ -1618,13 +1620,51 @@ function messageToCopyText(parts) {
     .join('\n\n');
 }
 
+/**
+ * Copy text to the clipboard, resolving true on success. Falls back to a hidden
+ * textarea + execCommand when the async Clipboard API is unavailable or rejects
+ * (e.g. headless CI, where the document isn't focused) so the "Copied!"
+ * confirmation stays reliable.
+ *
+ * @param {string} text Text to copy.
+ * @return {Promise<boolean>} Whether the copy succeeded.
+ */
+function copyToClipboard(text) {
+  // execCommand first: it's synchronous, so it stays inside the click's
+  // user-gesture window. The async Clipboard API loses that gesture after its
+  // first await, so using it as the *fallback* (after a rejection) no-ops in
+  // headless CI. Deprecated but still works everywhere, including headless.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) return Promise.resolve(true);
+  } catch {
+    // fall through to the async API
+  }
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).then(
+      () => true,
+      () => false,
+    );
+  }
+  return Promise.resolve(false);
+}
+
 function CopyMessageButton() {
   const [copied, setCopied] = useState(false);
   const content = useMessage((s) => s.content);
 
   const handleCopy = useCallback(() => {
     const text = messageToCopyText(content);
-    navigator.clipboard.writeText(text).then(() => {
+    copyToClipboard(text).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
