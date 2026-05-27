@@ -962,17 +962,21 @@ abbr.gds-tool {
   }
 }
 
-/* Voice control: the mic + a tiny borderless dictation-language code. */
+/* Voice control: the mic stays in the button row; the tiny language chevron is
+   absolutely positioned just below it so it doesn't raise the mic. */
 .gds-assistant__voice {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
   flex-shrink: 0;
 }
 
-/* Borderless chevron toggle by the mic with a tiny language code. */
+/* Borderless chevron toggle below the mic with a tiny language code. */
 .gds-assistant__voice-lang {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 1px;
@@ -980,7 +984,7 @@ abbr.gds-tool {
   background: transparent;
   color: #757575;
   line-height: 1;
-  padding: 2px;
+  padding: 0 2px;
   border-radius: 4px;
   cursor: pointer;
 
@@ -1009,7 +1013,8 @@ abbr.gds-tool {
 .gds-assistant__voice-langs {
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
   min-width: 120px;
   background: #fff;
