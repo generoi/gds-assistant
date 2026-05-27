@@ -8,6 +8,30 @@ let currentMaxTokens =
   parseInt(localStorage.getItem("gds-assistant-max-tokens"), 10) || 0;
 let currentSystemContext = "";
 
+// Persist the active conversation across full-page wp-admin navigations so the
+// chat can reopen on the same thread. Cleared by newChat().
+const ACTIVE_CONVERSATION_KEY = "gds-assistant-active-conversation";
+
+function persistConversationId(id) {
+  try {
+    if (id) {
+      localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
+    } else {
+      localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    }
+  } catch {
+    // Ignore storage failures (private mode, quota).
+  }
+}
+
+export function getPersistedConversationId() {
+  try {
+    return localStorage.getItem(ACTIVE_CONVERSATION_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 const sessionUsage = {
   inputTokens: 0,
   outputTokens: 0,
@@ -85,6 +109,7 @@ function emitUsage(input, output, cacheRead = 0, cacheWrite = 0) {
 
 export function newChat() {
   currentConversationId = null;
+  persistConversationId(null);
   sessionUsage.inputTokens = 0;
   sessionUsage.outputTokens = 0;
   sessionUsage.cost = 0;
@@ -454,6 +479,7 @@ export function useAssistantRuntime() {
           case "conversation_start":
             if (event.data.conversation_id) {
               currentConversationId = event.data.conversation_id;
+              persistConversationId(currentConversationId);
             }
             if (event.data.model) {
               currentModel = event.data.model;
@@ -505,6 +531,7 @@ export function useAssistantRuntime() {
    */
   const loadConversation = useCallback(async (uuid) => {
     currentConversationId = uuid;
+    persistConversationId(uuid);
 
     if (!uuid) {
       setMessages([]);
@@ -513,6 +540,10 @@ export function useAssistantRuntime() {
 
     const conv = await fetchConversation(uuid);
     if (!conv?.messages?.length) {
+      // The conversation is gone (e.g. deleted) — drop the stale pointer so we
+      // don't keep trying to restore it on future page loads.
+      currentConversationId = null;
+      persistConversationId(null);
       setMessages([]);
       return;
     }
