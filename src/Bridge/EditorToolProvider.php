@@ -74,6 +74,16 @@ class EditorToolProvider implements ToolProviderInterface
                     'required' => ['client_id', 'attributes'],
                 ],
             ],
+            [
+                'name' => 'editor__update_post',
+                'description' => 'Update the open post\'s own fields live (currently: title — the main title field at the top of the editor, not a block). Applies to the unsaved document and is undoable with Cmd/Ctrl+Z. Use this to set the post title directly.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'title' => ['type' => 'string', 'description' => 'New post title.'],
+                    ],
+                ],
+            ],
         ];
     }
 
