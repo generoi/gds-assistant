@@ -99,6 +99,39 @@ class EditorToolProvider implements ToolProviderInterface
                     'required' => ['client_ids'],
                 ],
             ],
+            [
+                'name' => 'editor__query_dom',
+                'description' => 'Read-only escape hatch: find elements in the open editor by CSS selector. Returns tag, id, class, name/type/placeholder/aria-label/role, text, value and visibility per match (capped). Use it to locate settings, fields or panels the typed tools don\'t expose (e.g. a plugin\'s sidebar control) — answering "where is X?". Never writes; pair with editor__focus to bring a match on-screen.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'selector' => ['type' => 'string', 'description' => 'CSS selector to match.'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max elements to return (default 20, max 50).'],
+                    ],
+                    'required' => ['selector'],
+                ],
+            ],
+            [
+                'name' => 'editor__focus',
+                'description' => 'Scroll the first element matching a CSS selector into view and focus it — e.g. to show the user where a setting lives. Navigation only: never clicks or changes anything.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'selector' => ['type' => 'string', 'description' => 'CSS selector of the element to reveal.'],
+                    ],
+                    'required' => ['selector'],
+                ],
+            ],
+            [
+                'name' => 'editor__open_sidebar',
+                'description' => 'List or open the editor\'s side panels. Call with NO name to get the sidebars actually registered on this site ({name, label, active}) — don\'t guess names. Then pass a `name` from that list to open it; it\'s validated against the live list, so a panel that doesn\'t exist here returns an error (plus the list) instead of opening blank. No click, no content change.',
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'Sidebar name from the listed set (omit to list).'],
+                    ],
+                ],
+            ],
         ];
     }
 
