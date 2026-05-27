@@ -1350,12 +1350,6 @@ function MicButton() {
     }
   };
 
-  const currentLabel = (
-    langs.find((l) => l.code === lang)?.slug ||
-    lang ||
-    ''
-  ).toLowerCase();
-
   return (
     <div className="gds-assistant__voice" ref={wrapRef}>
       {/* Popover opens upward (composer is pinned to the panel bottom). */}
@@ -1370,7 +1364,15 @@ function MicButton() {
               className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
               onClick={() => choose(l.code)}
             >
-              {l.name}
+              <span>{l.name}</span>
+              {l.code === lang && (
+                <span
+                  className="gds-assistant__voice-langs-check"
+                  aria-hidden="true"
+                >
+                  ✓
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1408,7 +1410,6 @@ function MicButton() {
           aria-haspopup="menu"
           aria-expanded={langOpen}
         >
-          <span className="gds-assistant__voice-lang-code">{currentLabel}</span>
           <svg
             className="gds-assistant__voice-chevron"
             width="9"
