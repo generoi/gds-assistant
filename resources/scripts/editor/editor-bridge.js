@@ -71,7 +71,7 @@ export async function executeClientTool(toolName, input = {}) {
   try {
     switch (toolName) {
       case 'editor__read_selection':
-        return readSelection();
+        return await readSelection();
       case 'editor__replace_blocks':
         return replaceBlocks(input);
       case 'editor__insert_blocks':
@@ -100,7 +100,80 @@ function blockSnippet(block) {
   return s.length > 80 ? `${s.slice(0, 77)}…` : s;
 }
 
-function readSelection() {
+// Compact copy of a block's attributes for the outline: truncate long strings,
+// cap arrays, bound depth, drop the noisy srcset blob. Lets the model see what
+// a non-text block holds (image url/alt, embed url, a logos id list, …) without
+// dumping the whole document.
+function compactAttributes(value, depth = 0) {
+  if (value === null || value === undefined || depth > 4) return undefined;
+  if (typeof value === 'string') {
+    return value.length > 200 ? `${value.slice(0, 197)}…` : value;
+  }
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 30).map((v) => compactAttributes(v, depth + 1));
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (k === 'sizes' || k === 'srcSet') continue; // huge srcset data
+    const c = compactAttributes(v, depth + 1);
+    if (c !== undefined && c !== '') out[k] = c;
+  }
+  return out;
+}
+
+// Attribute keys that may hold attachment (media) ids worth resolving to a
+// url/title so the model can identify an image by filename.
+const MEDIA_KEY_RE =
+  /(^id$|^ids$|image|images|media|logo|logos|gallery|thumbnail|poster|avatar|cover|backgroundimage)/i;
+
+function collectMediaIds(attrs, out = [], depth = 0) {
+  if (!attrs || typeof attrs !== 'object' || depth > 4) return out;
+  const pushId = (x) => {
+    if (typeof x === 'number' && Number.isInteger(x) && x > 0) out.push(x);
+    else if (x && typeof x === 'object' && Number.isInteger(x.id))
+      out.push(x.id);
+  };
+  for (const [k, v] of Object.entries(attrs)) {
+    if (MEDIA_KEY_RE.test(k)) {
+      if (Array.isArray(v)) v.forEach(pushId);
+      else pushId(v);
+    } else if (v && typeof v === 'object') {
+      collectMediaIds(v, out, depth + 1);
+    }
+  }
+  return out;
+}
+
+// Resolve attachment ids to {id, title, url, filename} via the editor's own
+// `core` store (awaiting the resolver so it works even if not pre-fetched).
+// Best-effort: ids that aren't attachments are silently skipped.
+async function resolveMedia(ids) {
+  const core = wpData().resolveSelect?.('core');
+  if (!core?.getMedia) return {};
+  const uniq = [...new Set(ids)].slice(0, 50);
+  const out = {};
+  await Promise.all(
+    uniq.map(async (id) => {
+      try {
+        const m = await core.getMedia(id);
+        if (!m) return;
+        out[id] = {
+          id,
+          title: m.title?.rendered || m.slug || '',
+          url: m.source_url || '',
+          filename:
+            m.media_details?.file || (m.source_url || '').split('/').pop(),
+        };
+      } catch {
+        // not an attachment / not fetchable — skip
+      }
+    }),
+  );
+  return out;
+}
+
+async function readSelection() {
   const be = wpData().select('core/block-editor');
   const blocks = wpBlocks();
 
@@ -118,20 +191,35 @@ function readSelection() {
 
   // A flat outline of EVERY block (including nested) so the model can target
   // any block by clientId — even nested ones, with nothing selected, or after
-  // an edit changed ids — by matching on name + text rather than a cached id.
+  // an edit changed ids — by matching on name + content rather than a cached
+  // id. Text blocks carry a snippet; non-text blocks (images, galleries,
+  // embeds, logo lists) carry their attributes so the model can see what's
+  // inside instead of asking the user to select.
   const allIds = be.getClientIdsWithDescendants?.() || [];
+  const mediaIds = [];
   const outline = allIds
     .map((id) => {
       const block = be.getBlock?.(id);
       if (!block) return null;
-      return {
+      const text = blockSnippet(block);
+      const entry = {
         client_id: id,
         name: block.name,
         depth: (be.getBlockParents?.(id) || []).length,
-        text: blockSnippet(block),
+        text,
       };
+      if (!text) {
+        const attrs = compactAttributes(block.attributes);
+        if (attrs && Object.keys(attrs).length) entry.attributes = attrs;
+        collectMediaIds(block.attributes, mediaIds);
+      }
+      return entry;
     })
     .filter(Boolean);
+
+  // Resolve referenced attachment ids so the model can match an image by its
+  // filename/title (e.g. find the "snellman" logo) without a media tool.
+  const media = mediaIds.length ? await resolveMedia(mediaIds) : {};
 
   let textSelection = null;
   try {
@@ -155,6 +243,10 @@ function readSelection() {
     text_selection: textSelection,
     selected_blocks: selected,
     outline,
+    // Attachment id → {id, title, url, filename} for media referenced by the
+    // outline blocks. Cross-reference an id in a block's attributes (e.g.
+    // `logos`/`mediaId`) to identify the image by name.
+    media,
   };
 }
 

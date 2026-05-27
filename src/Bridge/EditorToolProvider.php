@@ -31,12 +31,12 @@ class EditorToolProvider implements ToolProviderInterface
         return [
             [
                 'name' => 'editor__read_selection',
-                'description' => 'Inspect the open block editor. Returns: selected_blocks (the user\'s current selection as full Gutenberg markup, with clientIds — empty if nothing is selected); and outline (a flat list of EVERY block including nested ones: clientId, name, nesting depth, and a short text snippet). Use the outline to find the block the user means by its name + text and get its current clientId — clientIds change after each edit, so always match by content, not a remembered id. Call this before editing, and again after any edit before the next one.',
+                'description' => 'Inspect the open editor. Returns selected_blocks (the selection as Gutenberg markup with clientIds; empty if nothing selected), outline (every block incl. nested: clientId, name, depth, text snippet, plus attributes for non-text blocks like images/galleries/logos), and media (attachment id → {title, url, filename}). Match blocks by content, not a remembered clientId — they change after each edit, so re-read before each edit.',
                 'input_schema' => ['type' => 'object', 'properties' => (object) []],
             ],
             [
                 'name' => 'editor__replace_blocks',
-                'description' => 'Replace blocks in the open editor with new content. Pass the clientIds to replace (from editor__read_selection) and the replacement as valid Gutenberg block markup (e.g. "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->"). The edit applies live to the unsaved document and is undoable with Cmd/Ctrl+Z. Use registered block types and correct attributes (see gds/block-types-list, gds/blocks-get). The result returns new_client_ids — the live ids of the inserted blocks; use those (not the old ones) for any follow-up edit.',
+                'description' => 'Replace blocks with new Gutenberg markup (e.g. "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->"). Pass the clientIds to replace and the markup. Returns new_client_ids — use those (not the old ones) for follow-up edits.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -52,7 +52,7 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__insert_blocks',
-                'description' => 'Insert new blocks (Gutenberg block markup) into the open editor. Without after_client_id they are appended at the end; with it they are inserted directly after that block. Applies live and is undoable. The result returns new_client_ids — the live ids of the inserted blocks — for any follow-up edit.',
+                'description' => 'Insert Gutenberg block markup — appended at the end, or directly after after_client_id if given. Returns new_client_ids for follow-up edits.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -64,7 +64,7 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__update_block_attributes',
-                'description' => 'Update attributes of a single block in the open editor (e.g. heading level, text alignment, a URL). Pass the block clientId and an object of attributes to merge. Applies live and is undoable.',
+                'description' => 'Merge attributes into one block by clientId (e.g. heading level, text alignment, a URL).',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -76,7 +76,7 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__update_post',
-                'description' => 'Update the open post\'s own fields live (currently: title — the main title field at the top of the editor, not a block). Applies to the unsaved document and is undoable with Cmd/Ctrl+Z. Use this to set the post title directly.',
+                'description' => 'Update the open post\'s own fields (currently: title — the title field above the content, not a block).',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
