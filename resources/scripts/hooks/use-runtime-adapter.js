@@ -1,13 +1,13 @@
-import { useExternalStoreRuntime } from "@assistant-ui/react";
-import { useState, useRef, useCallback, useMemo } from "@wordpress/element";
-import { getEditorContext, executeClientTool } from "../editor/editor-bridge";
+import {useExternalStoreRuntime} from '@assistant-ui/react';
+import {useState, useRef, useCallback, useMemo} from '@wordpress/element';
+import {getEditorContext, executeClientTool} from '../editor/editor-bridge';
 
 // Session state
 let currentConversationId = null;
-let currentModel = localStorage.getItem("gds-assistant-model") || "";
+let currentModel = localStorage.getItem('gds-assistant-model') || '';
 let currentMaxTokens =
-  parseInt(localStorage.getItem("gds-assistant-max-tokens"), 10) || 0;
-let currentSystemContext = "";
+  parseInt(localStorage.getItem('gds-assistant-max-tokens'), 10) || 0;
+let currentSystemContext = '';
 
 // Cap consecutive client-tool resumes (each is its own request, so the
 // server's per-request iteration limit doesn't bound the chain). Stops a model
@@ -16,7 +16,7 @@ const MAX_CLIENT_TOOL_ROUNDTRIPS = 12;
 
 // Persist the active conversation across full-page wp-admin navigations so the
 // chat can reopen on the same thread. Cleared by newChat().
-const ACTIVE_CONVERSATION_KEY = "gds-assistant-active-conversation";
+const ACTIVE_CONVERSATION_KEY = 'gds-assistant-active-conversation';
 
 function persistConversationId(id) {
   try {
@@ -54,18 +54,51 @@ const sessionUsage = {
   listeners: new Set(),
 };
 
+// What the assistant is doing right now, so the indicator can say more than
+// "•••". Updated as SSE events arrive and while client tools run.
+const runStatus = {text: '', listeners: new Set()};
+
+function setRunStatus(text) {
+  if (runStatus.text === text) return;
+  runStatus.text = text;
+  for (const fn of runStatus.listeners) fn(text);
+}
+
+export function onRunStatus(callback) {
+  runStatus.listeners.add(callback);
+  callback(runStatus.text);
+  return () => runStatus.listeners.delete(callback);
+}
+
+// Human phase label for a tool name (either "editor__x" or "editor/x" form).
+function toolStatusLabel(name) {
+  const key = (name || '').replace('/', '__');
+  const map = {
+    editor__read_selection: 'Reading the editor',
+    editor__replace_blocks: 'Editing the document',
+    editor__insert_blocks: 'Inserting blocks',
+    editor__update_block_attributes: 'Updating a block',
+    editor__update_post: 'Updating the post',
+    editor__recover_block: 'Recovering blocks',
+    editor__query_dom: 'Inspecting the page',
+    editor__focus: 'Locating that',
+    editor__open_sidebar: 'Opening a panel',
+  };
+  return map[key] || `Running ${(name || 'tool').replace('__', '/')}`;
+}
+
 // ── Public API ──────────────────────────────────────────────
 
 export function setModel(model) {
   currentModel = model;
-  localStorage.setItem("gds-assistant-model", model);
+  localStorage.setItem('gds-assistant-model', model);
 }
 export function getModel() {
   return currentModel;
 }
 export function setMaxTokens(tokens) {
   currentMaxTokens = tokens;
-  localStorage.setItem("gds-assistant-max-tokens", String(tokens));
+  localStorage.setItem('gds-assistant-max-tokens', String(tokens));
 }
 export function getMaxTokens() {
   return currentMaxTokens;
@@ -77,7 +110,7 @@ export function setSystemContext(ctx) {
 
 export function onUsageUpdate(callback) {
   sessionUsage.listeners.add(callback);
-  callback({ ...sessionUsage });
+  callback({...sessionUsage});
   return () => sessionUsage.listeners.delete(callback);
 }
 
@@ -88,8 +121,8 @@ export function onUsageUpdate(callback) {
  * All providers now emit unified fields: input_tokens (total),
  * cache_read_tokens (subset), cache_write_tokens (subset).
  *
- * @param {number} input   Total input tokens (includes cached)
- * @param {number} output  Output tokens
+ * @param {number} input      Total input tokens (includes cached)
+ * @param {number} output     Output tokens
  * @param {number} cacheRead  Tokens served from cache (subset of input)
  * @param {number} cacheWrite Tokens written to cache (subset of input, Anthropic only)
  */
@@ -129,7 +162,7 @@ export function newChat() {
   sessionUsage.outputTokens = 0;
   sessionUsage.cost = 0;
   for (const fn of sessionUsage.listeners) {
-    fn({ inputTokens: 0, outputTokens: 0, cost: 0 });
+    fn({inputTokens: 0, outputTokens: 0, cost: 0});
   }
 }
 
@@ -139,9 +172,9 @@ export function newChat() {
  * @return {Promise<Array>} Array of conversation objects.
  */
 export async function fetchConversations() {
-  const { restUrl, nonce } = window.gdsAssistant || {};
+  const {restUrl, nonce} = window.gdsAssistant || {};
   const response = await fetch(`${restUrl}conversations`, {
-    headers: { "X-WP-Nonce": nonce },
+    headers: {'X-WP-Nonce': nonce},
   });
   if (!response.ok) return [];
   return response.json();
@@ -154,9 +187,9 @@ export async function fetchConversations() {
  * @return {Promise<Object|null>} Conversation object with messages.
  */
 export async function fetchConversation(uuid) {
-  const { restUrl, nonce } = window.gdsAssistant || {};
+  const {restUrl, nonce} = window.gdsAssistant || {};
   const response = await fetch(`${restUrl}conversations/${uuid}`, {
-    headers: { "X-WP-Nonce": nonce },
+    headers: {'X-WP-Nonce': nonce},
   });
   if (!response.ok) return null;
   return response.json();
@@ -190,30 +223,31 @@ export function useAssistantRuntime() {
     const contentBlocks = [];
 
     const userText =
-      typeof message.content === "string"
-        ? message.content
-        : message.content
-            ?.map((p) => (p.type === "text" ? p.text : ""))
-            .join("") || "";
+      typeof message.content === 'string' ?
+        message.content
+      : message.content
+          ?.map((p) => (p.type === 'text' ? p.text : ''))
+          .join('') || '';
 
     // Control messages (approval/denial, editor-tool results) — don't show in chat
-    const clientToolResults = Array.isArray(message.clientToolResults)
-      ? message.clientToolResults
+    const clientToolResults =
+      Array.isArray(message.clientToolResults) ?
+        message.clientToolResults
       : null;
     const isControlMsg =
-      userText.startsWith("__tool_approved__:") ||
-      userText.startsWith("__tool_denied__:") ||
+      userText.startsWith('__tool_approved__:') ||
+      userText.startsWith('__tool_denied__:') ||
       !!clientToolResults;
 
     if (userText && !isControlMsg) {
-      contentBlocks.push({ type: "text", text: userText });
+      contentBlocks.push({type: 'text', text: userText});
     }
 
     // Process image attachments — prefer URL (uploaded to media library) over base64
     if (message.attachments?.length) {
       for (const attachment of message.attachments) {
-        const contentType = attachment.contentType || "";
-        if (!contentType.startsWith("image/")) continue;
+        const contentType = attachment.contentType || '';
+        if (!contentType.startsWith('image/')) continue;
 
         const imageContent = attachment.content?.[0];
         if (!imageContent?.image) continue;
@@ -221,15 +255,15 @@ export function useAssistantRuntime() {
         const imageUrl = imageContent.image;
         const mediaId = imageContent.mediaId;
 
-        if (mediaId || !imageUrl.startsWith("data:")) {
+        if (mediaId || !imageUrl.startsWith('data:')) {
           // Uploaded to media library — use URL (saves context tokens)
           contentBlocks.push({
-            type: "image",
-            source: { type: "url", url: imageUrl },
+            type: 'image',
+            source: {type: 'url', url: imageUrl},
           });
           if (mediaId) {
             contentBlocks.push({
-              type: "text",
+              type: 'text',
               text: `(Uploaded image — attachment ID: ${mediaId})`,
             });
           }
@@ -238,8 +272,8 @@ export function useAssistantRuntime() {
           const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
           if (match) {
             contentBlocks.push({
-              type: "image",
-              source: { type: "base64", media_type: match[1], data: match[2] },
+              type: 'image',
+              source: {type: 'base64', media_type: match[1], data: match[2]},
             });
           }
         }
@@ -249,7 +283,7 @@ export function useAssistantRuntime() {
     if (!isControlMsg) {
       const userMsg = {
         id: nextMessageId(),
-        role: "user",
+        role: 'user',
         content: contentBlocks,
         timestamp: Date.now(),
       };
@@ -257,6 +291,7 @@ export function useAssistantRuntime() {
     }
 
     setIsRunning(true);
+    setRunStatus('Thinking…');
     const controller = new AbortController();
     abortRef.current = controller;
     // When we chain into a client-tool resume, the resume's own send owns the
@@ -264,7 +299,7 @@ export function useAssistantRuntime() {
     let resuming = false;
 
     try {
-      const { restUrl, nonce } = window.gdsAssistant || {};
+      const {restUrl, nonce} = window.gdsAssistant || {};
       // For control messages (approval/denial) the server's detectToolApproval
       // expects the LAST message's content to be a STRING. Don't wrap it in a
       // content-block array — that would make the content non-string and the
@@ -272,15 +307,15 @@ export function useAssistantRuntime() {
       // and call the LLM again (adding MORE pending approvals to the queue).
       const requestContent = isControlMsg ? userText : contentBlocks;
       const response = await fetch(`${restUrl}chat`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "X-WP-Nonce": nonce,
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': nonce,
         },
         body: JSON.stringify({
-          messages: [{ role: "user", content: requestContent }],
-          conversation_id: currentConversationId || "",
-          model: currentModel || "",
+          messages: [{role: 'user', content: requestContent}],
+          conversation_id: currentConversationId || '',
+          model: currentModel || '',
           max_tokens: currentMaxTokens || undefined,
           system_context: currentSystemContext || undefined,
           // Live block-editor state — enables the editor_* client tools.
@@ -311,9 +346,9 @@ export function useAssistantRuntime() {
       const pendingClientCalls = [];
 
       const ensureTextPart = () => {
-        if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== "text") {
+        if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== 'text') {
           currentTextIdx = turnParts.length;
-          turnParts.push({ type: "text", text: "" });
+          turnParts.push({type: 'text', text: ''});
         }
         return currentTextIdx;
       };
@@ -349,7 +384,7 @@ export function useAssistantRuntime() {
       const updateCurrentTurn = () => {
         if (!turnParts.length) return;
         touchTurnTimestamp();
-        const contentParts = turnParts.map((p) => ({ ...p }));
+        const contentParts = turnParts.map((p) => ({...p}));
         const timestamp = turnTimestamp;
         if (!currentTurnMessageId) {
           currentTurnMessageId = nextMessageId();
@@ -359,7 +394,7 @@ export function useAssistantRuntime() {
           const idx = prev.findIndex((m) => m.id === msgId);
           const message = {
             id: msgId,
-            role: "assistant",
+            role: 'assistant',
             content: contentParts,
             timestamp: (idx >= 0 ? prev[idx].timestamp : null) ?? timestamp,
           };
@@ -374,7 +409,7 @@ export function useAssistantRuntime() {
 
       for await (const event of parseSSE(response.body)) {
         switch (event.type) {
-          case "text_delta": {
+          case 'text_delta': {
             // If we saw tool results and now text is coming in, the LLM is
             // starting a new reasoning round. Flush the previous turn so the
             // next message is fresh.
@@ -382,12 +417,15 @@ export function useAssistantRuntime() {
               flushTurn();
               sawToolResultInTurn = false;
             }
+            // Text is streaming in and visible — the dots alone now mean
+            // "responding", so drop the phase label.
+            setRunStatus('');
             const idx = ensureTextPart();
             turnParts[idx].text += event.data.text;
             break;
           }
 
-          case "tool_use_start": {
+          case 'tool_use_start': {
             // If the previous round already produced results and the LLM is
             // now invoking another tool (even without text in between), flush
             // so the new round is its own assistant message.
@@ -395,19 +433,20 @@ export function useAssistantRuntime() {
               flushTurn();
               sawToolResultInTurn = false;
             }
-            const toolLabel = event.data.name?.replace("__", "/") || "unknown";
-            const toolId = event.data.id || "";
+            const toolLabel = event.data.name?.replace('__', '/') || 'unknown';
+            const toolId = event.data.id || '';
+            setRunStatus(toolStatusLabel(event.data.name));
             // Emit a real tool-call content part — assistant-ui renders it via
             // the ToolCallUI component (ToolCallFallback), which shows running/
             // done/error state and (when undoable) an Undo button.
             turnParts.push({
-              type: "tool-call",
+              type: 'tool-call',
               toolCallId: toolId,
               toolName: toolLabel,
               args:
-                event.data.input && typeof event.data.input === "object"
-                  ? event.data.input
-                  : {},
+                event.data.input && typeof event.data.input === 'object' ?
+                  event.data.input
+                : {},
             });
             // Any text after this tool starts a fresh text part.
             currentTextIdx = -1;
@@ -415,17 +454,18 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case "tool_result": {
-            const toolId = event.data.tool_use_id || "";
+          case 'tool_result': {
+            const toolId = event.data.tool_use_id || '';
 
             // Attach the result to the matching tool-call part so it flips
             // from "Running" to Done/Error. Match the first part that's still
             // unfilled, so when a model reuses one id across calls each result
             // lands on its own card rather than all stacking on the first.
-            const tc = toolId
-              ? turnParts.find(
+            const tc =
+              toolId ?
+                turnParts.find(
                   (p) =>
-                    p.type === "tool-call" &&
+                    p.type === 'tool-call' &&
                     p.toolCallId === toolId &&
                     p.result === undefined,
                 )
@@ -443,7 +483,7 @@ export function useAssistantRuntime() {
                 prev.map((m) => {
                   if (
                     patched ||
-                    m.role !== "assistant" ||
+                    m.role !== 'assistant' ||
                     !Array.isArray(m.content)
                   ) {
                     return m;
@@ -452,7 +492,7 @@ export function useAssistantRuntime() {
                   const content = m.content.map((p) => {
                     if (
                       !patched &&
-                      p.type === "tool-call" &&
+                      p.type === 'tool-call' &&
                       p.toolCallId === toolId &&
                       p.result === undefined
                     ) {
@@ -466,7 +506,7 @@ export function useAssistantRuntime() {
                     }
                     return p;
                   });
-                  return changed ? { ...m, content } : m;
+                  return changed ? {...m, content} : m;
                 }),
               );
             }
@@ -478,7 +518,7 @@ export function useAssistantRuntime() {
                 ...prev,
                 [toolId]: {
                   auditId: event.data.audit_id,
-                  label: event.data.undo_label || "Undo this action",
+                  label: event.data.undo_label || 'Undo this action',
                   undone: false,
                 },
               }));
@@ -504,10 +544,10 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case "tool_approval_required": {
+          case 'tool_approval_required': {
             const toolLabel =
-              event.data.tool_name?.replace("__", "/") || "unknown";
-            const toolId = event.data.tool_use_id || "";
+              event.data.tool_name?.replace('__', '/') || 'unknown';
+            const toolId = event.data.tool_use_id || '';
             // The provider already emitted tool_use_start for this tool, so a
             // card usually exists — approval just flags it (via pendingApprovals
             // → context). Only mint a card if one isn't there yet; pushing a
@@ -515,15 +555,15 @@ export function useAssistantRuntime() {
             const existingCard =
               toolId &&
               turnParts.find(
-                (p) => p.type === "tool-call" && p.toolCallId === toolId,
+                (p) => p.type === 'tool-call' && p.toolCallId === toolId,
               );
             const approvalInput =
-              event.data.input && typeof event.data.input === "object"
-                ? event.data.input
-                : {};
+              event.data.input && typeof event.data.input === 'object' ?
+                event.data.input
+              : {};
             if (!existingCard) {
               turnParts.push({
-                type: "tool-call",
+                type: 'tool-call',
                 toolCallId: toolId,
                 toolName: toolLabel,
                 args: approvalInput,
@@ -553,27 +593,27 @@ export function useAssistantRuntime() {
             break;
           }
 
-          case "ask_user": {
+          case 'ask_user': {
             const idx = ensureTextPart();
             turnParts[idx].text += `\n\n> **${
-              event.data.question || "Confirm?"
+              event.data.question || 'Confirm?'
             }**\n`;
             if (event.data.options?.length) {
               turnParts[idx].text += event.data.options
                 .map((o) => `> - ${o}`)
-                .join("\n");
+                .join('\n');
             }
-            turnParts[idx].text += "\n\n_Reply below to continue._\n";
+            turnParts[idx].text += '\n\n_Reply below to continue._\n';
             break;
           }
 
-          case "error": {
+          case 'error': {
             const idx = ensureTextPart();
             turnParts[idx].text += `\n\n**Error:** ${event.data.message}\n`;
             break;
           }
 
-          case "conversation_start":
+          case 'conversation_start':
             if (event.data.conversation_id) {
               currentConversationId = event.data.conversation_id;
               persistConversationId(currentConversationId);
@@ -583,7 +623,7 @@ export function useAssistantRuntime() {
             }
             break;
 
-          case "usage":
+          case 'usage':
             emitUsage(
               event.data.input_tokens || 0,
               event.data.output_tokens || 0,
@@ -592,7 +632,7 @@ export function useAssistantRuntime() {
             );
             break;
 
-          case "client_tool_call":
+          case 'client_tool_call':
             // The server wants the browser to run an editor tool. The matching
             // tool-call card already exists (from tool_use_start); just queue
             // the op — we execute after the stream ends and POST results back.
@@ -605,7 +645,7 @@ export function useAssistantRuntime() {
             }
             break;
 
-          case "message_stop":
+          case 'message_stop':
             break;
         }
 
@@ -626,11 +666,11 @@ export function useAssistantRuntime() {
             ...prev,
             {
               id: nextMessageId(),
-              role: "assistant",
+              role: 'assistant',
               content: [
                 {
-                  type: "text",
-                  text: "⚠ Stopped: too many editor actions in a row without finishing. Please refine the request or select the block to edit.",
+                  type: 'text',
+                  text: '⚠ Stopped: too many editor actions in a row without finishing. Please refine the request or select the block to edit.',
                 },
               ],
               timestamp: Date.now(),
@@ -639,6 +679,7 @@ export function useAssistantRuntime() {
         } else {
           const results = [];
           for (const call of pendingClientCalls) {
+            setRunStatus(toolStatusLabel(call.toolName));
             const result = await executeClientTool(call.toolName, call.input);
             results.push({
               tool_use_id: call.toolUseId,
@@ -648,20 +689,20 @@ export function useAssistantRuntime() {
           }
           resuming = true;
           onNewRef.current?.({
-            content: "__client_result__",
+            content: '__client_result__',
             clientToolResults: results,
             clientToolDepth: depth,
           });
         }
       }
     } catch (err) {
-      if (err.name !== "AbortError") {
+      if (err.name !== 'AbortError') {
         setMessages((prev) => [
           ...prev,
           {
             id: nextMessageId(),
-            role: "assistant",
-            content: [{ type: "text", text: `**Error:** ${err.message}` }],
+            role: 'assistant',
+            content: [{type: 'text', text: `**Error:** ${err.message}`}],
           },
         ]);
       }
@@ -670,6 +711,7 @@ export function useAssistantRuntime() {
       // running state + abort controller instead of tearing them down here.
       if (!resuming) {
         setIsRunning(false);
+        setRunStatus('');
         abortRef.current = null;
       }
     }
@@ -727,10 +769,13 @@ export function useAssistantRuntime() {
     // so we can show input+output in the abbr tooltip for history.
     const toolResultMap = {};
     for (const m of conv.messages) {
-      if (m.role !== "user" || !Array.isArray(m.content)) continue;
+      if (m.role !== 'user' || !Array.isArray(m.content)) continue;
       for (const block of m.content) {
-        if (block.type === "tool_result" && block.tool_use_id) {
-          const raw = typeof block.content === "string" ? block.content : JSON.stringify(block.content || "");
+        if (block.type === 'tool_result' && block.tool_use_id) {
+          const raw =
+            typeof block.content === 'string' ?
+              block.content
+            : JSON.stringify(block.content || '');
           toolResultMap[block.tool_use_id] = raw.slice(0, 800);
         }
       }
@@ -738,21 +783,21 @@ export function useAssistantRuntime() {
 
     // Convert stored messages to structured UI format
     const uiMessages = conv.messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
       .reduce((acc, m) => {
-        if (m.role === "user") {
+        if (m.role === 'user') {
           const text =
-            typeof m.content === "string"
-              ? m.content
-              : (m.content || [])
-                  .filter((p) => p.type === "text")
-                  .map((p) => p.text)
-                  .join("");
+            typeof m.content === 'string' ?
+              m.content
+            : (m.content || [])
+                .filter((p) => p.type === 'text')
+                .map((p) => p.text)
+                .join('');
           if (!text) return acc;
           acc.push({
             id: nextMessageId(),
-            role: "user",
-            content: [{ type: "text", text }],
+            role: 'user',
+            content: [{type: 'text', text}],
             timestamp: m.ts || undefined,
           });
           return acc;
@@ -761,29 +806,27 @@ export function useAssistantRuntime() {
         // Assistant: build structured parts from stored content
         const parts = [];
         const blocks =
-          typeof m.content === "string"
-            ? [{ type: "text", text: m.content }]
-            : Array.isArray(m.content)
-            ? m.content
-            : [];
+          typeof m.content === 'string' ? [{type: 'text', text: m.content}]
+          : Array.isArray(m.content) ? m.content
+          : [];
 
         for (const block of blocks) {
-          if (block.type === "text" && block.text) {
-            parts.push({ type: "text", text: block.text });
-          } else if (block.type === "tool_use") {
+          if (block.type === 'text' && block.text) {
+            parts.push({type: 'text', text: block.text});
+          } else if (block.type === 'tool_use') {
             // Restore as a real tool-call part (matching the live stream).
             // No Undo button on history — the stored conversation doesn't
             // carry the audit-log id; undo is offered on live actions only.
-            let result = toolResultMap[block.id] || "";
+            let result = toolResultMap[block.id] || '';
             try {
               result = result ? JSON.parse(result) : {};
             } catch (e) {
               /* keep the raw string if it isn't JSON */
             }
             parts.push({
-              type: "tool-call",
+              type: 'tool-call',
               toolCallId: block.id,
-              toolName: (block.name || "").replace("__", "/"),
+              toolName: (block.name || '').replace('__', '/'),
               args: block.input || {},
               result,
             });
@@ -794,7 +837,7 @@ export function useAssistantRuntime() {
 
         acc.push({
           id: nextMessageId(),
-          role: "assistant",
+          role: 'assistant',
           content: parts,
           timestamp: m.ts || undefined,
         });
@@ -818,16 +861,16 @@ export function useAssistantRuntime() {
     // turn, so suffix repeats to keep React keys unique without dropping any.
     const seenToolIds = new Set();
     const content = (msg.content || []).map((part) => {
-      if (part.type === "image" && part.source) {
+      if (part.type === 'image' && part.source) {
         // Our format: {type:'image', source:{type:'url',url}} or {type:'base64',data}
         const url =
-          part.source.type === "url"
-            ? part.source.url
-            : `data:${part.source.media_type};base64,${part.source.data}`;
-        return { type: "image", image: url };
+          part.source.type === 'url' ?
+            part.source.url
+          : `data:${part.source.media_type};base64,${part.source.data}`;
+        return {type: 'image', image: url};
       }
-      if (part.type === "tool-call") {
-        let toolCallId = part.toolCallId || "";
+      if (part.type === 'tool-call') {
+        let toolCallId = part.toolCallId || '';
         if (toolCallId && seenToolIds.has(toolCallId)) {
           let n = 2;
           while (seenToolIds.has(`${toolCallId}#${n}`)) n++;
@@ -835,7 +878,7 @@ export function useAssistantRuntime() {
         }
         seenToolIds.add(toolCallId);
         return {
-          type: "tool-call",
+          type: 'tool-call',
           toolCallId,
           toolName: part.toolName,
           args: part.args || {},
@@ -881,14 +924,14 @@ export function useAssistantRuntime() {
         const truncated = idx >= 0 ? prev.slice(0, idx + 1) : prev;
         const lastUser = [...truncated]
           .reverse()
-          .find((m) => m.role === "user");
+          .find((m) => m.role === 'user');
         if (lastUser) {
           const text =
             lastUser.content
-              ?.map((p) => (p.type === "text" ? p.text : ""))
-              .join("") || "";
+              ?.map((p) => (p.type === 'text' ? p.text : ''))
+              .join('') || '';
           if (text) {
-            setTimeout(() => onNew({ content: text }), 0);
+            setTimeout(() => onNew({content: text}), 0);
           }
         }
         return truncated;
@@ -902,30 +945,30 @@ export function useAssistantRuntime() {
 
   const attachmentAdapter = useMemo(
     () => ({
-      accept: "image/png,image/jpeg,image/gif,image/webp",
-      async add({ file }) {
+      accept: 'image/png,image/jpeg,image/gif,image/webp',
+      async add({file}) {
         const id = Math.random().toString(36).slice(2);
         const previewUrl = URL.createObjectURL(file);
 
         // Start upload in background — don't await
-        const { nonce, restBase } = window.gdsAssistant || {};
+        const {nonce, restBase} = window.gdsAssistant || {};
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append('file', file);
         uploadPromises.current[id] = fetch(`${restBase}media?gds_assistant=1`, {
-          method: "POST",
-          headers: { "X-WP-Nonce": nonce },
+          method: 'POST',
+          headers: {'X-WP-Nonce': nonce},
           body: formData,
         }).then((r) => r.json());
 
         // Return immediately with local preview
         return {
           id,
-          type: "image",
+          type: 'image',
           name: file.name,
           contentType: file.type,
           file,
-          status: { type: "requires-action", reason: "composer-send" },
-          content: [{ type: "image", image: previewUrl }],
+          status: {type: 'requires-action', reason: 'composer-send'},
+          content: [{type: 'image', image: previewUrl}],
         };
       },
       async send(attachment) {
@@ -938,9 +981,9 @@ export function useAssistantRuntime() {
             const media = await uploadResult;
             return {
               ...attachment,
-              status: { type: "complete" },
+              status: {type: 'complete'},
               content: [
-                { type: "image", image: media.source_url, mediaId: media.id },
+                {type: 'image', image: media.source_url, mediaId: media.id},
               ],
             };
           } catch {
@@ -952,10 +995,10 @@ export function useAssistantRuntime() {
         const base64 = await fileToBase64(attachment.file);
         return {
           ...attachment,
-          status: { type: "complete" },
+          status: {type: 'complete'},
           content: [
             {
-              type: "image",
+              type: 'image',
               image: `data:${attachment.contentType};base64,${base64}`,
             },
           ],
@@ -1006,9 +1049,10 @@ export function useAssistantRuntime() {
       const [first] = q;
       // If the user clicked "Approve & trust domain", append a |trust:HOST
       // suffix so the server can persist the host to the trusted list.
-      const trust = options.trustHost && first.trustableHost
-        ? `|trust:${first.trustableHost}`
-        : "";
+      const trust =
+        options.trustHost && first.trustableHost ?
+          `|trust:${first.trustableHost}`
+        : '';
       onNewRef.current?.({
         content: `__tool_approved__:${first.toolUseId}${trust}`,
       });
@@ -1037,50 +1081,69 @@ export function useAssistantRuntime() {
   // turn) — see Api\UndoEndpoint. Updates the per-tool undo state so the
   // button can show "Undone" / surface caveats.
   const undoAction = useCallback(async (toolCallId, auditId) => {
-    const { restUrl, nonce } = window.gdsAssistant || {};
+    const {restUrl, nonce} = window.gdsAssistant || {};
     setUndoableActions((prev) =>
-      prev[toolCallId]
-        ? { ...prev, [toolCallId]: { ...prev[toolCallId], pending: true, error: null } }
-        : prev,
+      prev[toolCallId] ?
+        {
+          ...prev,
+          [toolCallId]: {...prev[toolCallId], pending: true, error: null},
+        }
+      : prev,
     );
     try {
       const res = await fetch(`${restUrl}undo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-WP-Nonce": nonce },
-        body: JSON.stringify({ id: auditId }),
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-WP-Nonce': nonce},
+        body: JSON.stringify({id: auditId}),
       });
       const data = await res.json().catch(() => ({}));
       setUndoableActions((prev) => {
         if (!prev[toolCallId]) return prev;
         const entry =
-          res.ok && data.undone
-            ? { ...prev[toolCallId], pending: false, undone: true, caveats: data.caveats || [] }
-            : { ...prev[toolCallId], pending: false, error: data.error || "Undo failed" };
-        return { ...prev, [toolCallId]: entry };
+          res.ok && data.undone ?
+            {
+              ...prev[toolCallId],
+              pending: false,
+              undone: true,
+              caveats: data.caveats || [],
+            }
+          : {
+              ...prev[toolCallId],
+              pending: false,
+              error: data.error || 'Undo failed',
+            };
+        return {...prev, [toolCallId]: entry};
       });
       // Show the reversal in the thread too (the server records the same note
       // in the conversation + audit log; see Api\UndoEndpoint).
       if (res.ok && data.undone) {
-        const label = data.detail || "a previous action";
+        const label = data.detail || 'a previous action';
         const caveats = Array.isArray(data.caveats) ? data.caveats : [];
         const note = `↩ Reverted: ${label}${
-          caveats.length ? ` — ${caveats.join(" ")}` : ""
+          caveats.length ? ` — ${caveats.join(' ')}` : ''
         }`;
         setMessages((prev) => [
           ...prev,
           {
             id: nextMessageId(),
-            role: "user",
-            content: [{ type: "text", text: note }],
+            role: 'user',
+            content: [{type: 'text', text: note}],
             timestamp: Date.now(),
           },
         ]);
       }
     } catch (e) {
       setUndoableActions((prev) =>
-        prev[toolCallId]
-          ? { ...prev, [toolCallId]: { ...prev[toolCallId], pending: false, error: String(e) } }
-          : prev,
+        prev[toolCallId] ?
+          {
+            ...prev,
+            [toolCallId]: {
+              ...prev[toolCallId],
+              pending: false,
+              error: String(e),
+            },
+          }
+        : prev,
       );
     }
   }, []);
@@ -1105,6 +1168,7 @@ export function useAssistantRuntime() {
  * Same day: `HH:MM` (24h); different day: `MM-DD HH:MM`. sv-SE locale so
  * digits are always 24-hour and the date reads consistently regardless of
  * the browser UI language.
+ * @param ts
  */
 export function formatMessageTime(ts) {
   const d = new Date(ts);
@@ -1113,16 +1177,16 @@ export function formatMessageTime(ts) {
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString("sv-SE", {
-    hour: "2-digit",
-    minute: "2-digit",
+  const time = d.toLocaleTimeString('sv-SE', {
+    hour: '2-digit',
+    minute: '2-digit',
   });
-  return sameDay
-    ? time
-    : `${d.toLocaleDateString("sv-SE", {
-        month: "2-digit",
-        day: "2-digit",
-      })} ${time}`;
+  return sameDay ? time : (
+      `${d.toLocaleDateString('sv-SE', {
+        month: '2-digit',
+        day: '2-digit',
+      })} ${time}`
+    );
 }
 
 /**
@@ -1144,15 +1208,15 @@ export function restorePendingApprovalsFromHistory(rawMessages) {
   const out = [];
   for (let i = 0; i < rawMessages.length; i++) {
     const msg = rawMessages[i];
-    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    if (msg?.role !== 'assistant' || !Array.isArray(msg.content)) continue;
 
     // Collect tool_use blocks (id → {name, input}) from this assistant msg.
     const toolUses = [];
     for (const block of msg.content) {
-      if (block?.type === "tool_use" && block.id) {
+      if (block?.type === 'tool_use' && block.id) {
         toolUses.push({
           id: block.id,
-          name: block.name || "",
+          name: block.name || '',
           input: block.input || {},
         });
       }
@@ -1162,25 +1226,25 @@ export function restorePendingApprovalsFromHistory(rawMessages) {
     // The corresponding tool_result blocks should be in the next user msg.
     const next = rawMessages[i + 1];
     const nextBlocks =
-      next?.role === "user" && Array.isArray(next.content) ? next.content : [];
+      next?.role === 'user' && Array.isArray(next.content) ? next.content : [];
 
     for (const tu of toolUses) {
       const resultBlock = nextBlocks.find(
-        (b) => b?.type === "tool_result" && b.tool_use_id === tu.id,
+        (b) => b?.type === 'tool_result' && b.tool_use_id === tu.id,
       );
       if (!resultBlock) continue;
       const contentStr =
-        typeof resultBlock.content === "string" ? resultBlock.content : "";
+        typeof resultBlock.content === 'string' ? resultBlock.content : '';
       let parsed;
       try {
         parsed = JSON.parse(contentStr);
       } catch {
         parsed = null;
       }
-      if (parsed?.status === "pending_approval") {
+      if (parsed?.status === 'pending_approval') {
         out.push({
           toolUseId: tu.id,
-          toolName: tu.name.replace("__", "/"),
+          toolName: tu.name.replace('__', '/'),
           input: tu.input,
         });
       }
@@ -1201,7 +1265,7 @@ function fileToBase64(file) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result;
-      const base64 = dataUrl?.split(",")[1] || null;
+      const base64 = dataUrl?.split(',')[1] || null;
       resolve(base64);
     };
     reader.onerror = () => resolve(null);
@@ -1219,23 +1283,23 @@ function fileToBase64(file) {
 async function* parseSSE(body) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  let buffer = '';
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const {done, value} = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, {stream: true});
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
       let eventType = null;
       for (const line of lines) {
-        if (line.startsWith("event: ")) {
+        if (line.startsWith('event: ')) {
           eventType = line.slice(7).trim();
-        } else if (line.startsWith("data: ")) {
+        } else if (line.startsWith('data: ')) {
           const data = line.slice(6);
           if (eventType && data) {
             try {
@@ -1248,7 +1312,7 @@ async function* parseSSE(body) {
             }
           }
           eventType = null;
-        } else if (line.trim() === "") {
+        } else if (line.trim() === '') {
           eventType = null;
         }
       }

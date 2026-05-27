@@ -19,6 +19,7 @@ import {
 } from '@wordpress/element';
 import {
   onUsageUpdate,
+  onRunStatus,
   setModel,
   getModel,
   setMaxTokens,
@@ -102,7 +103,7 @@ function getStoredPanelSize() {
   try {
     const raw = localStorage.getItem('gds-assistant-panel-size');
     if (!raw) return null;
-    const { width, height } = JSON.parse(raw);
+    const {width, height} = JSON.parse(raw);
     const maxW = window.innerWidth - 48;
     const maxH = window.innerHeight - 120;
     if (typeof width !== 'number' || typeof height !== 'number') return null;
@@ -127,6 +128,9 @@ function getStoredPanelSize() {
  * plain inline style from Radix) combined with CSS custom properties
  * for the values (CSS vars survive on the element because they're set
  * via React's style= prop, which React DOES preserve across renders).
+ * @param node
+ * @param top
+ * @param left
  */
 function applyPanelPosition(node, top, left) {
   if (!node) return;
@@ -157,7 +161,7 @@ function getStoredPanelPosition() {
   try {
     const raw = localStorage.getItem('gds-assistant-panel-position');
     if (!raw) return null;
-    const { top, left } = JSON.parse(raw);
+    const {top, left} = JSON.parse(raw);
     if (typeof top !== 'number' || typeof left !== 'number') return null;
     // Keep at least 40px of the panel on-screen at all edges so the user
     // can always grab the drag handle.
@@ -295,7 +299,7 @@ export function AssistantModal({
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      const { top, left } = clamp(startTop + dy, startLeft + dx);
+      const {top, left} = clamp(startTop + dy, startLeft + dx);
       applyPanelPosition(panel, top, left);
     };
     const onUp = () => {
@@ -305,7 +309,7 @@ export function AssistantModal({
         const r = panel.getBoundingClientRect();
         localStorage.setItem(
           'gds-assistant-panel-position',
-          JSON.stringify({ top: r.top, left: r.left }),
+          JSON.stringify({top: r.top, left: r.left}),
         );
       } catch {
         // noop
@@ -442,6 +446,7 @@ export function AssistantModal({
 /**
  * Render the whole conversation as Markdown (shared by Export-to-file and
  * Copy-to-clipboard). Returns '' for an empty thread.
+ * @param msgs
  */
 function transcriptToMarkdown(msgs) {
   if (!msgs?.length) return '';
@@ -791,7 +796,7 @@ function Thread({
           {pendingApprovals[0]?.trustableHost && (
             <button
               className="gds-assistant__approval-btn gds-assistant__approval-btn--trust"
-              onClick={() => onApproveToolCall({ trustHost: true })}
+              onClick={() => onApproveToolCall({trustHost: true})}
               title={`Approve and never ask again for ${pendingApprovals[0].trustableHost}`}
             >
               Approve & trust {pendingApprovals[0].trustableHost}
@@ -1020,6 +1025,9 @@ function SkillsList({onUsed, onClose}) {
 function TypingIndicator() {
   const threadRuntime = useThreadRuntime();
   const [isRunning, setIsRunning] = useState(false);
+  // What's happening right now ("Reading the editor…", "Editing the document…")
+  // so a slow turn shows progress instead of three blind dots.
+  const [status, setStatus] = useState('');
 
   useEffect(() => {
     return threadRuntime.subscribe(() => {
@@ -1027,10 +1035,15 @@ function TypingIndicator() {
     });
   }, [threadRuntime]);
 
+  useEffect(() => onRunStatus(setStatus), []);
+
   if (!isRunning) return null;
 
   return (
     <div className="gds-assistant__typing">
+      {status ?
+        <span className="gds-assistant__typing-status">{status}</span>
+      : null}
       <span className="gds-assistant__typing-dot" />
       <span className="gds-assistant__typing-dot" />
       <span className="gds-assistant__typing-dot" />
@@ -1578,6 +1591,7 @@ function AssistantMessageText({text}) {
  * message DATA (not the rendered DOM) so it captures each tool call's full
  * request + response even while the card is collapsed — handy for pasting a
  * tool exchange into a bug report.
+ * @param parts
  */
 function messageToCopyText(parts) {
   return (parts || [])
@@ -1634,6 +1648,7 @@ function CopyMessageButton() {
  * Short one-line hint shown next to the tool name in the collapsed summary.
  * Picks up to 3 identifying args so a bulk sequence of the same tool is
  * distinguishable at a glance (e.g. `id=26520 menu_order=6`).
+ * @param args
  */
 function summarizeArgs(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return '';
@@ -1725,8 +1740,11 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
             </span>
           )}
           {/* Per-action Undo (only for reversible, successful actions). */}
-          {undo && onUndo && !needsApproval && !isError && (
-            undo.undone ?
+          {undo &&
+            onUndo &&
+            !needsApproval &&
+            !isError &&
+            (undo.undone ?
               <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--undone">
                 Undone
               </span>
@@ -1743,8 +1761,7 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
                 }}
               >
                 {undo.pending ? 'Undoing…' : '↩ Undo'}
-              </button>
-          )}
+              </button>)}
         </summary>
         {args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">

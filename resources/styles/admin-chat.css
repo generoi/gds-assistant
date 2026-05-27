@@ -553,6 +553,13 @@ abbr.gds-tool {
   align-items: center;
 }
 
+.gds-assistant__typing-status {
+  margin-right: 4px;
+  font-size: 12px;
+  color: #757575;
+  font-style: italic;
+}
+
 .gds-assistant__typing-dot {
   width: 6px;
   height: 6px;
