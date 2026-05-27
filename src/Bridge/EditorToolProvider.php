@@ -36,7 +36,7 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__replace_blocks',
-                'description' => 'Replace blocks in the open editor with new content. Pass the clientIds to replace (from editor__read_selection) and the replacement as valid Gutenberg block markup (e.g. "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->"). The edit applies live to the unsaved document and is undoable with Cmd/Ctrl+Z. Use registered block types and correct attributes (see gds/block-types-list, gds/blocks-get).',
+                'description' => 'Replace blocks in the open editor with new content. Pass the clientIds to replace (from editor__read_selection) and the replacement as valid Gutenberg block markup (e.g. "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->"). The edit applies live to the unsaved document and is undoable with Cmd/Ctrl+Z. Use registered block types and correct attributes (see gds/block-types-list, gds/blocks-get). The result returns new_client_ids — the live ids of the inserted blocks; use those (not the old ones) for any follow-up edit.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
@@ -52,7 +52,7 @@ class EditorToolProvider implements ToolProviderInterface
             ],
             [
                 'name' => 'editor__insert_blocks',
-                'description' => 'Insert new blocks (Gutenberg block markup) into the open editor. Without after_client_id they are appended at the end; with it they are inserted directly after that block. Applies live and is undoable.',
+                'description' => 'Insert new blocks (Gutenberg block markup) into the open editor. Without after_client_id they are appended at the end; with it they are inserted directly after that block. Applies live and is undoable. The result returns new_client_ids — the live ids of the inserted blocks — for any follow-up edit.',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
