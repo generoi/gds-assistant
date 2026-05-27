@@ -95,6 +95,27 @@ const TOOL_UNDO_RESPONSE = [
   '',
 ].join('\n');
 
+// The follow-up stream after the user DENIES toolu_approve1: the server
+// resolves the tool as denied and the assistant acknowledges — crucially it
+// does NOT re-surface another approval prompt, so the bar stays hidden.
+const TOOL_DENIAL_RESOLVED = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-4","model":"anthropic:sonnet"}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"toolu_approve1","result":{"denied":true},"is_error":true}',
+  '',
+  'event: text_delta',
+  'data: {"text":"Okay, I will not clear the cache."}',
+  '',
+  'event: usage',
+  'data: {"input_tokens":300,"output_tokens":10}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
 // The follow-up stream after the user approves toolu_approve1: the server
 // resolves the pending tool and the assistant continues.
 const TOOL_APPROVAL_RESOLVED = [
@@ -121,5 +142,6 @@ module.exports = {
   ERROR_RESPONSE,
   TOOL_APPROVAL_RESPONSE,
   TOOL_APPROVAL_RESOLVED,
+  TOOL_DENIAL_RESOLVED,
   TOOL_UNDO_RESPONSE,
 };

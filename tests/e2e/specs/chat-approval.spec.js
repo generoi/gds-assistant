@@ -2,6 +2,7 @@ const {test, expect} = require('@playwright/test');
 const {
   TOOL_APPROVAL_RESPONSE,
   TOOL_APPROVAL_RESOLVED,
+  TOOL_DENIAL_RESOLVED,
 } = require('../fixtures/mock-responses.js');
 
 /**
@@ -11,16 +12,21 @@ const {
  */
 test.describe('Chat tool approval', () => {
   test.beforeEach(async ({page}) => {
-    // First /chat returns the approval prompt; the follow-up call (the
-    // approval click, carrying __tool_approved__) returns the resolution.
+    // First /chat returns the approval prompt; the follow-up call carries the
+    // user's decision — __tool_approved__ resolves and continues, __tool_denied__
+    // resolves as denied (neither re-surfaces another approval prompt).
     await page.route('**/gds-assistant/v1/chat', (route) => {
       const body = route.request().postData() || '';
+      let response = TOOL_APPROVAL_RESPONSE;
+      if (body.includes('__tool_approved__')) {
+        response = TOOL_APPROVAL_RESOLVED;
+      } else if (body.includes('__tool_denied__')) {
+        response = TOOL_DENIAL_RESOLVED;
+      }
       route.fulfill({
         status: 200,
         headers: {'Content-Type': 'text/event-stream'},
-        body: body.includes('__tool_approved__')
-          ? TOOL_APPROVAL_RESOLVED
-          : TOOL_APPROVAL_RESPONSE,
+        body: response,
       });
     });
     await page.goto('/wp-admin/');
