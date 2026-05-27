@@ -50,6 +50,9 @@ export function getEditorContext() {
     selected_block_count: ids.length,
     selected_block_types: types.slice(0, 20),
     has_text_selection: hasText,
+    // Derived from the theme (theme.json settings.color.custom) so the model
+    // knows whether raw hex is allowed without us hardcoding it.
+    custom_colors: !be.getSettings?.()?.disableCustomColors,
   };
 }
 
@@ -155,6 +158,70 @@ function readSelection() {
   };
 }
 
+// The editor's color palette + whether custom (hex) colors are allowed.
+function colorSettings() {
+  try {
+    const s = wpData().select('core/block-editor').getSettings();
+    const colors =
+      s.colors || s.__experimentalFeatures?.color?.palette?.theme || [];
+    return {
+      slugs: new Set(colors.map((c) => c.slug)),
+      allowCustom: !s.disableCustomColors,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Find colour problems in a block's attributes: preset refs to unknown slugs,
+// bare textColor/backgroundColor slugs that don't exist, and raw hex when the
+// site disallows custom colours. Returns [] when we can't read the palette
+// (don't block edits on uncertainty).
+function colorIssues(attributes) {
+  const cfg = colorSettings();
+  if (!cfg || !cfg.slugs.size) return [];
+
+  const issues = [];
+  const presetRe = /var:preset\|color\|([\w-]+)/;
+  const hexRe = /#[0-9a-fA-F]{3,8}\b/;
+
+  const scan = (v) => {
+    if (typeof v === 'string') {
+      const p = v.match(presetRe);
+      if (p && !cfg.slugs.has(p[1])) {
+        issues.push(`unknown color slug "${p[1]}"`);
+      }
+      if (!cfg.allowCustom && hexRe.test(v)) {
+        issues.push(
+          `custom hex "${v.match(hexRe)[0]}" is disabled on this site`,
+        );
+      }
+    } else if (Array.isArray(v)) {
+      v.forEach(scan);
+    } else if (v && typeof v === 'object') {
+      Object.values(v).forEach(scan);
+    }
+  };
+  scan(attributes?.style);
+
+  for (const key of ['textColor', 'backgroundColor', 'overlayColor']) {
+    const val = attributes?.[key];
+    if (typeof val === 'string' && val && !cfg.slugs.has(val)) {
+      issues.push(`unknown color slug "${val}" for ${key}`);
+    }
+  }
+
+  return [...new Set(issues)];
+}
+
+function colorErrorHint() {
+  const cfg = colorSettings();
+  const examples = cfg ? [...cfg.slugs].slice(0, 8).join(', ') : '';
+  const hex =
+    cfg && !cfg.allowCustom ? ' Custom hex is disabled on this site.' : '';
+  return `Use a palette slug from gds/design-theme-json (the "slug", not the display name) — e.g. ${examples}. Reference it as the textColor/backgroundColor attribute, or "var:preset|color|{slug}" in style.${hex}`;
+}
+
 // Parse block markup and surface validation problems instead of silently
 // applying a broken/unrecognized block (so the model can retry).
 function parseValidated(markup) {
@@ -167,10 +234,11 @@ function parseValidated(markup) {
     } else if (b.isValid === false) {
       issues.push(`invalid content for ${b.name}`);
     }
+    colorIssues(b.attributes).forEach((i) => issues.push(i));
     (b.innerBlocks || []).forEach(visit);
   };
   parsed.forEach(visit);
-  return {parsed, issues};
+  return {parsed, issues: [...new Set(issues)]};
 }
 
 function replaceBlocks(input = {}) {
@@ -245,6 +313,15 @@ function updateBlockAttributes(input = {}) {
   if (!clientId || !be.getBlock?.(clientId)) {
     return {error: `Block ${clientId} not found.`};
   }
+
+  // Catch unknown color slugs / disallowed hex before applying — otherwise the
+  // editor stores a reference that resolves to nothing and the color silently
+  // doesn't appear.
+  const ci = colorIssues(input.attributes || {});
+  if (ci.length) {
+    return {error: `Color not applied: ${ci.join('; ')}. ${colorErrorHint()}`};
+  }
+
   wpData()
     .dispatch('core/block-editor')
     .updateBlockAttributes(clientId, input.attributes || {});
