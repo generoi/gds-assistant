@@ -4,6 +4,7 @@ namespace GeneroWP\Assistant\Api;
 
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
 use GeneroWP\Assistant\Bridge\DestructiveGuard;
+use GeneroWP\Assistant\Bridge\EditorToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Llm\AiSupport;
@@ -51,6 +52,16 @@ class ChatEndpoint
                 'system_context' => [
                     'type' => 'string',
                     'default' => '',
+                ],
+                'editor_context' => [
+                    'type' => 'object',
+                    'default' => null,
+                    'description' => 'Live block-editor state: presence + a lightweight selection summary. Enables the editor_* client tools.',
+                ],
+                'client_tool_results' => [
+                    'type' => 'array',
+                    'default' => null,
+                    'description' => 'Results of client-executed editor tools, posted back to resume the loop: [{tool_use_id, result, is_error}].',
                 ],
             ],
         ]);
@@ -148,9 +159,18 @@ class ChatEndpoint
             'model' => $modelKey,
         ]);
 
-        // Check for tool approval/denial response
+        // Resume after browser-executed editor tools: splice each client result
+        // into its pending_client stub, then let the loop continue.
+        $clientResults = $request->get_param('client_tool_results');
         $approval = $this->detectToolApproval($request->get_param('messages'));
-        if ($approval) {
+        if (is_array($clientResults) && $clientResults) {
+            array_pop($messages); // remove the control message
+            $messages = $this->handleClientToolResults(
+                $messages, $clientResults,
+                fn (string $type, array $data) => $this->sendSSE($type, $data),
+                $conversationId, $userId,
+            );
+        } elseif ($approval) {
             [$toolUseId, $approved] = $approval;
             // Remove the approval message from the conversation (it's a control message)
             array_pop($messages);
@@ -205,6 +225,15 @@ class ChatEndpoint
             $systemContext = trim($request->get_param('system_context') ?? '');
             if ($systemContext) {
                 $systemPrompt .= "\n\nUser context for this chat:\n".$systemContext;
+            }
+
+            // When the user has the block editor open, expose the editor_*
+            // client tools and tell the model to prefer them over server-side
+            // content edits (which would fight the unsaved document).
+            $editorContext = $request->get_param('editor_context');
+            if (is_array($editorContext) && ! empty($editorContext['has_editor'])) {
+                add_filter('gds-assistant/tools', [$this, 'addEditorTools']);
+                $systemPrompt .= $this->editorContextPrompt($editorContext);
             }
 
             self::log('info', 'Chat request', [
@@ -597,6 +626,126 @@ class ChatEndpoint
                 if (isset($newResults[$id])) {
                     $block['content'] = $newResults[$id]['content'];
                     $block['is_error'] = $newResults[$id]['is_error'];
+                }
+            }
+        }
+
+        return $storedMessages;
+    }
+
+    /** Append the editor_* client tools (filter on `gds-assistant/tools`). */
+    public function addEditorTools(array $tools): array
+    {
+        return array_merge($tools, (new EditorToolProvider)->getTools());
+    }
+
+    /** Short system-prompt guidance + a summary of the user's editor selection. */
+    private function editorContextPrompt(array $ctx): string
+    {
+        $out = "\n\n## Open block editor\n";
+        $out .= "The user has the WordPress block editor open. To change THIS document use the `editor_*` tools — they apply live to the unsaved document and are undoable with Cmd/Ctrl+Z. Never use `gds/blocks-patch` or `gds/content-update` on the post that's open here; that edits the saved copy and would be lost when the editor saves.\n";
+        $out .= "Call `editor__read_selection` to see what the user selected before editing. Generate valid Gutenberg markup for registered blocks (use `gds/block-types-list` / `gds/blocks-get` for attributes).\n";
+
+        $parts = [];
+        if (! empty($ctx['post_id'])) {
+            $parts[] = 'post #'.(int) $ctx['post_id'].' ('.preg_replace('/[^a-z0-9_-]/i', '', (string) ($ctx['post_type'] ?? 'post')).')';
+        }
+        $count = (int) ($ctx['selected_block_count'] ?? 0);
+        if ($count > 0) {
+            $types = array_map(fn ($t) => preg_replace('/[^a-z0-9\/_-]/i', '', (string) $t), (array) ($ctx['selected_block_types'] ?? []));
+            $parts[] = $count.' block(s) selected'.($types ? ' ['.implode(', ', array_slice($types, 0, 8)).']' : '');
+        } elseif (! empty($ctx['has_text_selection'])) {
+            $parts[] = 'text highlighted within a block';
+        } else {
+            $parts[] = 'nothing selected';
+        }
+        $out .= 'Current selection: '.implode('; ', $parts).".\n";
+
+        return $out;
+    }
+
+    /**
+     * Resume after browser-executed editor tools. For each result: splice it
+     * into the matching pending_client stub, emit a tool_result so the UI
+     * updates, and audit the edit. No server execution — the browser already
+     * applied it.
+     *
+     * @param  array<int, array<string, mixed>>  $storedMessages
+     * @param  array<int, array<string, mixed>>  $clientResults  [{tool_use_id, result, is_error}]
+     * @return array<int, array<string, mixed>>
+     */
+    private function handleClientToolResults(
+        array $storedMessages,
+        array $clientResults,
+        callable $onEvent,
+        string $conversationUuid = '',
+        int $userId = 0,
+    ): array {
+        // Map originating tool_use blocks (id → name + input) for audit.
+        $toolUses = [];
+        foreach ($storedMessages as $msg) {
+            if (($msg['role'] ?? '') !== 'assistant' || ! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as $block) {
+                if (is_array($block) && ($block['type'] ?? '') === 'tool_use') {
+                    $toolUses[$block['id'] ?? ''] = [
+                        'name' => (string) ($block['name'] ?? ''),
+                        'input' => json_decode(json_encode($block['input'] ?? []), true) ?: [],
+                    ];
+                }
+            }
+        }
+
+        $resolved = [];
+        $auditLog = new AuditLog;
+        foreach ($clientResults as $clientResult) {
+            if (! is_array($clientResult)) {
+                continue;
+            }
+            $toolUseId = (string) ($clientResult['tool_use_id'] ?? '');
+            if ($toolUseId === '') {
+                continue;
+            }
+            $isError = ! empty($clientResult['is_error']);
+            $resultContent = $clientResult['result']
+                ?? ($isError ? ['error' => 'Editor tool failed'] : ['ok' => true]);
+
+            // Audit the live edit (not undoable here — Cmd/Ctrl+Z handles undo).
+            $auditLog->log(
+                $conversationUuid,
+                $userId,
+                $toolUses[$toolUseId]['name'] ?? 'editor',
+                $toolUses[$toolUseId]['input'] ?? [],
+                $resultContent,
+                $isError,
+            );
+
+            $onEvent('tool_result', [
+                'tool_use_id' => $toolUseId,
+                'result' => $resultContent,
+                'is_error' => $isError,
+            ]);
+
+            $resolved[$toolUseId] = [
+                'content' => json_encode($resultContent),
+                'is_error' => $isError,
+            ];
+        }
+
+        // Splice resolved results into their pending_client stubs.
+        foreach ($storedMessages as &$msg) {
+            if (! is_array($msg['content'] ?? null)) {
+                continue;
+            }
+            foreach ($msg['content'] as &$block) {
+                if (! is_array($block) || ($block['type'] ?? '') !== 'tool_result') {
+                    continue;
+                }
+                $id = $block['tool_use_id'] ?? '';
+                if (isset($resolved[$id])) {
+                    $block['content'] = $resolved[$id]['content'];
+                    $block['is_error'] = $resolved[$id]['is_error'];
                 }
             }
         }

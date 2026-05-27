@@ -1,5 +1,6 @@
 import { useExternalStoreRuntime } from "@assistant-ui/react";
 import { useState, useRef, useCallback, useMemo } from "@wordpress/element";
+import { getEditorContext, executeClientTool } from "../editor/editor-bridge";
 
 // Session state
 let currentConversationId = null;
@@ -190,10 +191,14 @@ export function useAssistantRuntime() {
             ?.map((p) => (p.type === "text" ? p.text : ""))
             .join("") || "";
 
-    // Control messages (approval/denial) — don't show in chat
+    // Control messages (approval/denial, editor-tool results) — don't show in chat
+    const clientToolResults = Array.isArray(message.clientToolResults)
+      ? message.clientToolResults
+      : null;
     const isControlMsg =
       userText.startsWith("__tool_approved__:") ||
-      userText.startsWith("__tool_denied__:");
+      userText.startsWith("__tool_denied__:") ||
+      !!clientToolResults;
 
     if (userText && !isControlMsg) {
       contentBlocks.push({ type: "text", text: userText });
@@ -249,6 +254,9 @@ export function useAssistantRuntime() {
     setIsRunning(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    // When we chain into a client-tool resume, the resume's own send owns the
+    // running state — don't let this stream's finally clear it.
+    let resuming = false;
 
     try {
       const { restUrl, nonce } = window.gdsAssistant || {};
@@ -270,6 +278,10 @@ export function useAssistantRuntime() {
           model: currentModel || "",
           max_tokens: currentMaxTokens || undefined,
           system_context: currentSystemContext || undefined,
+          // Live block-editor state — enables the editor_* client tools.
+          editor_context: getEditorContext(),
+          // Present only when resuming after browser-executed editor tools.
+          client_tool_results: clientToolResults || undefined,
         }),
         signal: controller.signal,
       });
@@ -289,6 +301,9 @@ export function useAssistantRuntime() {
       let turnParts = [];
       let currentTextIdx = -1;
       let sawToolResultInTurn = false;
+      // Editor tools the server asked the browser to run this stream. Executed
+      // after the stream ends, then their results are POSTed back to resume.
+      const pendingClientCalls = [];
 
       const ensureTextPart = () => {
         if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== "text") {
@@ -572,6 +587,19 @@ export function useAssistantRuntime() {
             );
             break;
 
+          case "client_tool_call":
+            // The server wants the browser to run an editor tool. The matching
+            // tool-call card already exists (from tool_use_start); just queue
+            // the op — we execute after the stream ends and POST results back.
+            if (event.data.tool_use_id) {
+              pendingClientCalls.push({
+                toolUseId: event.data.tool_use_id,
+                toolName: event.data.tool_name,
+                input: event.data.input || {},
+              });
+            }
+            break;
+
           case "message_stop":
             break;
         }
@@ -580,6 +608,25 @@ export function useAssistantRuntime() {
         if (turnParts.length) {
           updateCurrentTurn();
         }
+      }
+
+      // Run any editor tools the server delegated, then resume the loop by
+      // POSTing their results (mirrors the human-approval round-trip).
+      if (pendingClientCalls.length) {
+        const results = [];
+        for (const call of pendingClientCalls) {
+          const result = await executeClientTool(call.toolName, call.input);
+          results.push({
+            tool_use_id: call.toolUseId,
+            result,
+            is_error: !!(result && result.error),
+          });
+        }
+        resuming = true;
+        onNewRef.current?.({
+          content: "__client_result__",
+          clientToolResults: results,
+        });
       }
     } catch (err) {
       if (err.name !== "AbortError") {
@@ -593,8 +640,12 @@ export function useAssistantRuntime() {
         ]);
       }
     } finally {
-      setIsRunning(false);
-      abortRef.current = null;
+      // If we handed off to a client-tool resume, let that send manage the
+      // running state + abort controller instead of tearing them down here.
+      if (!resuming) {
+        setIsRunning(false);
+        abortRef.current = null;
+      }
     }
   }, []);
 
