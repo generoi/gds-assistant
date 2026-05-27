@@ -33,10 +33,16 @@ test.describe('Voice input', () => {
     await expect(mic).toBeVisible();
     await mic.click();
 
+    // Active/recording state is reflected on the button while listening.
+    await expect(mic).toHaveClass(/gds-assistant__mic--listening/);
     await expect(page.locator('.gds-assistant__input')).toHaveValue(
       /hello from voice/,
       {timeout: 3000},
     );
+
+    // Clicking again stops dictation and clears the active state.
+    await mic.click();
+    await expect(mic).not.toHaveClass(/gds-assistant__mic--listening/);
   });
 
   test('mic is hidden when Web Speech is unavailable', async ({page}) => {
