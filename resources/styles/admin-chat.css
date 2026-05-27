@@ -971,21 +971,23 @@ abbr.gds-tool {
   flex-shrink: 0;
 }
 
-/* Borderless chevron toggle below the mic with a tiny language code. */
+/* Borderless chevron toggle tucked right under the mic glyph (the 16px icon
+   sits ~8px above the button's bottom edge, so pull up into that gap) — reads
+   as part of the mic, inheriting its colour. */
 .gds-assistant__voice-lang {
   position: absolute;
-  top: calc(100% + 1px);
+  top: calc(100% - 9px);
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
   border: none;
   background: transparent;
   color: #757575;
   line-height: 1;
-  padding: 0 2px;
-  border-radius: 4px;
+  padding: 0 1px;
+  border-radius: 3px;
   cursor: pointer;
 
   &:hover {
@@ -1000,9 +1002,9 @@ abbr.gds-tool {
 
 /* Very small language code next to the chevron (e.g. "sv"). */
 .gds-assistant__voice-lang-code {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
 .gds-assistant__voice-chevron {
