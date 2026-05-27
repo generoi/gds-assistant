@@ -5,6 +5,7 @@ const {
   TOOL_DENIAL_RESOLVED,
   TOOL_APPROVAL_DELETE_RESPONSE,
   TOOL_APPROVAL_DELETE_RESOLVED,
+  TOOL_APPROVAL_WITH_USE_START,
 } = require('../fixtures/mock-responses.js');
 
 /**
@@ -137,5 +138,55 @@ test.describe('Chat approval rendering', () => {
     await expect(
       page.locator('.gds-assistant__message--assistant').last(),
     ).toContainText('Deleted page 13589');
+  });
+});
+
+/**
+ * Regression: a real approval flow streams tool_use_start AND then
+ * tool_approval_required for the same tool id. The UI must show exactly ONE
+ * card (not a duplicate stuck on "Running" after approval).
+ */
+test.describe('Chat approval — single card for tool_use_start + approval', () => {
+  test.beforeEach(async ({page}) => {
+    await page.route('**/gds-assistant/v1/chat', (route) => {
+      const body = route.request().postData() || '';
+      let response = TOOL_APPROVAL_WITH_USE_START;
+      if (body.includes('__tool_approved__')) {
+        response = TOOL_APPROVAL_DELETE_RESOLVED;
+      }
+      route.fulfill({
+        status: 200,
+        headers: {'Content-Type': 'text/event-stream'},
+        body: response,
+      });
+    });
+    await page.goto('/wp-admin/');
+    await page.click('.gds-assistant__trigger');
+    await page.locator('.gds-assistant__input').fill('Delete page 22405');
+    await page.click('.gds-assistant__send');
+  });
+
+  test('renders one card before and after approval (no stuck Running)', async ({
+    page,
+  }) => {
+    // Exactly one card, in the approval state.
+    await expect(page.locator('.gds-assistant__tool-call--approval')).toHaveCount(
+      1,
+      {timeout: 5000},
+    );
+    await expect(page.locator('.gds-assistant__tool-call')).toHaveCount(1);
+
+    await page.locator('.gds-assistant__approval-btn--approve').first().click();
+
+    // Still exactly one card — now Done with an Undo button, never a second
+    // card lingering on "Running".
+    await expect(page.locator('.gds-assistant__tool-call')).toHaveCount(1);
+    await expect(
+      page.locator('.gds-assistant__tool-call-status--done'),
+    ).toBeVisible({timeout: 5000});
+    await expect(
+      page.locator('.gds-assistant__tool-call', {hasText: 'Running'}),
+    ).toHaveCount(0);
+    await expect(page.locator('.gds-assistant__tool-undo-btn')).toBeVisible();
   });
 });

@@ -114,6 +114,27 @@ const TOOL_APPROVAL_DELETE_RESPONSE = [
   '',
 ].join('\n');
 
+// Realistic approval flow: the provider streams tool_use_start for the tool,
+// then MessageLoop flags it with tool_approval_required (same id). The UI must
+// show ONE card, not two (one stuck on "Running" after approval).
+const TOOL_APPROVAL_WITH_USE_START = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-del","model":"anthropic:sonnet"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"I will delete page 22405 again."}',
+  '',
+  'event: tool_use_start',
+  'data: {"id":"toolu_del1","name":"gds__content-delete","input":{"type":"pages","id":22405}}',
+  '',
+  'event: tool_approval_required',
+  'data: {"tool_use_id":"toolu_del1","tool_name":"gds__content-delete","input":{"type":"pages","id":22405}}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
 const TOOL_APPROVAL_DELETE_RESOLVED = [
   'event: conversation_start',
   'data: {"conversation_id":"test-conv-del","model":"anthropic:sonnet"}',
@@ -216,6 +237,7 @@ module.exports = {
   TOOL_DENIAL_RESOLVED,
   TOOL_APPROVAL_DELETE_RESPONSE,
   TOOL_APPROVAL_DELETE_RESOLVED,
+  TOOL_APPROVAL_WITH_USE_START,
   TOOL_DUPLICATE_ID_RESPONSE,
   TOOL_UNDO_RESPONSE,
 };

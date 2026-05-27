@@ -1220,10 +1220,9 @@ function UsageBar() {
     <div className="gds-assistant__usage">
       <span
         className={overBudget ? 'gds-assistant__usage--warn' : ''}
-        title={`Input: ${usage.inputTokens.toLocaleString()} / Output: ${usage.outputTokens.toLocaleString()}`}
+        title={`Input: ${usage.inputTokens.toLocaleString()} / Output: ${usage.outputTokens.toLocaleString()} · ${formatCost(usage.cost)}`}
       >
-        {total.toLocaleString()} tokens &middot; {formatCost(usage.cost)}
-        {overBudget ? ' ⚠' : ''}
+        {total.toLocaleString()} tokens{overBudget ? ' ⚠' : ''}
       </span>
     </div>
   );
