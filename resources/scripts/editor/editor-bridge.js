@@ -82,6 +82,12 @@ export async function executeClientTool(toolName, input = {}) {
         return updatePost(input);
       case 'editor__recover_block':
         return recoverBlock(input);
+      case 'editor__query_dom':
+        return queryDom(input);
+      case 'editor__focus':
+        return focusElement(input);
+      case 'editor__open_sidebar':
+        return openSidebar(input);
       default:
         return {error: `Unknown editor tool: ${toolName}`};
     }
@@ -510,4 +516,141 @@ function recoverBlock(input = {}) {
   }
 
   return {ok: failed.length === 0, recovered, failed};
+}
+
+// ── Generic DOM escape hatch (read + navigate only; never writes) ──
+// These let the model work with editor UI the structured stores don't model —
+// finding a setting, revealing a pane — without per-plugin code that breaks on
+// updates. Mutations always go through the typed tools above.
+
+function editorDocs() {
+  const docs = [document];
+  const cvs = document.querySelector('iframe[name="editor-canvas"]');
+  if (cvs?.contentDocument) docs.push(cvs.contentDocument);
+  return docs;
+}
+
+const capText = (v, n = 160) =>
+  v ?
+    String(v).replace(/\s+/g, ' ').trim().slice(0, n) || undefined
+  : undefined;
+
+// Read-only: find elements by CSS selector so the model can locate settings,
+// fields or panels (e.g. "where is this setting?"). Searches the editor canvas
+// iframe too. Never writes.
+function queryDom(input = {}) {
+  const selector = input.selector;
+  if (!selector) return {error: 'Provide a CSS selector.'};
+  const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
+
+  const out = [];
+  for (const doc of editorDocs()) {
+    let nodes;
+    try {
+      nodes = doc.querySelectorAll(selector);
+    } catch (e) {
+      return {error: `Invalid selector: ${e.message}`};
+    }
+    for (const el of nodes) {
+      if (out.length >= limit) break;
+      const r = el.getBoundingClientRect();
+      out.push({
+        tag: el.tagName.toLowerCase(),
+        id: el.id || undefined,
+        class:
+          typeof el.className === 'string' ?
+            capText(el.className, 120)
+          : undefined,
+        name: el.getAttribute?.('name') || undefined,
+        type: el.getAttribute?.('type') || undefined,
+        placeholder: el.getAttribute?.('placeholder') || undefined,
+        aria_label: el.getAttribute?.('aria-label') || undefined,
+        role: el.getAttribute?.('role') || undefined,
+        text: capText(el.textContent),
+        value: 'value' in el ? capText(el.value) : undefined,
+        visible: !!(r.width || r.height),
+      });
+    }
+  }
+  return {selector, count: out.length, elements: out};
+}
+
+// Scroll the first matching element into view and focus it — e.g. to show the
+// user where a setting lives. No click, no value change.
+function focusElement(input = {}) {
+  const selector = input.selector;
+  if (!selector) return {error: 'Provide a CSS selector.'};
+  let el = null;
+  for (const doc of editorDocs()) {
+    try {
+      el = doc.querySelector(selector);
+    } catch (e) {
+      return {error: `Invalid selector: ${e.message}`};
+    }
+    if (el) break;
+  }
+  if (!el) return {error: `No element matches ${selector}.`};
+  el.scrollIntoView?.({behavior: 'smooth', block: 'center'});
+  try {
+    el.focus?.({preventScroll: true});
+  } catch {
+    // not focusable — scrolling into view is enough
+  }
+  return {
+    ok: true,
+    tag: el.tagName.toLowerCase(),
+    text: capText(el.textContent, 120),
+  };
+}
+
+// Enumerate the side panels actually registered on THIS site. The pane toggle
+// buttons expose their openable id as aria-controls in "scope:name" form
+// (e.g. "yoast-seo:seo-sidebar"); openGeneralSidebar wants "scope/name". Read
+// them from the DOM rather than guessing names that may not exist.
+function listSidebars() {
+  const seen = new Map();
+  for (const doc of editorDocs()) {
+    for (const btn of doc.querySelectorAll('button[aria-controls]')) {
+      const ctrl = btn.getAttribute('aria-controls') || '';
+      if (!/^[\w-]+:[\w-]+$/.test(ctrl)) continue; // not a sidebar id
+      const name = ctrl.replace(':', '/');
+      if (seen.has(name)) continue;
+      seen.set(name, {
+        name,
+        label:
+          btn.getAttribute('aria-label') || capText(btn.textContent) || name,
+        active: btn.getAttribute('aria-pressed') === 'true',
+      });
+    }
+  }
+  return [...seen.values()];
+}
+
+// List or open the editor's side panels. With no name, returns the sidebars
+// registered on this site (name + label + active) so the model picks a real
+// one. With a name, validates it against that list before opening — so we never
+// "open" a phantom panel. No click, no content change.
+function openSidebar(input = {}) {
+  const available = listSidebars();
+  const name = String(input.name || '').trim();
+  if (!name) return {available};
+
+  const match = available.find((s) => s.name === name);
+  if (!match) {
+    return {error: `No sidebar "${name}" is registered here.`, available};
+  }
+  const d =
+    wpData().dispatch('core/edit-post') || wpData().dispatch('core/editor');
+  const sel =
+    wpData().select('core/edit-post') || wpData().select('core/editor');
+  if (!d?.openGeneralSidebar) {
+    return {error: 'Sidebar control is unavailable in this editor.'};
+  }
+  d.openGeneralSidebar(name);
+  return {
+    ok: true,
+    opened: name,
+    label: match.label,
+    active: sel?.getActiveGeneralSidebarName?.() ?? null,
+  };
 }
