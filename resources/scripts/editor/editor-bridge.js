@@ -229,6 +229,11 @@ async function readSelection() {
     })
     .filter(Boolean);
 
+  // Post-level context (status, slug, featured image, language + translations)
+  // so the model can answer "what's the status / is there a Swedish version?".
+  const post = postContext();
+  if (post?.featured_media) mediaIds.push(post.featured_media);
+
   // Resolve referenced attachment ids so the model can match an image by its
   // filename/title (e.g. find the "snellman" logo) without a media tool.
   const media = mediaIds.length ? await resolveMedia(mediaIds) : {};
@@ -250,16 +255,52 @@ async function readSelection() {
   }
 
   return {
+    // Post-level fields (status, slug, featured image, language, translations).
+    post,
     whole_document: selectedIds.length === 0,
     has_text_selection: !!textSelection,
     text_selection: textSelection,
     selected_blocks: selected,
     outline,
     // Attachment id → {id, title, url, filename} for media referenced by the
-    // outline blocks. Cross-reference an id in a block's attributes (e.g.
-    // `logos`/`mediaId`) to identify the image by name.
+    // outline blocks (and the featured image). Cross-reference an id in a
+    // block's attributes (e.g. `logos`/`mediaId`) to identify the image by name.
     media,
   };
+}
+
+// Post-level context read straight from core/editor — the unsaved edited
+// values, so it reflects pending changes. language/translations come from
+// Polylang via the standard attribute API (read-only data, no plugin coupling).
+function postContext() {
+  const ed = wpData().select('core/editor');
+  if (!ed?.getCurrentPostId) return null;
+  const get = (k) => {
+    try {
+      return ed.getEditedPostAttribute(k);
+    } catch {
+      return undefined;
+    }
+  };
+  const ctx = {
+    id: ed.getCurrentPostId(),
+    type: ed.getCurrentPostType?.(),
+    status: get('status'),
+    slug: get('slug'),
+    featured_media: get('featured_media') || 0,
+    template: get('template') || '',
+  };
+  const language = get('lang');
+  if (language) ctx.language = language;
+  const translations = get('translations');
+  if (
+    translations &&
+    typeof translations === 'object' &&
+    Object.keys(translations).length
+  ) {
+    ctx.translations = translations;
+  }
+  return ctx;
 }
 
 // The editor's color palette + whether custom (hex) colors are allowed.
@@ -376,11 +417,33 @@ function replaceBlocks(input = {}) {
 
 function updatePost(input = {}) {
   const ed = wpData().select('core/editor');
-  // Whitelist the fields we apply live (all undoable via the editor's history).
+  // Whitelist the core post fields we apply live (all unsaved + undoable via
+  // the editor's history). Status/publish are intentionally excluded — those
+  // are a save, not an editor-state edit.
   const allowed = {};
-  if (typeof input.title === 'string') allowed.title = input.title;
+  for (const key of ['title', 'slug', 'excerpt', 'template']) {
+    if (typeof input[key] === 'string') allowed[key] = input[key];
+  }
+  // featured_media accepts 0 to clear; author is a user id.
+  if (Number.isInteger(input.featured_media)) {
+    allowed.featured_media = input.featured_media;
+  }
+  if (Number.isInteger(input.author)) allowed.author = input.author;
+  // meta only reaches keys registered with show_in_rest (e.g. core post_color);
+  // plugin data that isn't registered meta (Yoast, etc.) won't persist here.
+  if (
+    input.meta &&
+    typeof input.meta === 'object' &&
+    !Array.isArray(input.meta)
+  ) {
+    allowed.meta = input.meta;
+  }
+
   if (Object.keys(allowed).length === 0) {
-    return {error: 'Nothing to update (supported: title).'};
+    return {
+      error:
+        'Nothing to update (supported: title, slug, excerpt, template, featured_media, author, meta).',
+    };
   }
   wpData().dispatch('core/editor').editPost(allowed);
   return {
