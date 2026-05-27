@@ -1354,7 +1354,7 @@ function MicButton() {
     langs.find((l) => l.code === lang)?.slug ||
     lang ||
     ''
-  ).toUpperCase();
+  ).toLowerCase();
 
   return (
     <div className="gds-assistant__voice" ref={wrapRef}>
@@ -1385,7 +1385,21 @@ function MicButton() {
           aria-haspopup="menu"
           aria-expanded={langOpen}
         >
-          {currentLabel}
+          <span className="gds-assistant__voice-lang-code">{currentLabel}</span>
+          <svg
+            className="gds-assistant__voice-chevron"
+            width="9"
+            height="9"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </button>
       )}
       <button

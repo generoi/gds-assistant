@@ -971,16 +971,16 @@ abbr.gds-tool {
   flex-shrink: 0;
 }
 
-/* Tiny borderless language code (e.g. "EN") — click to open the picker. */
+/* Borderless chevron toggle by the mic with a tiny language code. */
 .gds-assistant__voice-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
   border: none;
   background: transparent;
   color: #757575;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
   line-height: 1;
-  padding: 2px 3px;
+  padding: 2px;
   border-radius: 4px;
   cursor: pointer;
 
@@ -992,6 +992,17 @@ abbr.gds-tool {
     opacity: 0.5;
     cursor: default;
   }
+}
+
+/* Very small language code next to the chevron (e.g. "sv"). */
+.gds-assistant__voice-lang-code {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.gds-assistant__voice-chevron {
+  flex: 0 0 auto;
 }
 
 /* Language popover — opens upward, since the composer is at the panel bottom. */
