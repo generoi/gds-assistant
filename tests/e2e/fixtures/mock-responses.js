@@ -95,10 +95,31 @@ const TOOL_UNDO_RESPONSE = [
   '',
 ].join('\n');
 
+// The follow-up stream after the user approves toolu_approve1: the server
+// resolves the pending tool and the assistant continues.
+const TOOL_APPROVAL_RESOLVED = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-4","model":"anthropic:sonnet"}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"toolu_approve1","result":{"cleared":true},"is_error":false}',
+  '',
+  'event: text_delta',
+  'data: {"text":"Cache cleared."}',
+  '',
+  'event: usage',
+  'data: {"input_tokens":300,"output_tokens":10}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
 module.exports = {
   SIMPLE_TEXT_RESPONSE,
   TOOL_CALL_RESPONSE,
   ERROR_RESPONSE,
   TOOL_APPROVAL_RESPONSE,
+  TOOL_APPROVAL_RESOLVED,
   TOOL_UNDO_RESPONSE,
 };

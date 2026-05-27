@@ -163,14 +163,13 @@ test.describe('Chat Widget', () => {
     const assistantMsg = page.locator('.gds-assistant__message--assistant');
     await expect(assistantMsg.first()).toBeVisible({timeout: 5000});
 
-    // Tool call should render as a collapsible card (details element)
+    // Tool call renders as a structured card (a real component, not inline
+    // text). Unconditional now that tool calls route through tools.Fallback.
     const toolCall = page.locator('.gds-assistant__tool-call');
-    if ((await toolCall.count()) > 0) {
-      await expect(toolCall.first()).toBeVisible();
-      // Should show tool name
-      const toolName = toolCall.locator('.gds-assistant__tool-call-name');
-      await expect(toolName.first()).toBeVisible();
-    }
+    await expect(toolCall.first()).toBeVisible({timeout: 5000});
+    await expect(
+      toolCall.locator('.gds-assistant__tool-call-name').first(),
+    ).toBeVisible();
   });
 
   test('tool approval shows approve/deny buttons', async ({page}) => {
