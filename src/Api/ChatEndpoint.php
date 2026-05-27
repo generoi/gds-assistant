@@ -255,6 +255,20 @@ class ChatEndpoint
             TokenBudget::record($userId, $loop->getInputTokens() + $loop->getOutputTokens());
 
             // Persist conversation (only set title on first save)
+            // Stamp a per-message timestamp (epoch ms) on anything that doesn't
+            // carry one yet, so timestamps persist with the conversation and
+            // show on reload. Loaded messages keep their original `ts`; only the
+            // turn's new messages get "now". The provider never sees `ts`
+            // (MessageLoop strips it from its payload copy).
+            $nowMs = (int) round(microtime(true) * 1000);
+            $updatedMessages = array_map(function ($m) use ($nowMs) {
+                if (! isset($m['ts'])) {
+                    $m['ts'] = $nowMs;
+                }
+
+                return $m;
+            }, $updatedMessages);
+
             $updateData = [
                 'messages' => $updatedMessages,
                 'total_input_tokens' => $loop->getInputTokens(),

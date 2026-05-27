@@ -346,4 +346,37 @@ class MessageLoopTest extends TestCase
         $this->assertSame(100, $loop->getInputTokens());
         $this->assertSame(50, $loop->getOutputTokens());
     }
+
+    public function test_strips_ts_metadata_from_provider_payload_but_keeps_it_in_transcript(): void
+    {
+        $provider = new class implements LlmProviderInterface
+        {
+            public array $received = [];
+
+            public function name(): string
+            {
+                return 'mock';
+            }
+
+            public function stream(array $messages, array $tools, callable $onEvent, ?string $systemPrompt = null): array
+            {
+                $this->received = $messages;
+                $onEvent('text_delta', ['text' => 'ok']);
+                $onEvent('message_stop', ['stop_reason' => 'end_turn']);
+
+                return [['type' => 'text', 'text' => 'ok']];
+            }
+        };
+
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $transcript = $loop->run(
+            [['role' => 'user', 'content' => 'Hi', 'ts' => 1700000000000]],
+            fn () => null,
+        );
+
+        // The provider must not receive display metadata — only {role, content}.
+        $this->assertSame(['role', 'content'], array_keys($provider->received[0]));
+        // …but the returned/persisted transcript keeps the original ts.
+        $this->assertSame(1700000000000, $transcript[0]['ts']);
+    }
 }

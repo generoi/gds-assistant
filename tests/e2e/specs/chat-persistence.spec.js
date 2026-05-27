@@ -15,11 +15,14 @@ const RESTORED_DETAIL = {
   title: 'Saved chat',
   total_input_tokens: 500,
   total_output_tokens: 20,
+  // Per-message timestamps (epoch ms) are persisted with the conversation and
+  // must render on restore.
   messages: [
-    {role: 'user', content: 'Hello'},
+    {role: 'user', content: 'Hello', ts: 1700000000000},
     {
       role: 'assistant',
       content: [{type: 'text', text: 'I can help you manage your site.'}],
+      ts: 1700000000000,
     },
   ],
 };
@@ -88,6 +91,10 @@ test.describe('Chat persistence', () => {
     await expect(
       page.locator('.gds-assistant__message--assistant').first(),
     ).toContainText('I can help you manage your site', {timeout: 5000});
+    // Persisted per-message timestamps render on the restored messages.
+    await expect(
+      page.locator('.gds-assistant__message-time').first(),
+    ).toBeVisible({timeout: 5000});
   });
 
   test('a closed panel stays closed after a page reload', async ({page}) => {
