@@ -971,22 +971,18 @@ abbr.gds-tool {
   flex-shrink: 0;
 }
 
-/* Borderless chevron toggle tucked right under the mic glyph (the 16px icon
-   sits ~8px above the button's bottom edge, so pull up into that gap) — reads
-   as part of the mic, inheriting its colour. */
+/* Just a chevron, snug to the right of the mic icon (the 32px button has ~8px
+   side padding, so pull in). Clicking it opens the language menu, which marks
+   the selected language. */
 .gds-assistant__voice-lang {
-  position: absolute;
-  top: calc(100% - 9px);
-  left: 50%;
-  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  margin-left: -6px;
   border: none;
   background: transparent;
   color: #757575;
   line-height: 1;
-  padding: 0 1px;
+  padding: 2px;
   border-radius: 3px;
   cursor: pointer;
 
@@ -1000,13 +996,6 @@ abbr.gds-tool {
   }
 }
 
-/* Very small language code next to the chevron (e.g. "sv"). */
-.gds-assistant__voice-lang-code {
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
 .gds-assistant__voice-chevron {
   flex: 0 0 auto;
 }
@@ -1015,10 +1004,9 @@ abbr.gds-tool {
 .gds-assistant__voice-langs {
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  right: 0;
   z-index: 10;
-  min-width: 120px;
+  min-width: 130px;
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -1029,6 +1017,10 @@ abbr.gds-tool {
 }
 
 .gds-assistant__voice-langs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border: none;
   background: transparent;
   text-align: left;
@@ -1047,6 +1039,11 @@ abbr.gds-tool {
     color: #2271b1;
     font-weight: 600;
   }
+}
+
+.gds-assistant__voice-langs-check {
+  color: #2271b1;
+  font-size: 12px;
 }
 
 /* Active/recording state — solid fill + white icon + pulsing ring. Written as a
