@@ -161,8 +161,12 @@ function replaceBlocks({client_ids, markup}) {
   if (issues.length) return {error: 'Invalid block markup', issues};
   if (!parsed.length) return {error: 'Markup produced no blocks.'};
 
+  // parse() assigns clientIds and replaceBlocks inserts the blocks with them,
+  // so these are the live ids of the new blocks. Return them so the model can
+  // target follow-up edits without re-reading (old ids are now dead).
+  const newIds = parsed.map((b) => b.clientId);
   wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
-  return {ok: true, replaced: ids.length, inserted: parsed.length};
+  return {ok: true, replaced: ids.length, new_client_ids: newIds};
 }
 
 function updatePost(input = {}) {
@@ -184,6 +188,7 @@ function insertBlocks({markup, after_client_id}) {
 
   const be = wpData().select('core/block-editor');
   const dispatch = wpData().dispatch('core/block-editor');
+  const newIds = parsed.map((b) => b.clientId);
 
   if (after_client_id) {
     const rootId = be.getBlockRootClientId?.(after_client_id) ?? '';
@@ -193,7 +198,7 @@ function insertBlocks({markup, after_client_id}) {
   } else {
     dispatch.insertBlocks(parsed);
   }
-  return {ok: true, inserted: parsed.length};
+  return {ok: true, inserted: parsed.length, new_client_ids: newIds};
 }
 
 function updateBlockAttributes({client_id, attributes}) {
