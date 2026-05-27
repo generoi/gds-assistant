@@ -31,7 +31,7 @@ class EditorToolProvider implements ToolProviderInterface
         return [
             [
                 'name' => 'editor__read_selection',
-                'description' => 'Read the user\'s current selection in the open block editor. Returns the selected blocks as Gutenberg block markup plus their clientIds, types, and a flag for whether plain text (not whole blocks) is highlighted. Call this before editing so you edit exactly what the user means. If nothing is selected it returns the whole document.',
+                'description' => 'Inspect the open block editor. Returns: selected_blocks (the user\'s current selection as full Gutenberg markup, with clientIds — empty if nothing is selected); and outline (a flat list of EVERY block including nested ones: clientId, name, nesting depth, and a short text snippet). Use the outline to find the block the user means by its name + text and get its current clientId — clientIds change after each edit, so always match by content, not a remembered id. Call this before editing, and again after any edit before the next one.',
                 'input_schema' => ['type' => 'object', 'properties' => (object) []],
             ],
             [

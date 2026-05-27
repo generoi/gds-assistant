@@ -9,6 +9,11 @@ let currentMaxTokens =
   parseInt(localStorage.getItem("gds-assistant-max-tokens"), 10) || 0;
 let currentSystemContext = "";
 
+// Cap consecutive client-tool resumes (each is its own request, so the
+// server's per-request iteration limit doesn't bound the chain). Stops a model
+// that keeps calling editor tools without converging.
+const MAX_CLIENT_TOOL_ROUNDTRIPS = 12;
+
 // Persist the active conversation across full-page wp-admin navigations so the
 // chat can reopen on the same thread. Cleared by newChat().
 const ACTIVE_CONVERSATION_KEY = "gds-assistant-active-conversation";
@@ -611,22 +616,43 @@ export function useAssistantRuntime() {
       }
 
       // Run any editor tools the server delegated, then resume the loop by
-      // POSTing their results (mirrors the human-approval round-trip).
+      // POSTing their results (mirrors the human-approval round-trip). Each
+      // resume is a fresh request, so cap the chain — otherwise a model that
+      // keeps calling editor tools without finishing loops indefinitely.
       if (pendingClientCalls.length) {
-        const results = [];
-        for (const call of pendingClientCalls) {
-          const result = await executeClientTool(call.toolName, call.input);
-          results.push({
-            tool_use_id: call.toolUseId,
-            result,
-            is_error: !!(result && result.error),
+        const depth = (message.clientToolDepth || 0) + 1;
+        if (depth > MAX_CLIENT_TOOL_ROUNDTRIPS) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextMessageId(),
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "⚠ Stopped: too many editor actions in a row without finishing. Please refine the request or select the block to edit.",
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          const results = [];
+          for (const call of pendingClientCalls) {
+            const result = await executeClientTool(call.toolName, call.input);
+            results.push({
+              tool_use_id: call.toolUseId,
+              result,
+              is_error: !!(result && result.error),
+            });
+          }
+          resuming = true;
+          onNewRef.current?.({
+            content: "__client_result__",
+            clientToolResults: results,
+            clientToolDepth: depth,
           });
         }
-        resuming = true;
-        onNewRef.current?.({
-          content: "__client_result__",
-          clientToolResults: results,
-        });
       }
     } catch (err) {
       if (err.name !== "AbortError") {

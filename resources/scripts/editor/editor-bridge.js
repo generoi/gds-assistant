@@ -34,7 +34,11 @@ export function getEditorContext() {
   try {
     const s = be.getSelectionStart?.();
     const e = be.getSelectionEnd?.();
-    hasText = !!(s?.clientId && s.clientId === e?.clientId && s.offset !== e.offset);
+    hasText = !!(
+      s?.clientId &&
+      s.clientId === e?.clientId &&
+      s.offset !== e.offset
+    );
   } catch {
     // selection store not ready — treat as no text selection
   }
@@ -52,6 +56,10 @@ export function getEditorContext() {
 /**
  * Run a client editor tool. Always resolves to a plain result object (never
  * throws) so it can be posted straight back to the loop.
+ *
+ * @param {string} toolName Editor tool name (editor__*).
+ * @param {Object} input    Tool input from the model.
+ * @return {Promise<Object>} Result object (or {error}).
  */
 export async function executeClientTool(toolName, input = {}) {
   if (!hasEditor()) {
@@ -79,20 +87,46 @@ export async function executeClientTool(toolName, input = {}) {
 
 // ── Ops ─────────────────────────────────────────────────────
 
+function blockSnippet(block) {
+  const a = block?.attributes || {};
+  const raw = a.content ?? a.text ?? a.title ?? a.label ?? a.value ?? '';
+  const s = String(raw)
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s.length > 80 ? `${s.slice(0, 77)}…` : s;
+}
+
 function readSelection() {
   const be = wpData().select('core/block-editor');
   const blocks = wpBlocks();
 
-  let ids = be.getSelectedBlockClientIds?.() || [];
-  const wholeDocument = ids.length === 0;
-  if (wholeDocument) ids = be.getBlockOrder?.('') || [];
+  const selectedIds = be.getSelectedBlockClientIds?.() || [];
 
-  const items = ids
+  // Selected blocks get full markup (the model edits these directly).
+  const selected = selectedIds
     .map((id) => {
       const block = be.getBlock?.(id);
       return block ?
           {client_id: id, name: block.name, markup: blocks.serialize(block)}
         : null;
+    })
+    .filter(Boolean);
+
+  // A flat outline of EVERY block (including nested) so the model can target
+  // any block by clientId — even nested ones, with nothing selected, or after
+  // an edit changed ids — by matching on name + text rather than a cached id.
+  const allIds = be.getClientIdsWithDescendants?.() || [];
+  const outline = allIds
+    .map((id) => {
+      const block = be.getBlock?.(id);
+      if (!block) return null;
+      return {
+        client_id: id,
+        name: block.name,
+        depth: (be.getBlockParents?.(id) || []).length,
+        text: blockSnippet(block),
+      };
     })
     .filter(Boolean);
 
@@ -113,18 +147,16 @@ function readSelection() {
   }
 
   return {
-    whole_document: wholeDocument,
+    whole_document: selectedIds.length === 0,
     has_text_selection: !!textSelection,
     text_selection: textSelection,
-    blocks: items,
-    markup: items.map((b) => b.markup).join('\n\n'),
+    selected_blocks: selected,
+    outline,
   };
 }
 
-/**
- * Parse block markup and surface validation problems instead of silently
- * applying a broken/unrecognized block (so the model can retry).
- */
+// Parse block markup and surface validation problems instead of silently
+// applying a broken/unrecognized block (so the model can retry).
 function parseValidated(markup) {
   const parsed = wpBlocks().parse(markup || '');
   const issues = [];
@@ -141,8 +173,9 @@ function parseValidated(markup) {
   return {parsed, issues};
 }
 
-function replaceBlocks({client_ids, markup}) {
-  const ids = Array.isArray(client_ids) ? client_ids : [];
+function replaceBlocks(input = {}) {
+  const ids = Array.isArray(input.client_ids) ? input.client_ids : [];
+  const markup = input.markup;
   if (!ids.length) return {error: 'No client_ids provided to replace.'};
 
   // clientIds change after any edit. If the targets are gone, the dispatch is
@@ -178,22 +211,27 @@ function updatePost(input = {}) {
     return {error: 'Nothing to update (supported: title).'};
   }
   wpData().dispatch('core/editor').editPost(allowed);
-  return {ok: true, updated: Object.keys(allowed), post_id: ed.getCurrentPostId?.() || null};
+  return {
+    ok: true,
+    updated: Object.keys(allowed),
+    post_id: ed.getCurrentPostId?.() || null,
+  };
 }
 
-function insertBlocks({markup, after_client_id}) {
-  const {parsed, issues} = parseValidated(markup);
+function insertBlocks(input = {}) {
+  const {parsed, issues} = parseValidated(input.markup);
   if (issues.length) return {error: 'Invalid block markup', issues};
   if (!parsed.length) return {error: 'Markup produced no blocks.'};
 
   const be = wpData().select('core/block-editor');
   const dispatch = wpData().dispatch('core/block-editor');
   const newIds = parsed.map((b) => b.clientId);
+  const afterId = input.after_client_id;
 
-  if (after_client_id) {
-    const rootId = be.getBlockRootClientId?.(after_client_id) ?? '';
+  if (afterId) {
+    const rootId = be.getBlockRootClientId?.(afterId) ?? '';
     const order = be.getBlockOrder?.(rootId) || [];
-    const index = order.indexOf(after_client_id);
+    const index = order.indexOf(afterId);
     dispatch.insertBlocks(parsed, index >= 0 ? index + 1 : undefined, rootId);
   } else {
     dispatch.insertBlocks(parsed);
@@ -201,13 +239,14 @@ function insertBlocks({markup, after_client_id}) {
   return {ok: true, inserted: parsed.length, new_client_ids: newIds};
 }
 
-function updateBlockAttributes({client_id, attributes}) {
+function updateBlockAttributes(input = {}) {
+  const clientId = input.client_id;
   const be = wpData().select('core/block-editor');
-  if (!client_id || !be.getBlock?.(client_id)) {
-    return {error: `Block ${client_id} not found.`};
+  if (!clientId || !be.getBlock?.(clientId)) {
+    return {error: `Block ${clientId} not found.`};
   }
   wpData()
     .dispatch('core/block-editor')
-    .updateBlockAttributes(client_id, attributes || {});
-  return {ok: true, client_id};
+    .updateBlockAttributes(clientId, input.attributes || {});
+  return {ok: true, client_id: clientId};
 }
