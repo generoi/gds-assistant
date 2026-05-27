@@ -937,8 +937,9 @@ abbr.gds-tool {
   }
 }
 
-/* Voice-to-text mic — mirrors the attach button; turns red + pulses while
-   actively listening for dictation. */
+/* Voice-to-text mic — mirrors the attach button at rest; while actively
+   listening it fills solid red with a white icon and a pulsing halo ring, so
+   "recording" is unmistakable. */
 .gds-assistant__mic {
   width: 32px;
   height: 32px;
@@ -951,26 +952,34 @@ abbr.gds-tool {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
   padding: 0;
 
   &:hover {
     color: #2271b1;
   }
 
-  &--listening {
-    color: #d63638;
-    animation: gds-assistant-mic-pulse 1.3s infinite ease-in-out;
+  /* Active/recording state — solid fill + white icon + pulsing ring. The
+     :hover variant keeps it red so hovering doesn't flip it back to blue. */
+  &--listening,
+  &--listening:hover {
+    background: #d63638;
+    color: #fff;
+    animation: gds-assistant-mic-pulse 1.4s infinite;
   }
 }
 
 @keyframes gds-assistant-mic-pulse {
-  0%,
-  100% {
-    opacity: 1;
+  0% {
+    box-shadow: 0 0 0 0 rgba(214, 54, 56, 0.5);
   }
-  50% {
-    opacity: 0.4;
+  70% {
+    box-shadow: 0 0 0 6px rgba(214, 54, 56, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(214, 54, 56, 0);
   }
 }
 
