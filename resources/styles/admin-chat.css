@@ -977,7 +977,7 @@ abbr.gds-tool {
 .gds-assistant__voice-lang {
   display: inline-flex;
   align-items: center;
-  margin-left: -6px;
+  margin-left: -9px;
   border: none;
   background: transparent;
   color: #757575;
