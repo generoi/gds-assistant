@@ -488,21 +488,33 @@ export function useAssistantRuntime() {
             const toolLabel =
               event.data.tool_name?.replace("__", "/") || "unknown";
             const toolId = event.data.tool_use_id || "";
-            // Render as a real tool-call card in the "approval required" state
-            // (not verbose text) — ToolCallFallback shows it compactly, and
-            // after approval the follow-up tool_result updates this very card
-            // in place so it flips to Done and surfaces the Undo button.
-            turnParts.push({
-              type: "tool-call",
-              toolCallId: toolId,
-              toolName: toolLabel,
-              args:
-                event.data.input && typeof event.data.input === "object"
-                  ? event.data.input
-                  : {},
-            });
-            currentTextIdx = -1;
-            updateCurrentTurn();
+            // The provider already emitted tool_use_start for this tool, so a
+            // card usually exists — approval just flags it (via pendingApprovals
+            // → context). Only mint a card if one isn't there yet; pushing a
+            // second would leave a duplicate stuck on "Running" after approval.
+            const existingCard =
+              toolId &&
+              turnParts.find(
+                (p) => p.type === "tool-call" && p.toolCallId === toolId,
+              );
+            const approvalInput =
+              event.data.input && typeof event.data.input === "object"
+                ? event.data.input
+                : {};
+            if (!existingCard) {
+              turnParts.push({
+                type: "tool-call",
+                toolCallId: toolId,
+                toolName: toolLabel,
+                args: approvalInput,
+              });
+              currentTextIdx = -1;
+              updateCurrentTurn();
+            } else if (Object.keys(approvalInput).length > 0) {
+              // tool_use_start may have carried empty input — fill the real args.
+              existingCard.args = approvalInput;
+              updateCurrentTurn();
+            }
             // Enqueue unless we already have this id (dedupe on resurface).
             setPendingApprovals((q) => {
               if (q.some((p) => p.toolUseId === toolId)) {
