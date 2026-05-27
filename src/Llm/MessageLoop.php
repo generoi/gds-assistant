@@ -3,6 +3,7 @@
 namespace GeneroWP\Assistant\Llm;
 
 use GeneroWP\Assistant\Bridge\AbilitiesToolProvider;
+use GeneroWP\Assistant\Bridge\EditorToolProvider;
 use GeneroWP\Assistant\Bridge\ToolRegistry;
 use GeneroWP\Assistant\Bridge\ToolRestrictor;
 use GeneroWP\Assistant\Storage\AuditLog;
@@ -137,9 +138,32 @@ class MessageLoop
             // one approval was requested.
             $toolResults = [];
             $pendingApproval = false;
+            $pendingClient = false;
 
             foreach ($toolUseBlocks as $toolUse) {
                 $toolInput = json_decode(json_encode($toolUse['input'] ?? []), true) ?: [];
+
+                // Client-executed editor tools: the server can't touch the open
+                // editor, so stream a client_tool_call, stub the result, and
+                // break — the browser runs the op against @wordpress/data and
+                // POSTs the result back (same round-trip as human approval).
+                if (EditorToolProvider::isClientTool($toolUse['name'])) {
+                    $onEvent('client_tool_call', [
+                        'tool_use_id' => $toolUse['id'],
+                        'tool_name' => $toolUse['name'],
+                        'input' => $toolInput,
+                    ]);
+                    $toolResults[] = [
+                        'type' => 'tool_result',
+                        'tool_use_id' => $toolUse['id'],
+                        'content' => json_encode(['status' => 'pending_client', 'tool_name' => $toolUse['name']]),
+                        'is_error' => false,
+                    ];
+                    $pendingClient = true;
+
+                    continue;
+                }
+
                 $abilityName = AbilitiesToolProvider::toAbilityName($toolUse['name']);
                 $isDestructive = $this->isDestructive($abilityName);
 
@@ -268,8 +292,10 @@ class MessageLoop
             // Add tool results as a user message
             $messages[] = ['role' => 'user', 'content' => $toolResults];
 
-            // If a tool requires approval, break the loop and let the user decide
-            if ($pendingApproval) {
+            // Break to hand control back: either the user must approve a
+            // dangerous tool, or the browser must execute a client tool and
+            // POST its result. Both resume on the next request.
+            if ($pendingApproval || $pendingClient) {
                 break;
             }
         }

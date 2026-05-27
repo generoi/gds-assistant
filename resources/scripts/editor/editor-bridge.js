@@ -1,0 +1,182 @@
+/**
+ * Bridge between the assistant and the live WordPress block editor.
+ *
+ * Reads the current selection and applies block edits directly to the unsaved
+ * document via the editor's own `wp.data`/`wp.blocks` instances (using the
+ * globals, not bundled copies, so we touch the SAME stores the editor uses).
+ * v1 is blocks-only — whole-block read/replace/insert/attribute edits; inline
+ * text-range edits are deferred.
+ */
+
+const wpData = () => window.wp?.data;
+const wpBlocks = () => window.wp?.blocks;
+
+/** Is the block editor present and ready on this page? */
+export function hasEditor() {
+  const d = wpData();
+  return !!(d?.select?.('core/block-editor') && d.select('core/editor'));
+}
+
+/**
+ * Lightweight selection summary sent with each chat request so the model knows
+ * what's open/selected without a round-trip. No block content — just shape.
+ */
+export function getEditorContext() {
+  if (!hasEditor()) return {has_editor: false};
+  const d = wpData();
+  const ed = d.select('core/editor');
+  const be = d.select('core/block-editor');
+
+  const ids = be.getSelectedBlockClientIds?.() || [];
+  const types = ids.map((id) => be.getBlockName?.(id)).filter(Boolean);
+
+  let hasText = false;
+  try {
+    const s = be.getSelectionStart?.();
+    const e = be.getSelectionEnd?.();
+    hasText = !!(s?.clientId && s.clientId === e?.clientId && s.offset !== e.offset);
+  } catch {
+    // selection store not ready — treat as no text selection
+  }
+
+  return {
+    has_editor: true,
+    post_id: ed.getCurrentPostId?.() || null,
+    post_type: ed.getCurrentPostType?.() || null,
+    selected_block_count: ids.length,
+    selected_block_types: types.slice(0, 20),
+    has_text_selection: hasText,
+  };
+}
+
+/**
+ * Run a client editor tool. Always resolves to a plain result object (never
+ * throws) so it can be posted straight back to the loop.
+ */
+export async function executeClientTool(toolName, input = {}) {
+  if (!hasEditor()) {
+    return {error: 'No block editor is open on this page.'};
+  }
+  try {
+    switch (toolName) {
+      case 'editor__read_selection':
+        return readSelection();
+      case 'editor__replace_blocks':
+        return replaceBlocks(input);
+      case 'editor__insert_blocks':
+        return insertBlocks(input);
+      case 'editor__update_block_attributes':
+        return updateBlockAttributes(input);
+      default:
+        return {error: `Unknown editor tool: ${toolName}`};
+    }
+  } catch (e) {
+    return {error: String(e?.message || e)};
+  }
+}
+
+// ── Ops ─────────────────────────────────────────────────────
+
+function readSelection() {
+  const be = wpData().select('core/block-editor');
+  const blocks = wpBlocks();
+
+  let ids = be.getSelectedBlockClientIds?.() || [];
+  const wholeDocument = ids.length === 0;
+  if (wholeDocument) ids = be.getBlockOrder?.('') || [];
+
+  const items = ids
+    .map((id) => {
+      const block = be.getBlock?.(id);
+      return block ?
+          {client_id: id, name: block.name, markup: blocks.serialize(block)}
+        : null;
+    })
+    .filter(Boolean);
+
+  let textSelection = null;
+  try {
+    const s = be.getSelectionStart();
+    const e = be.getSelectionEnd();
+    if (s?.clientId && s.clientId === e?.clientId && s.offset !== e.offset) {
+      textSelection = {
+        client_id: s.clientId,
+        attribute: s.attributeKey,
+        start: s.offset,
+        end: e.offset,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    whole_document: wholeDocument,
+    has_text_selection: !!textSelection,
+    text_selection: textSelection,
+    blocks: items,
+    markup: items.map((b) => b.markup).join('\n\n'),
+  };
+}
+
+/**
+ * Parse block markup and surface validation problems instead of silently
+ * applying a broken/unrecognized block (so the model can retry).
+ */
+function parseValidated(markup) {
+  const parsed = wpBlocks().parse(markup || '');
+  const issues = [];
+  const visit = (b) => {
+    if (!b) return;
+    if (b.name === 'core/missing') {
+      issues.push('unrecognized block in markup');
+    } else if (b.isValid === false) {
+      issues.push(`invalid content for ${b.name}`);
+    }
+    (b.innerBlocks || []).forEach(visit);
+  };
+  parsed.forEach(visit);
+  return {parsed, issues};
+}
+
+function replaceBlocks({client_ids, markup}) {
+  const ids = Array.isArray(client_ids) ? client_ids : [];
+  if (!ids.length) return {error: 'No client_ids provided to replace.'};
+
+  const {parsed, issues} = parseValidated(markup);
+  if (issues.length) return {error: 'Invalid block markup', issues};
+  if (!parsed.length) return {error: 'Markup produced no blocks.'};
+
+  wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
+  return {ok: true, replaced: ids.length, inserted: parsed.length};
+}
+
+function insertBlocks({markup, after_client_id}) {
+  const {parsed, issues} = parseValidated(markup);
+  if (issues.length) return {error: 'Invalid block markup', issues};
+  if (!parsed.length) return {error: 'Markup produced no blocks.'};
+
+  const be = wpData().select('core/block-editor');
+  const dispatch = wpData().dispatch('core/block-editor');
+
+  if (after_client_id) {
+    const rootId = be.getBlockRootClientId?.(after_client_id) ?? '';
+    const order = be.getBlockOrder?.(rootId) || [];
+    const index = order.indexOf(after_client_id);
+    dispatch.insertBlocks(parsed, index >= 0 ? index + 1 : undefined, rootId);
+  } else {
+    dispatch.insertBlocks(parsed);
+  }
+  return {ok: true, inserted: parsed.length};
+}
+
+function updateBlockAttributes({client_id, attributes}) {
+  const be = wpData().select('core/block-editor');
+  if (!client_id || !be.getBlock?.(client_id)) {
+    return {error: `Block ${client_id} not found.`};
+  }
+  wpData()
+    .dispatch('core/block-editor')
+    .updateBlockAttributes(client_id, attributes || {});
+  return {ok: true, client_id};
+}

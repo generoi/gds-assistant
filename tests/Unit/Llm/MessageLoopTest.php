@@ -347,6 +347,35 @@ class MessageLoopTest extends TestCase
         $this->assertSame(50, $loop->getOutputTokens());
     }
 
+    public function test_client_editor_tool_is_delegated_to_the_browser_not_executed(): void
+    {
+        // The model asks to run a client-executed editor tool.
+        $provider = $this->mockProvider([
+            [['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'editor__read_selection', 'input' => new \stdClass]],
+        ]);
+        $loop = new MessageLoop($provider, new ToolRegistry);
+
+        $events = [];
+        $messages = $loop->run(
+            [['role' => 'user', 'content' => 'rewrite the selection']],
+            function ($type, $data) use (&$events) {
+                $events[] = [$type, $data];
+            },
+        );
+
+        // A client_tool_call is emitted for the browser to run.
+        $calls = array_values(array_filter($events, fn ($e) => $e[0] === 'client_tool_call'));
+        $this->assertCount(1, $calls);
+        $this->assertSame('tu_1', $calls[0][1]['tool_use_id']);
+        $this->assertSame('editor__read_selection', $calls[0][1]['tool_name']);
+
+        // The loop broke leaving a pending_client stub — nothing ran server-side.
+        $last = end($messages);
+        $this->assertSame('user', $last['role']);
+        $stub = json_decode($last['content'][0]['content'], true);
+        $this->assertSame('pending_client', $stub['status']);
+    }
+
     public function test_strips_ts_metadata_from_provider_payload_but_keeps_it_in_transcript(): void
     {
         $provider = new class implements LlmProviderInterface
