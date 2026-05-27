@@ -645,6 +645,8 @@ class ChatEndpoint
         $out = "\n\n## Open block editor\n";
         $out .= "The user has the WordPress block editor open. To change THIS document use the `editor_*` tools — they apply live to the unsaved document and are undoable with Cmd/Ctrl+Z. Never use `gds/blocks-patch` or `gds/content-update` on the post that's open here; that edits the saved copy and would be lost when the editor saves.\n";
         $out .= "Call `editor__read_selection` to see what the user selected before editing. Generate valid Gutenberg markup for registered blocks (use `gds/block-types-list` / `gds/blocks-get` for attributes).\n";
+        $out .= "To change the post's main title, use `editor__update_post` ({title}); don't ask the user to type it.\n";
+        $out .= "IMPORTANT: block clientIds change after every edit. If you've already edited the document this turn, call `editor__read_selection` again for fresh clientIds before the next edit — reusing stale ids fails. If a tool returns a stale-id error, re-read and retry.\n";
 
         $parts = [];
         if (! empty($ctx['post_id'])) {

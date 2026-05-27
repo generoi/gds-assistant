@@ -67,6 +67,8 @@ export async function executeClientTool(toolName, input = {}) {
         return insertBlocks(input);
       case 'editor__update_block_attributes':
         return updateBlockAttributes(input);
+      case 'editor__update_post':
+        return updatePost(input);
       default:
         return {error: `Unknown editor tool: ${toolName}`};
     }
@@ -143,12 +145,36 @@ function replaceBlocks({client_ids, markup}) {
   const ids = Array.isArray(client_ids) ? client_ids : [];
   if (!ids.length) return {error: 'No client_ids provided to replace.'};
 
+  // clientIds change after any edit. If the targets are gone, the dispatch is
+  // a silent no-op — so fail loudly and tell the model to re-read.
+  const be = wpData().select('core/block-editor');
+  const missing = ids.filter((id) => !be.getBlock?.(id));
+  if (missing.length) {
+    return {
+      error:
+        'Target block(s) no longer exist — clientIds change after an edit. Call editor__read_selection again for current clientIds, then retry.',
+      missing,
+    };
+  }
+
   const {parsed, issues} = parseValidated(markup);
   if (issues.length) return {error: 'Invalid block markup', issues};
   if (!parsed.length) return {error: 'Markup produced no blocks.'};
 
   wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
   return {ok: true, replaced: ids.length, inserted: parsed.length};
+}
+
+function updatePost(input = {}) {
+  const ed = wpData().select('core/editor');
+  // Whitelist the fields we apply live (all undoable via the editor's history).
+  const allowed = {};
+  if (typeof input.title === 'string') allowed.title = input.title;
+  if (Object.keys(allowed).length === 0) {
+    return {error: 'Nothing to update (supported: title).'};
+  }
+  wpData().dispatch('core/editor').editPost(allowed);
+  return {ok: true, updated: Object.keys(allowed), post_id: ed.getCurrentPostId?.() || null};
 }
 
 function insertBlocks({markup, after_client_id}) {
