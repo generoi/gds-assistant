@@ -23,7 +23,7 @@ class TokenBudget
     private const META_PREFIX = '_gds_assistant_tokens_';
 
     /** Default daily budget per user (input + output). 0 disables the cap. */
-    private const DEFAULT_BUDGET = 2_000_000;
+    private const DEFAULT_BUDGET = 10_000_000;
 
     public static function budget(): int
     {
