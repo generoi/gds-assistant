@@ -1,8 +1,26 @@
 import { DataViews } from "@wordpress/dataviews";
 import { useState, useEffect, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
-import { backup, external } from "@wordpress/icons";
+import { backup, external, download } from "@wordpress/icons";
 import apiFetch from "@wordpress/api-fetch";
+
+/**
+ * Trigger a client-side JSON file download.
+ *
+ * @param {Object|Array} data     Data to serialize.
+ * @param {string}       filename Download filename.
+ */
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Format relative time.
@@ -158,6 +176,30 @@ export function ConversationsDataView() {
     [fetchData],
   );
 
+  // Export full conversation(s) — including messages — as JSON. Fetches each
+  // selected conversation's detail so the export is self-contained (the list
+  // rows only carry metadata).
+  const handleExport = useCallback(async (items) => {
+    const full = [];
+    for (const item of items) {
+      try {
+        const response = await apiFetch({
+          path: `/gds-assistant/v1/conversations/${item.uuid}`,
+          parse: false,
+        });
+        full.push(await response.json());
+      } catch {
+        // Skip a conversation that fails to load rather than aborting.
+      }
+    }
+    if (!full.length) return;
+    const filename =
+      full.length === 1
+        ? `conversation-${full[0].uuid}.json`
+        : "gds-assistant-conversations.json";
+    downloadJson(full, filename);
+  }, []);
+
   const actions = [
     {
       id: "resume",
@@ -174,6 +216,13 @@ export function ConversationsDataView() {
           }),
         );
       },
+    },
+    {
+      id: "export",
+      label: __("Export", "gds-assistant"),
+      icon: download,
+      supportsBulk: true,
+      callback: handleExport,
     },
     {
       id: "archive",
