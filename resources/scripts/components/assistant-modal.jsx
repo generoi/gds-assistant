@@ -439,6 +439,51 @@ export function AssistantModal({
   );
 }
 
+/**
+ * Render the whole conversation as Markdown (shared by Export-to-file and
+ * Copy-to-clipboard). Returns '' for an empty thread.
+ */
+function transcriptToMarkdown(msgs) {
+  if (!msgs?.length) return '';
+
+  const lines = [
+    `# Conversation Export\n`,
+    `_Exported: ${new Date().toLocaleString()}_\n`,
+    `---\n`,
+  ];
+
+  for (const msg of msgs) {
+    lines.push(`\n${msg.role === 'user' ? '## User' : '## Assistant'}\n`);
+
+    for (const part of msg.content || []) {
+      if (part.type === 'text') {
+        lines.push(part.text || '');
+      } else if (part.type === 'image') {
+        lines.push('\n[Image attached]\n');
+      } else if (part.type === 'tool-call') {
+        lines.push(`\n**Tool:** \`${part.toolName}\``);
+        if (part.args && Object.keys(part.args).length > 0) {
+          lines.push(
+            `\n\`\`\`json\n${JSON.stringify(part.args, null, 2)}\n\`\`\``,
+          );
+        }
+        if (part.result !== undefined) {
+          const status = part.isError ? 'Error' : 'Result';
+          const body =
+            typeof part.result === 'string' ?
+              part.result
+            : JSON.stringify(part.result);
+          lines.push(`\n_${status}:_ ${body}`);
+        }
+        lines.push('\n');
+      }
+    }
+    lines.push('\n\n---\n');
+  }
+
+  return lines.join('');
+}
+
 function Thread({
   onNewChat,
   onLoadConversation,
@@ -511,46 +556,8 @@ function Thread({
   // Export conversation as Markdown
   const threadRuntime = useThreadRuntime();
   const handleExport = useCallback(() => {
-    const state = threadRuntime.getState();
-    const msgs = state?.messages || [];
-    if (!msgs.length) return;
-
-    const lines = [
-      `# Conversation Export\n`,
-      `_Exported: ${new Date().toLocaleString()}_\n`,
-      `---\n`,
-    ];
-
-    for (const msg of msgs) {
-      const role = msg.role === 'user' ? '## User' : '## Assistant';
-      lines.push(`\n${role}\n`);
-
-      const parts = msg.content || [];
-      for (const part of parts) {
-        if (part.type === 'text') {
-          lines.push(part.text || '');
-        } else if (part.type === 'image') {
-          lines.push('\n[Image attached]\n');
-        } else if (part.type === 'tool-call') {
-          lines.push(`\n**Tool:** \`${part.toolName}\``);
-          if (part.args && Object.keys(part.args).length > 0) {
-            lines.push(
-              `\n\`\`\`json\n${JSON.stringify(part.args, null, 2)}\n\`\`\``,
-            );
-          }
-          if (part.result !== undefined) {
-            const status = part.isError ? 'Error' : 'Result';
-            lines.push(
-              `\n_${status}:_ ${typeof part.result === 'string' ? part.result : JSON.stringify(part.result)}`,
-            );
-          }
-          lines.push('\n');
-        }
-      }
-      lines.push('\n\n---\n');
-    }
-
-    const md = lines.join('');
+    const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
+    if (!md) return;
     const blob = new Blob([md], {type: 'text/markdown'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -558,6 +565,16 @@ function Thread({
     a.download = `conversation-${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  }, [threadRuntime]);
+
+  const [chatCopied, setChatCopied] = useState(false);
+  const handleCopyChat = useCallback(() => {
+    const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
+    if (!md) return;
+    navigator.clipboard.writeText(md).then(() => {
+      setChatCopied(true);
+      setTimeout(() => setChatCopied(false), 1500);
+    });
   }, [threadRuntime]);
 
   return (
@@ -684,6 +701,14 @@ function Thread({
                   }}
                 >
                   Export as Markdown
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="gds-assistant__more-item"
+                  onClick={handleCopyChat}
+                >
+                  {chatCopied ? 'Copied!' : 'Copy chat to clipboard'}
                 </button>
               </div>
             )}

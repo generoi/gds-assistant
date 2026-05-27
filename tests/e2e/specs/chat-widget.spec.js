@@ -51,6 +51,26 @@ test.describe('Chat Widget', () => {
     await expect(menu).toContainText('Chat history');
     await expect(menu).toContainText('Edit system context');
     await expect(menu.locator('[title="Export as Markdown"]')).toBeVisible();
+    await expect(menu).toContainText('Copy chat to clipboard');
+  });
+
+  test('copy chat to clipboard shows confirmation', async ({page, context}) => {
+    await context.grantPermissions(['clipboard-write']);
+    await page.click('.gds-assistant__trigger');
+
+    // Need some conversation to copy.
+    await page.locator('.gds-assistant__input').fill('Hello');
+    await page.click('.gds-assistant__send');
+    await expect(
+      page.locator('.gds-assistant__message--assistant').first(),
+    ).toBeVisible({timeout: 5000});
+
+    await page.click('[title="More"]');
+    const item = page
+      .locator('.gds-assistant__more-item', {hasText: 'Copy chat'})
+      .first();
+    await item.click();
+    await expect(item).toContainText('Copied!', {timeout: 3000});
   });
 
   test('opening one panel closes the other', async ({page}) => {
