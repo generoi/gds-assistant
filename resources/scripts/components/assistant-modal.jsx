@@ -1272,12 +1272,42 @@ function UsageBar() {
 
 // ── Voice-to-text mic ───────────────────────────────────────
 
+// Pick the initial dictation language: a remembered choice, else the page
+// language (matched against the available codes), else the first available.
+function pickInitialVoiceLang(langs) {
+  if (!langs.length) return undefined;
+  const codes = langs.map((l) => l.code);
+  try {
+    const saved = localStorage.getItem('gds-assistant-voice-lang');
+    if (saved && codes.includes(saved)) return saved;
+  } catch {
+    // storage unavailable
+  }
+  const page = (
+    document.documentElement.lang ||
+    navigator.language ||
+    ''
+  ).toLowerCase();
+  const exact = codes.find((c) => c.toLowerCase() === page);
+  if (exact) return exact;
+  const primary = page.split('-')[0];
+  return (
+    codes.find((c) => c.toLowerCase().split('-')[0] === primary) || codes[0]
+  );
+}
+
 function MicButton() {
   const composer = useComposerRuntime();
   // The text already in the composer when dictation starts — the transcript is
   // appended to it so we never clobber what the user typed.
   const baseRef = useRef('');
+  // Web Speech can't auto-detect language; offer the site's languages (from
+  // Polylang via the localized config) so a user can dictate in one that
+  // differs from the admin UI language.
+  const langs = window.gdsAssistant?.voiceLanguages || [];
+  const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
   const {supported, listening, start, stop} = useVoiceInput({
+    lang,
     onResult: (transcript) => {
       const base = baseRef.current;
       const sep = base && !/\s$/.test(base) ? ' ' : '';
@@ -1296,30 +1326,57 @@ function MicButton() {
     start();
   };
 
+  const onLangChange = (event) => {
+    setLang(event.target.value);
+    try {
+      localStorage.setItem('gds-assistant-voice-lang', event.target.value);
+    } catch {
+      // storage unavailable
+    }
+  };
+
   return (
-    <button
-      type="button"
-      className={`gds-assistant__mic${listening ? ' gds-assistant__mic--listening' : ''}`}
-      onClick={handle}
-      title={listening ? 'Stop dictation' : 'Dictate (voice to text)'}
-      aria-pressed={listening}
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <>
+      {langs.length > 1 && (
+        <select
+          className="gds-assistant__voice-lang"
+          value={lang}
+          onChange={onLangChange}
+          disabled={listening}
+          title="Dictation language"
+          aria-label="Dictation language"
+        >
+          {langs.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.slug.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      )}
+      <button
+        type="button"
+        className={`gds-assistant__mic${listening ? ' gds-assistant__mic--listening' : ''}`}
+        onClick={handle}
+        title={listening ? 'Stop dictation' : 'Dictate (voice to text)'}
+        aria-pressed={listening}
       >
-        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-        <line x1="12" y1="19" x2="12" y2="23" />
-        <line x1="8" y1="23" x2="16" y2="23" />
-      </svg>
-    </button>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+      </button>
+    </>
   );
 }
 

@@ -133,7 +133,40 @@ class Plugin
             'modelPricing' => $modelConfig['pricing'] ?? [],
             'defaultMaxTokens' => $defaultMaxTokens,
             'skills' => $this->getPublishedSkills(),
+            'voiceLanguages' => $this->voiceLanguages(),
         ]);
+    }
+
+    /**
+     * Languages offered in the voice-input picker, as BCP-47 codes the Web
+     * Speech API understands. Sourced from Polylang when present (soft
+     * dependency); empty otherwise, in which case the picker is hidden and
+     * dictation just uses the page/browser language.
+     *
+     * @return array<int, array{code: string, name: string, slug: string}>
+     */
+    private function voiceLanguages(): array
+    {
+        if (! function_exists('PLL') || ! PLL() || ! isset(PLL()->model)) {
+            return [];
+        }
+
+        try {
+            $languages = PLL()->model->get_languages_list();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! is_array($languages) || count($languages) < 2) {
+            return [];
+        }
+
+        return array_values(array_map(fn ($lang) => [
+            // ->w3c is Polylang's BCP-47 tag (e.g. "sv-SE", "fi", "en-US").
+            'code' => $lang->w3c ?: str_replace('_', '-', (string) $lang->locale),
+            'name' => (string) $lang->name,
+            'slug' => (string) $lang->slug,
+        ], $languages));
     }
 
     public function registerRestRoutes(): void

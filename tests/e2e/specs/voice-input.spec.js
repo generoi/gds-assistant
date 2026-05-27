@@ -58,4 +58,40 @@ test.describe('Voice input', () => {
     await expect(page.locator('.gds-assistant__input')).toBeVisible();
     await expect(page.locator('.gds-assistant__mic')).toHaveCount(0);
   });
+
+  test('language picker sets the recognition language', async ({page}) => {
+    await page.addInitScript(() => {
+      window.__srLang = null;
+      class FakeSpeechRecognition {
+        start() {
+          window.__srLang = this.lang;
+          this.onstart && this.onstart();
+        }
+        stop() {
+          this.onend && this.onend();
+        }
+      }
+      window.SpeechRecognition = FakeSpeechRecognition;
+    });
+    await page.goto('/wp-admin/');
+    // Languages normally come from Polylang via the localized config.
+    await page.evaluate(() => {
+      window.gdsAssistant = window.gdsAssistant || {};
+      window.gdsAssistant.voiceLanguages = [
+        {code: 'en-US', name: 'English', slug: 'en'},
+        {code: 'sv-SE', name: 'Svenska', slug: 'sv'},
+      ];
+    });
+    await page.click('.gds-assistant__trigger');
+
+    const picker = page.locator('.gds-assistant__voice-lang');
+    await expect(picker).toBeVisible();
+    await picker.selectOption('sv-SE');
+    await page.locator('.gds-assistant__mic').click();
+
+    // The chosen language is what recognition starts with.
+    await expect
+      .poll(() => page.evaluate(() => window.__srLang))
+      .toBe('sv-SE');
+  });
 });

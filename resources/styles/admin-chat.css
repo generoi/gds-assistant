@@ -962,6 +962,25 @@ abbr.gds-tool {
   }
 }
 
+/* Compact dictation-language picker that sits next to the mic. */
+.gds-assistant__voice-lang {
+  height: 28px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: #757575;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
 /* Active/recording state — solid fill + white icon + pulsing ring. Written as a
    standalone selector (not `&--listening`): this build uses native CSS nesting,
    which can't concatenate text onto `&`, so the SCSS-style form silently drops.
