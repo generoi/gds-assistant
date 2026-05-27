@@ -173,7 +173,11 @@ function getStoredPanelPosition() {
 // Carries per-tool undo state ({toolCallId -> {auditId,label,undone,...}}) and
 // the undo trigger down to ToolCallFallback, which assistant-ui instantiates
 // deep in the tree (so props can't reach it directly).
-const UndoContext = createContext({undoableActions: {}, onUndo: null});
+const UndoContext = createContext({
+  undoableActions: {},
+  onUndo: null,
+  pendingApprovalIds: new Set(),
+});
 
 export function AssistantModal({
   onNewChat,
@@ -187,8 +191,16 @@ export function AssistantModal({
   onUndo,
 }) {
   const undoContextValue = useMemo(
-    () => ({undoableActions: undoableActions || {}, onUndo}),
-    [undoableActions, onUndo],
+    () => ({
+      undoableActions: undoableActions || {},
+      onUndo,
+      // Tool-call cards detect their "approval required" state by id — assistant-ui
+      // doesn't surface requires-action status for external-store parts.
+      pendingApprovalIds: new Set(
+        (pendingApprovals || []).map((p) => p.toolUseId),
+      ),
+    }),
+    [undoableActions, onUndo, pendingApprovals],
   );
 
   // Persist open/closed state so the panel reopens itself after a full-page
@@ -419,6 +431,7 @@ export function AssistantModal({
             pendingApprovals={pendingApprovals}
             onHeaderMouseDown={onHeaderMouseDown}
             resetPanelPosition={resetPanelPosition}
+            onClose={() => triggerRef.current?.click()}
           />
         </UndoContext.Provider>
       </AssistantModalPrimitive.Content>
@@ -436,12 +449,27 @@ function Thread({
   pendingApprovals,
   onHeaderMouseDown,
   resetPanelPosition,
+  onClose,
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeTitle, setActiveTitle] = useState('');
   const [showContext, setShowContext] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const moreRef = useRef(null);
+
+  // Close the "⋯" overflow menu on an outside click.
+  useEffect(() => {
+    if (!showMore) return undefined;
+    const onDocClick = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setShowMore(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [showMore]);
 
   const toggleHistory = useCallback(async () => {
     if (!showHistory) {
@@ -449,7 +477,22 @@ function Thread({
       setConversations(list);
     }
     setShowHistory((v) => !v);
+    // Panels are mutually exclusive — only one open at a time.
+    setShowSkills(false);
+    setShowContext(false);
   }, [showHistory]);
+
+  const toggleSkills = useCallback(() => {
+    setShowSkills((v) => !v);
+    setShowHistory(false);
+    setShowContext(false);
+  }, []);
+
+  const toggleContext = useCallback(() => {
+    setShowContext((v) => !v);
+    setShowSkills(false);
+    setShowHistory(false);
+  }, []);
 
   const handleSelect = useCallback(
     (conv) => {
@@ -546,7 +589,7 @@ function Thread({
           <button
             type="button"
             className={`gds-assistant__header-btn ${showSkills ? 'gds-assistant__header-btn--active' : ''}`}
-            onClick={() => setShowSkills((v) => !v)}
+            onClick={toggleSkills}
             title="Skills"
           >
             <svg
@@ -561,46 +604,7 @@ function Thread({
             >
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
             </svg>
-          </button>
-          <button
-            type="button"
-            className={`gds-assistant__header-btn ${showContext ? 'gds-assistant__header-btn--active' : ''}`}
-            onClick={() => setShowContext((v) => !v)}
-            title="System context"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="gds-assistant__header-btn"
-            onClick={toggleHistory}
-            title="Chat history"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <span className="gds-assistant__header-btn-label">Skills</span>
           </button>
           <button
             type="button"
@@ -621,12 +625,74 @@ function Thread({
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
+            <span className="gds-assistant__header-btn-label">New</span>
           </button>
+          <div className="gds-assistant__more" ref={moreRef}>
+            <button
+              type="button"
+              className={`gds-assistant__header-btn ${showMore ? 'gds-assistant__header-btn--active' : ''}`}
+              onClick={() => setShowMore((v) => !v)}
+              title="More"
+              aria-haspopup="menu"
+              aria-expanded={showMore}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="none"
+              >
+                <circle cx="5" cy="12" r="1.6" />
+                <circle cx="12" cy="12" r="1.6" />
+                <circle cx="19" cy="12" r="1.6" />
+              </svg>
+            </button>
+            {showMore && (
+              <div className="gds-assistant__more-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="gds-assistant__more-item"
+                  title="Chat history"
+                  onClick={() => {
+                    toggleHistory();
+                    setShowMore(false);
+                  }}
+                >
+                  Chat history
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="gds-assistant__more-item"
+                  onClick={() => {
+                    toggleContext();
+                    setShowMore(false);
+                  }}
+                >
+                  {showContext ? 'Hide system context' : 'Edit system context'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="gds-assistant__more-item"
+                  title="Export as Markdown"
+                  onClick={() => {
+                    handleExport();
+                    setShowMore(false);
+                  }}
+                >
+                  Export as Markdown
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            className="gds-assistant__header-btn"
-            onClick={handleExport}
-            title="Export as Markdown"
+            className="gds-assistant__header-btn gds-assistant__header-btn--close"
+            onClick={onClose}
+            title="Close chat"
           >
             <svg
               width="14"
@@ -638,9 +704,8 @@ function Thread({
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
@@ -650,15 +715,22 @@ function Thread({
         <SystemContextInput
           value={systemContext}
           onChange={onSystemContextChange}
+          onClose={() => setShowContext(false)}
         />
       )}
 
-      {showSkills && <SkillsList onUsed={() => setShowSkills(false)} />}
+      {showSkills && (
+        <SkillsList
+          onUsed={() => setShowSkills(false)}
+          onClose={() => setShowSkills(false)}
+        />
+      )}
 
       {showHistory && (
         <ConversationList
           conversations={conversations}
           onSelect={handleSelect}
+          onClose={() => setShowHistory(false)}
         />
       )}
 
@@ -766,9 +838,42 @@ function EmptyState() {
 
 // ── System context input ────────────────────────────────────
 
-function SystemContextInput({value, onChange}) {
+// Small header for the slide-in panels (skills, history, system context) so
+// each one carries its own title and an unambiguous close (×) — the panels are
+// opened from the "⋯" menu, so without this there's no visible way to dismiss
+// them.
+function PanelHeader({title, onClose}) {
+  return (
+    <div className="gds-assistant__panel-head">
+      <span className="gds-assistant__panel-head-title">{title}</span>
+      <button
+        type="button"
+        className="gds-assistant__panel-head-close"
+        onClick={onClose}
+        title="Collapse"
+        aria-label="Collapse"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function SystemContextInput({value, onChange, onClose}) {
   return (
     <div className="gds-assistant__context">
+      <PanelHeader title="System context" onClose={onClose} />
       <textarea
         className="gds-assistant__context-input"
         placeholder='Add context for this chat, e.g. "You&apos;re helping me restructure the Finnish product pages"'
@@ -819,7 +924,7 @@ function relativeTime(dateStr) {
 
 // ── Skills list panel ────────────────────────────────────────
 
-function SkillsList({onUsed}) {
+function SkillsList({onUsed, onClose}) {
   const [skills, setSkills] = useState(getSkills);
   const threadRuntime = useThreadRuntime();
 
@@ -845,6 +950,7 @@ function SkillsList({onUsed}) {
   if (!skills.length) {
     return (
       <div className="gds-assistant__skills-list">
+        <PanelHeader title="Skills" onClose={onClose} />
         <p className="gds-assistant__history-empty">
           No skills yet. Ask the assistant to create one!
         </p>
@@ -854,6 +960,7 @@ function SkillsList({onUsed}) {
 
   return (
     <div className="gds-assistant__skills-list">
+      <PanelHeader title="Skills" onClose={onClose} />
       {skills.map((skill) => (
         <button
           key={skill.id}
@@ -957,7 +1064,7 @@ function SlashAutocomplete({query, onSelect, onDismiss}) {
 
 // ── Conversation history list ───────────────────────────────
 
-function ConversationList({conversations, onSelect}) {
+function ConversationList({conversations, onSelect, onClose}) {
   const [search, setSearch] = useState('');
   const filtered =
     search ?
@@ -969,6 +1076,7 @@ function ConversationList({conversations, onSelect}) {
   if (!conversations.length) {
     return (
       <div className="gds-assistant__history-list">
+        <PanelHeader title="Chat history" onClose={onClose} />
         <p className="gds-assistant__history-empty">No previous chats</p>
       </div>
     );
@@ -976,6 +1084,7 @@ function ConversationList({conversations, onSelect}) {
 
   return (
     <div className="gds-assistant__history-list">
+      <PanelHeader title="Chat history" onClose={onClose} />
       <input
         type="text"
         className="gds-assistant__history-search"
@@ -1371,6 +1480,21 @@ function UserMessageText({text}) {
 }
 
 function AssistantMessage() {
+  // assistant-ui injects an empty assistant message while a stream warms up.
+  // Don't render an empty bubble (with its copy button) for it — the
+  // thread-level TypingIndicator covers that gap. We render once there's any
+  // real content (text, a tool call, or an image).
+  const isEmpty = useMessage((s) => {
+    const parts = s.content || [];
+    return !parts.some(
+      (p) =>
+        (p.type === 'text' && p.text && p.text.trim()) ||
+        p.type === 'tool-call' ||
+        p.type === 'image',
+    );
+  });
+  if (isEmpty) return null;
+
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--assistant">
       <CopyMessageButton />
@@ -1407,24 +1531,51 @@ function AssistantMessageText({text}) {
 
 // ── Copy message button ─────────────────────────────────────
 
+/**
+ * Serialize a message's content parts into clipboard text. Built from the
+ * message DATA (not the rendered DOM) so it captures each tool call's full
+ * request + response even while the card is collapsed — handy for pasting a
+ * tool exchange into a bug report.
+ */
+function messageToCopyText(parts) {
+  return (parts || [])
+    .map((p) => {
+      if (p.type === 'text') return p.text || '';
+      if (p.type === 'tool-call') {
+        const lines = [`Tool: ${p.toolName || 'unknown'}`];
+        const args = p.args || {};
+        if (Object.keys(args).length > 0) {
+          lines.push(`Request:\n${JSON.stringify(args, null, 2)}`);
+        }
+        if (p.result !== undefined) {
+          const result =
+            typeof p.result === 'string' ?
+              p.result
+            : JSON.stringify(p.result, null, 2);
+          lines.push(`Response:\n${result}`);
+        }
+        return lines.join('\n');
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 function CopyMessageButton() {
   const [copied, setCopied] = useState(false);
-  const messageRef = useRef(null);
+  const content = useMessage((s) => s.content);
 
   const handleCopy = useCallback(() => {
-    // Walk up to the message root and extract text content
-    const root = messageRef.current?.closest('.gds-assistant__message');
-    if (!root) return;
-    const text = root.innerText || root.textContent || '';
+    const text = messageToCopyText(content);
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  }, []);
+  }, [content]);
 
   return (
     <button
-      ref={messageRef}
       type="button"
       className="gds-assistant__copy-btn"
       onClick={handleCopy}
@@ -1494,17 +1645,18 @@ function summarizeArgs(args) {
     .join(' ');
 }
 
-function ToolCallFallback({toolCallId, toolName, args, result, isError, status}) {
-  const needsApproval = status?.type === 'requires-action';
+function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
   const argsHint = summarizeArgs(args);
-  const {undoableActions, onUndo} = useContext(UndoContext);
+  const ctx = useContext(UndoContext);
+  const {undoableActions, onUndo, pendingApprovalIds} = ctx;
+  const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
       className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
     >
-      <details open={needsApproval}>
+      <details>
         <summary className="gds-assistant__tool-call-summary">
           <span className="gds-assistant__tool-call-name">{toolName}</span>
           {argsHint && (
@@ -1557,7 +1709,7 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError, status})
             {JSON.stringify(args, null, 2)}
           </pre>
         )}
-        {result !== undefined && (
+        {!needsApproval && result !== undefined && (
           <pre className="gds-assistant__tool-call-result">
             {typeof result === 'string' ?
               result

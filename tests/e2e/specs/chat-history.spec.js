@@ -48,8 +48,12 @@ const CONVERSATION_DETAIL = {
 test.describe('Chat history', () => {
   test.beforeEach(async ({page}) => {
     await page.route('**/gds-assistant/v1/conversations**', (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const isDetail = /\/conversations\/.+/.test(path);
+      // A detail request carries an id after /conversations/. Match the full
+      // (decoded) URL, not pathname — under plain permalinks the route lives in
+      // ?rest_route= and the pathname is just /index.php, which misclassifies
+      // detail as list.
+      const url = decodeURIComponent(route.request().url());
+      const isDetail = /\/conversations\/[\w-]+/.test(url);
       route.fulfill({
         status: 200,
         headers: {'Content-Type': 'application/json'},
@@ -64,8 +68,9 @@ test.describe('Chat history', () => {
   }) => {
     await page.click('.gds-assistant__trigger');
 
-    // Open history → the mocked list appears.
-    await page.click('[title="Chat history"]');
+    // Open history from the "⋯" overflow menu → the mocked list appears.
+    await page.click('[title="More"]');
+    await page.click('.gds-assistant__more-menu [title="Chat history"]');
     const item = page.locator('.gds-assistant__history-item').first();
     await expect(item).toBeVisible({timeout: 5000});
     await expect(item).toContainText('Past chat about pages');

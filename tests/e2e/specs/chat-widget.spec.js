@@ -3,6 +3,7 @@ const {
   SIMPLE_TEXT_RESPONSE,
   TOOL_CALL_RESPONSE,
   TOOL_APPROVAL_RESPONSE,
+  TOOL_DUPLICATE_ID_RESPONSE,
 } = require('../fixtures/mock-responses.js');
 
 test.describe('Chat Widget', () => {
@@ -28,6 +29,50 @@ test.describe('Chat Widget', () => {
     await page.click('.gds-assistant__trigger');
     const panel = page.locator('.gds-assistant__panel');
     await expect(panel).toBeVisible();
+  });
+
+  test('close button collapses the panel', async ({page}) => {
+    await page.click('.gds-assistant__trigger');
+    await expect(page.locator('.gds-assistant__panel')).toBeVisible();
+
+    await page.click('.gds-assistant__header-btn--close');
+    await expect(page.locator('.gds-assistant__panel')).toBeHidden();
+  });
+
+  test('history, system context + export live in the overflow menu', async ({
+    page,
+  }) => {
+    await page.click('.gds-assistant__trigger');
+    // Hidden until the "⋯" menu opens.
+    await expect(page.locator('.gds-assistant__more-menu')).toHaveCount(0);
+    await page.click('[title="More"]');
+    const menu = page.locator('.gds-assistant__more-menu');
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText('Chat history');
+    await expect(menu).toContainText('Edit system context');
+    await expect(menu.locator('[title="Export as Markdown"]')).toBeVisible();
+  });
+
+  test('opening one panel closes the other', async ({page}) => {
+    await page.click('.gds-assistant__trigger');
+    await page.click('[title="Skills"]');
+    await expect(page.locator('.gds-assistant__skills-list')).toBeVisible();
+
+    // Open history from the "⋯" menu — skills should close.
+    await page.click('[title="More"]');
+    await page.click('.gds-assistant__more-menu [title="Chat history"]');
+    await expect(page.locator('.gds-assistant__history-list')).toBeVisible();
+    await expect(page.locator('.gds-assistant__skills-list')).toHaveCount(0);
+  });
+
+  test('a panel close button dismisses it', async ({page}) => {
+    await page.click('.gds-assistant__trigger');
+    await page.click('[title="Skills"]');
+    const panel = page.locator('.gds-assistant__skills-list');
+    await expect(panel).toBeVisible();
+
+    await panel.locator('.gds-assistant__panel-head-close').click();
+    await expect(panel).toHaveCount(0);
   });
 
   test('empty state shows suggestions', async ({page}) => {
@@ -138,9 +183,12 @@ test.describe('Chat Widget', () => {
     await expect(attachBtn).toBeVisible();
   });
 
-  test('export button is visible in header', async ({page}) => {
+  test('export is available in the overflow menu', async ({page}) => {
     await page.click('.gds-assistant__trigger');
-    const exportBtn = page.locator('[title="Export as Markdown"]');
+    await page.click('[title="More"]');
+    const exportBtn = page.locator(
+      '.gds-assistant__more-menu [title="Export as Markdown"]',
+    );
     await expect(exportBtn).toBeVisible();
   });
 
@@ -211,11 +259,83 @@ test.describe('Chat Widget', () => {
     const assistantMsg = page.locator('.gds-assistant__message--assistant');
     await expect(assistantMsg.first()).toBeVisible({timeout: 5000});
 
-    // Export button should be present and clickable
-    const exportBtn = page.locator('[title="Export as Markdown"]');
+    // Export lives in the "⋯" overflow menu now.
+    await page.click('[title="More"]');
+    const exportBtn = page.locator(
+      '.gds-assistant__more-menu [title="Export as Markdown"]',
+    );
     await expect(exportBtn).toBeVisible();
     // Click triggers a Blob download via JS — hard to capture in Playwright
     // Just verify no JS error on click
     await exportBtn.click({force: true});
+  });
+
+  test('tool calls reusing one id render without crashing', async ({page}) => {
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+
+    await page.unrouteAll({behavior: 'ignoreErrors'});
+    await page.route('**/gds-assistant/v1/chat', (route) => {
+      route.fulfill({
+        status: 200,
+        headers: {'Content-Type': 'text/event-stream'},
+        body: TOOL_DUPLICATE_ID_RESPONSE,
+      });
+    });
+
+    await page.click('.gds-assistant__trigger');
+    await page.locator('.gds-assistant__input').fill('Delete both pages');
+    await page.click('.gds-assistant__send');
+
+    // Both cards render (the duplicate id is suffixed, not dropped) and the
+    // turn completes — a "Duplicate key … in tapResources" crash would blow
+    // away the tree instead.
+    await expect(page.locator('.gds-assistant__tool-call')).toHaveCount(2, {
+      timeout: 5000,
+    });
+    await expect(
+      page.locator('.gds-assistant__message--assistant').last(),
+    ).toContainText('Deleted both pages');
+    expect(
+      pageErrors.filter((m) => /Duplicate key|tapResources/.test(m)),
+    ).toEqual([]);
+  });
+
+  test('no empty assistant bubble appears while waiting for a response', async ({
+    page,
+  }) => {
+    // Hold the /chat response open so we can inspect the "waiting" state.
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    await page.unrouteAll({behavior: 'ignoreErrors'});
+    await page.route('**/gds-assistant/v1/chat', async (route) => {
+      await held;
+      await route.fulfill({
+        status: 200,
+        headers: {'Content-Type': 'text/event-stream'},
+        body: SIMPLE_TEXT_RESPONSE,
+      });
+    });
+
+    await page.click('.gds-assistant__trigger');
+    await page.locator('.gds-assistant__input').fill('Hello');
+    await page.click('.gds-assistant__send');
+
+    // We're now waiting: the composer shows Cancel (Send is hidden). There must
+    // be no assistant bubble yet — the empty stub used to render with just a
+    // copy button.
+    await expect(page.locator('.gds-assistant__cancel')).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(
+      page.locator('.gds-assistant__message--assistant'),
+    ).toHaveCount(0);
+
+    release();
+    await expect(
+      page.locator('.gds-assistant__message--assistant').first(),
+    ).toContainText('I can help', {timeout: 5000});
   });
 });

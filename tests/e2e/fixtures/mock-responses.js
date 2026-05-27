@@ -95,6 +95,77 @@ const TOOL_UNDO_RESPONSE = [
   '',
 ].join('\n');
 
+// An approval-gated DESTRUCTIVE-but-reversible action (delete a page). The
+// resolution carries undo metadata, so after approval the tool-call card must
+// flip to Done and show an Undo button — exercising the approval→history→undo
+// path that previously rendered as throwaway text with no record.
+const TOOL_APPROVAL_DELETE_RESPONSE = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-del","model":"anthropic:sonnet"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"I will delete page 13589."}',
+  '',
+  'event: tool_approval_required',
+  'data: {"tool_use_id":"toolu_del1","tool_name":"gds__content-delete","input":{"type":"pages","id":13589}}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
+const TOOL_APPROVAL_DELETE_RESOLVED = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-del","model":"anthropic:sonnet"}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"toolu_del1","result":{"deleted":true,"id":13589},"is_error":false,"undoable":true,"audit_id":777,"undo_label":"Restore the deleted page"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"Deleted page 13589."}',
+  '',
+  'event: usage',
+  'data: {"input_tokens":400,"output_tokens":15}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
+// Two distinct tool calls that REUSE the same tool id — some connectors (seen
+// with Gemini) do this. assistant-ui keys content parts by toolCallId and used
+// to crash with "Duplicate key … in tapResources"; the adapter now suffixes
+// repeats so both cards render and each gets its own result.
+const TOOL_DUPLICATE_ID_RESPONSE = [
+  'event: conversation_start',
+  'data: {"conversation_id":"test-conv-dup","model":"google:gemini"}',
+  '',
+  'event: text_delta',
+  'data: {"text":"Deleting both pages."}',
+  '',
+  'event: tool_use_start',
+  'data: {"id":"gemini_dup","name":"gds__content-delete","input":{"type":"pages","id":13589}}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"gemini_dup","result":{"deleted":true,"id":13589},"is_error":false}',
+  '',
+  'event: tool_use_start',
+  'data: {"id":"gemini_dup","name":"gds__content-delete","input":{"type":"pages","id":14410}}',
+  '',
+  'event: tool_result',
+  'data: {"tool_use_id":"gemini_dup","result":{"deleted":true,"id":14410},"is_error":false}',
+  '',
+  'event: text_delta',
+  'data: {"text":"\\n\\nDeleted both pages."}',
+  '',
+  'event: usage',
+  'data: {"input_tokens":900,"output_tokens":40}',
+  '',
+  'event: message_stop',
+  'data: {"stop_reason":"end_turn"}',
+  '',
+].join('\n');
+
 // The follow-up stream after the user DENIES toolu_approve1: the server
 // resolves the tool as denied and the assistant acknowledges — crucially it
 // does NOT re-surface another approval prompt, so the bar stays hidden.
@@ -143,5 +214,8 @@ module.exports = {
   TOOL_APPROVAL_RESPONSE,
   TOOL_APPROVAL_RESOLVED,
   TOOL_DENIAL_RESOLVED,
+  TOOL_APPROVAL_DELETE_RESPONSE,
+  TOOL_APPROVAL_DELETE_RESOLVED,
+  TOOL_DUPLICATE_ID_RESPONSE,
   TOOL_UNDO_RESPONSE,
 };

@@ -34,8 +34,11 @@ test.describe('Chat persistence', () => {
       });
     });
     await page.route('**/gds-assistant/v1/conversations**', (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const isDetail = /\/conversations\/.+/.test(path);
+      // Match the full (decoded) URL, not pathname — under plain permalinks the
+      // route lives in ?rest_route= and the pathname is just /index.php, which
+      // misclassifies a detail request as the list.
+      const url = decodeURIComponent(route.request().url());
+      const isDetail = /\/conversations\/[\w-]+/.test(url);
       route.fulfill({
         status: 200,
         headers: {'Content-Type': 'application/json'},
