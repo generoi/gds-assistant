@@ -1306,6 +1306,8 @@ function MicButton() {
   // differs from the admin UI language.
   const langs = window.gdsAssistant?.voiceLanguages || [];
   const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
+  const [langOpen, setLangOpen] = useState(false);
+  const wrapRef = useRef(null);
   const {supported, listening, start, stop} = useVoiceInput({
     lang,
     onResult: (transcript) => {
@@ -1314,6 +1316,18 @@ function MicButton() {
       composer.setText(base + sep + transcript);
     },
   });
+
+  // Close the language popover on an outside click.
+  useEffect(() => {
+    if (!langOpen) return undefined;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setLangOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [langOpen]);
 
   if (!supported) return null;
 
@@ -1326,32 +1340,53 @@ function MicButton() {
     start();
   };
 
-  const onLangChange = (event) => {
-    setLang(event.target.value);
+  const choose = (code) => {
+    setLang(code);
+    setLangOpen(false);
     try {
-      localStorage.setItem('gds-assistant-voice-lang', event.target.value);
+      localStorage.setItem('gds-assistant-voice-lang', code);
     } catch {
       // storage unavailable
     }
   };
 
+  const currentLabel = (
+    langs.find((l) => l.code === lang)?.slug ||
+    lang ||
+    ''
+  ).toUpperCase();
+
   return (
-    <>
+    <div className="gds-assistant__voice" ref={wrapRef}>
+      {/* Popover opens upward (composer is pinned to the panel bottom). */}
+      {langs.length > 1 && langOpen && (
+        <div className="gds-assistant__voice-langs" role="menu">
+          {langs.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              role="menuitemradio"
+              aria-checked={l.code === lang}
+              className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
+              onClick={() => choose(l.code)}
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      )}
       {langs.length > 1 && (
-        <select
+        <button
+          type="button"
           className="gds-assistant__voice-lang"
-          value={lang}
-          onChange={onLangChange}
+          onClick={() => setLangOpen((v) => !v)}
           disabled={listening}
           title="Dictation language"
-          aria-label="Dictation language"
+          aria-haspopup="menu"
+          aria-expanded={langOpen}
         >
-          {langs.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.slug.toUpperCase()}
-            </option>
-          ))}
-        </select>
+          {currentLabel}
+        </button>
       )}
       <button
         type="button"
@@ -1376,7 +1411,7 @@ function MicButton() {
           <line x1="8" y1="23" x2="16" y2="23" />
         </svg>
       </button>
-    </>
+    </div>
   );
 }
 
@@ -1387,6 +1422,8 @@ function Composer() {
   const [isRunning, setIsRunning] = useState(false);
   const [wasStopped, setWasStopped] = useState(false);
   const [slashQuery, setSlashQuery] = useState(null);
+  // Whether the composer has any text — drives the Send button reveal.
+  const [hasText, setHasText] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1415,9 +1452,11 @@ function Composer() {
     } catch {
       // Ignore storage failures (private mode, quota).
     }
+    setHasText(!!(composer.getState().text || '').trim());
     return composer.subscribe(() => {
+      const text = composer.getState().text || '';
+      setHasText(!!text.trim());
       try {
-        const text = composer.getState().text || '';
         if (text) {
           localStorage.setItem('gds-assistant-draft', text);
         } else {
@@ -1509,7 +1548,8 @@ function Composer() {
             <rect x="4" y="4" width="16" height="16" rx="2" />
           </svg>
         </button>
-      : <ComposerPrimitive.Send className="gds-assistant__send" title="Send">
+      : hasText ?
+        <ComposerPrimitive.Send className="gds-assistant__send" title="Send">
           <svg
             width="16"
             height="16"
@@ -1524,7 +1564,7 @@ function Composer() {
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
         </ComposerPrimitive.Send>
-      }
+      : null}
       {wasStopped && !isRunning && (
         <span className="gds-assistant__stopped">Stopped</span>
       )}

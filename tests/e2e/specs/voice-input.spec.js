@@ -84,14 +84,30 @@ test.describe('Voice input', () => {
     });
     await page.click('.gds-assistant__trigger');
 
-    const picker = page.locator('.gds-assistant__voice-lang');
-    await expect(picker).toBeVisible();
-    await picker.selectOption('sv-SE');
+    const langBtn = page.locator('.gds-assistant__voice-lang');
+    await expect(langBtn).toBeVisible();
+    await langBtn.click(); // open the popover
+    await page
+      .locator('.gds-assistant__voice-langs-item', {hasText: 'Svenska'})
+      .click();
     await page.locator('.gds-assistant__mic').click();
 
     // The chosen language is what recognition starts with.
     await expect
       .poll(() => page.evaluate(() => window.__srLang))
       .toBe('sv-SE');
+  });
+});
+
+test.describe('Composer', () => {
+  test('send button appears only once there is text', async ({page}) => {
+    await page.goto('/wp-admin/');
+    await page.click('.gds-assistant__trigger');
+    await expect(page.locator('.gds-assistant__input')).toBeVisible();
+    // Empty composer → no send button.
+    await expect(page.locator('.gds-assistant__send')).toHaveCount(0);
+    // Typing reveals it.
+    await page.locator('.gds-assistant__input').fill('Hello');
+    await expect(page.locator('.gds-assistant__send')).toBeVisible();
   });
 });
