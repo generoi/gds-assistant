@@ -216,6 +216,11 @@ class ChatEndpoint
                 'total_messages' => count($messages),
             ]);
 
+            // Collapse any consecutive same-role messages (e.g. an undo note
+            // appended out-of-band by the Undo button) so the provider sees
+            // valid alternating roles. No-op for normal alternating histories.
+            $messages = self::mergeConsecutiveRoles($messages);
+
             $updatedMessages = $loop->run(
                 $messages,
                 function (string $type, array $data) use ($conversationId) {
@@ -293,6 +298,47 @@ class ChatEndpoint
     private const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB base64
 
     private const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+    /**
+     * Collapse consecutive same-role messages into one (combining content into
+     * blocks). Anthropic requires alternating roles; an out-of-band note such
+     * as the Undo button's "↩ Reverted…" user message can otherwise leave two
+     * user messages in a row. Semantically equivalent for the provider.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function mergeConsecutiveRoles(array $messages): array
+    {
+        $out = [];
+        foreach ($messages as $msg) {
+            $i = count($out) - 1;
+            if ($i >= 0 && ($out[$i]['role'] ?? null) === ($msg['role'] ?? null)) {
+                $out[$i]['content'] = array_merge(
+                    self::asContentBlocks($out[$i]['content'] ?? ''),
+                    self::asContentBlocks($msg['content'] ?? ''),
+                );
+            } else {
+                $out[] = $msg;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Normalize message content to an array of content blocks.
+     *
+     * @return array<int, mixed>
+     */
+    private static function asContentBlocks(mixed $content): array
+    {
+        if (is_string($content)) {
+            return $content === '' ? [] : [['type' => 'text', 'text' => $content]];
+        }
+
+        return is_array($content) ? array_values($content) : [];
+    }
 
     private function normalizeMessages(array $messages): array
     {

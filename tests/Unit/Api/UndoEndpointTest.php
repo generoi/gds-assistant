@@ -4,6 +4,7 @@ namespace GeneroWP\Assistant\Tests\Unit\Api;
 
 use GeneroWP\Assistant\Api\UndoEndpoint;
 use GeneroWP\Assistant\Storage\AuditLog;
+use GeneroWP\Assistant\Storage\ConversationStore;
 use GeneroWP\Assistant\Tests\TestCase;
 use WP_REST_Request;
 
@@ -19,6 +20,7 @@ class UndoEndpointTest extends TestCase
     {
         parent::setUp();
         AuditLog::createTables();
+        ConversationStore::createTables();
         $this->endpoint = new UndoEndpoint;
         $this->log = new AuditLog;
         $this->userId = $this->createAdminUser();
@@ -31,9 +33,9 @@ class UndoEndpointTest extends TestCase
         parent::tearDown();
     }
 
-    private function logReversible(int $userId): int
+    private function logReversible(int $userId, string $uuid = 'conv'): int
     {
-        $res = $this->log->log('conv', $userId, 'gds/content-update', ['id' => 1], ['ok' => true], false, true, [
+        $res = $this->log->log($uuid, $userId, 'gds/content-update', ['id' => 1], ['ok' => true], false, true, [
             'kind' => 'restore-post',
             'data' => ['id' => 1],
             'label' => 'Revert "X"',
@@ -94,5 +96,42 @@ class UndoEndpointTest extends TestCase
 
         wp_set_current_user($this->userId);
         $this->assertTrue($this->endpoint->checkPermission());
+    }
+
+    public function test_undo_appends_reverted_note_to_conversation(): void
+    {
+        add_filter('gds-mcp/restore_snapshot', fn ($default, $snapshot) => ['restored' => 'post', 'id' => 1], 10, 2);
+
+        $store = new ConversationStore;
+        $uuid = $store->create($this->userId, 'anthropic:sonnet');
+        $id = $this->logReversible($this->userId, $uuid);
+
+        $this->endpoint->handle($this->request($id));
+
+        $messages = $store->get($uuid)['messages'];
+        $notes = array_filter(
+            $messages,
+            fn ($m) => is_string($m['content'] ?? null) && str_contains($m['content'], 'Reverted'),
+        );
+        $this->assertCount(1, $notes, 'a "↩ Reverted" note is appended to the conversation');
+    }
+
+    public function test_undo_is_recorded_in_the_audit_log(): void
+    {
+        add_filter('gds-mcp/restore_snapshot', fn ($default, $snapshot) => ['restored' => 'post', 'id' => 1], 10, 2);
+
+        $store = new ConversationStore;
+        $uuid = $store->create($this->userId);
+        $id = $this->logReversible($this->userId, $uuid);
+
+        $this->endpoint->handle($this->request($id));
+
+        global $wpdb;
+        $count = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(*) FROM '.AuditLog::tableName().' WHERE user_id = %d AND tool_name = %s',
+            $this->userId,
+            'assistant/undo',
+        ));
+        $this->assertSame(1, $count, 'the undo itself is logged to the audit trail');
     }
 }

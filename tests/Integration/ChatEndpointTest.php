@@ -122,4 +122,42 @@ class ChatEndpointTest extends TestCase
         delete_transient("gds_assistant_rate_{$editor2}");
         remove_all_filters('gds-assistant/rate_limit');
     }
+
+    private function mergeRoles(array $messages): array
+    {
+        $m = new \ReflectionMethod(\GeneroWP\Assistant\Api\ChatEndpoint::class, 'mergeConsecutiveRoles');
+        $m->setAccessible(true);
+
+        return $m->invoke(null, $messages);
+    }
+
+    public function test_merge_consecutive_roles_collapses_same_role(): void
+    {
+        // An assistant turn followed by an out-of-band user note, then a real
+        // user message — the two user messages must collapse into one so the
+        // provider sees valid alternation.
+        $merged = $this->mergeRoles([
+            ['role' => 'assistant', 'content' => 'Deleted the page.'],
+            ['role' => 'user', 'content' => '↩ Reverted: Restore the page'],
+            ['role' => 'user', 'content' => 'thanks'],
+        ]);
+
+        $this->assertCount(2, $merged);
+        $this->assertSame('assistant', $merged[0]['role']);
+        $this->assertSame('user', $merged[1]['role']);
+        // Both user texts survive as content blocks.
+        $this->assertCount(2, $merged[1]['content']);
+        $this->assertSame('↩ Reverted: Restore the page', $merged[1]['content'][0]['text']);
+        $this->assertSame('thanks', $merged[1]['content'][1]['text']);
+    }
+
+    public function test_merge_consecutive_roles_leaves_alternating_intact(): void
+    {
+        $messages = [
+            ['role' => 'user', 'content' => 'hi'],
+            ['role' => 'assistant', 'content' => 'hello'],
+            ['role' => 'user', 'content' => 'bye'],
+        ];
+        $this->assertSame($messages, $this->mergeRoles($messages));
+    }
 }

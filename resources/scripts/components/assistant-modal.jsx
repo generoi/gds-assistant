@@ -1410,7 +1410,25 @@ function MessageImage({image}) {
   );
 }
 
+// Out-of-band notes (e.g. the Undo button's "↩ Reverted…") are stored as user
+// messages so the model sees them, but render as a centered system line rather
+// than a user bubble. The leading ↩ is our marker.
+const SYSTEM_NOTE_MARKER = '↩';
+
 function UserMessage() {
+  const systemNote = useMessage((s) => {
+    const text = (s.content || [])
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text || '')
+      .join('')
+      .trim();
+    return text.startsWith(SYSTEM_NOTE_MARKER) ? text : null;
+  });
+
+  if (systemNote) {
+    return <div className="gds-assistant__system-note">{systemNote}</div>;
+  }
+
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--user">
       <MessagePrimitive.Content

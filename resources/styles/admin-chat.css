@@ -679,6 +679,19 @@ abbr.gds-tool {
   align-items: center;
 }
 
+/* Out-of-band system note in the thread (e.g. "↩ Reverted…" from Undo) */
+.gds-assistant__system-note {
+  align-self: center;
+  max-width: 90%;
+  margin: 4px auto;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: #757575;
+  background: #f0f0f0;
+  border-radius: 10px;
+  text-align: center;
+}
+
 /* "⋯" overflow menu in the header (holds context + export) */
 .gds-assistant__more {
   position: relative;

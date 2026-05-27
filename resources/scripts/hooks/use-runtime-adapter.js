@@ -975,6 +975,24 @@ export function useAssistantRuntime() {
             : { ...prev[toolCallId], pending: false, error: data.error || "Undo failed" };
         return { ...prev, [toolCallId]: entry };
       });
+      // Show the reversal in the thread too (the server records the same note
+      // in the conversation + audit log; see Api\UndoEndpoint).
+      if (res.ok && data.undone) {
+        const label = data.detail || "a previous action";
+        const caveats = Array.isArray(data.caveats) ? data.caveats : [];
+        const note = `↩ Reverted: ${label}${
+          caveats.length ? ` — ${caveats.join(" ")}` : ""
+        }`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextMessageId(),
+            role: "user",
+            content: [{ type: "text", text: note }],
+            timestamp: Date.now(),
+          },
+        ]);
+      }
     } catch (e) {
       setUndoableActions((prev) =>
         prev[toolCallId]
