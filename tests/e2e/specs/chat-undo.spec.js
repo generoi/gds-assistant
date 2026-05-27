@@ -49,6 +49,7 @@ test.describe('Chat tool calls + undo', () => {
         body: JSON.stringify({
           undone: true,
           action: 'gds/content-create',
+          detail: 'Remove the created page',
           caveats: [],
         }),
       });
@@ -66,6 +67,13 @@ test.describe('Chat tool calls + undo', () => {
       page.locator('.gds-assistant__tool-call-status--undone'),
     ).toBeVisible({timeout: 5000});
     expect(undoBody?.id).toBe(555);
+
+    // The reversal also shows in the thread as a system note (server records
+    // the same note in the conversation + audit log).
+    await expect(page.locator('.gds-assistant__system-note')).toContainText(
+      'Reverted: Remove the created page',
+      {timeout: 5000},
+    );
   });
 
   test('undo surfaces caveats when the restore is imperfect', async ({page}) => {
