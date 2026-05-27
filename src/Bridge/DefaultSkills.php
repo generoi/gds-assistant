@@ -16,7 +16,7 @@ class DefaultSkills
 {
     private const VERSION_OPTION = 'gds_assistant_default_skills_version';
 
-    private const VERSION = 6;
+    private const VERSION = 7;
 
     public static function maybeInstall(): void
     {
@@ -44,14 +44,11 @@ class DefaultSkills
     {
         $newHash = md5($skill['prompt']);
 
-        $existing = get_posts([
-            'post_type' => 'assistant_skill',
-            'post_status' => 'any',
-            'name' => $skill['slug'],
-            'numberposts' => 1,
-        ]);
+        // Collapse any duplicate posts sharing this slug down to a single
+        // canonical post before doing anything else (see collapseDuplicates).
+        $post = self::collapseDuplicates($skill['slug']);
 
-        if (empty($existing)) {
+        if (! $post) {
             $postId = wp_insert_post([
                 'post_type' => 'assistant_skill',
                 'post_title' => $skill['title'],
@@ -64,13 +61,17 @@ class DefaultSkills
                 update_post_meta($postId, self::BUNDLED_HASH_META, $newHash);
             }
 
+            // Reconcile against a concurrent insert: if another request raced
+            // us and inserted the same slug, collapse back to one. Both racers
+            // run this and converge on the lowest ID, so no lock is needed.
+            self::collapseDuplicates($skill['slug']);
+
             return;
         }
 
         // Skill exists. Only update if the current content matches the
         // hash we installed originally — i.e. user hasn't touched it.
         // Otherwise we'd clobber their customizations.
-        $post = $existing[0];
         $installedHash = (string) get_post_meta($post->ID, self::BUNDLED_HASH_META, true);
         $currentHash = md5($post->post_content);
 
@@ -91,6 +92,43 @@ class DefaultSkills
             'post_excerpt' => $skill['description'],
         ]);
         update_post_meta($post->ID, self::BUNDLED_HASH_META, $newHash);
+    }
+
+    /**
+     * Collapse duplicate skill posts sharing a slug down to one canonical post.
+     *
+     * A concurrent install (two requests both passing the version gate) could
+     * insert the same bundled slug twice with the same second, since neither
+     * saw the other's uncommitted row. Keep the original (lowest ID) and remove
+     * extras — but only ones byte-identical to it, so a genuinely customized
+     * duplicate is never silently deleted.
+     *
+     * @param  string  $slug  Skill slug (post_name).
+     * @return \WP_Post|null The canonical post, or null if none exist.
+     */
+    private static function collapseDuplicates(string $slug): ?\WP_Post
+    {
+        $posts = get_posts([
+            'post_type' => 'assistant_skill',
+            'post_status' => 'any',
+            'name' => $slug,
+            'numberposts' => -1,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+        ]);
+
+        if (empty($posts)) {
+            return null;
+        }
+
+        $canonical = array_shift($posts);
+        foreach ($posts as $dupe) {
+            if ($dupe->post_content === $canonical->post_content) {
+                wp_delete_post($dupe->ID, true);
+            }
+        }
+
+        return $canonical;
     }
 
     /**
