@@ -427,10 +427,10 @@ function updateBlockAttributes(input = {}) {
 }
 
 // Recover invalid blocks the editor flags as "unexpected or invalid content":
-// recreate each from its parsed attributes/innerBlocks so save() regenerates
-// valid markup (the same thing the editor's "Attempt Block Recovery" does).
-// Undoable via the editor history. Unregistered blocks (core/missing) can't be
-// recreated — they need converting to Custom HTML instead.
+// recreate each (and its whole subtree) from parsed attributes so save()
+// regenerates valid markup — like the editor's "Attempt Block Recovery", but
+// recursive so an invalid CHILD is fixed too. Undoable via the editor history.
+// Unregistered blocks (core/missing) can't be recreated and are kept as-is.
 function recoverBlock(input = {}) {
   const ids =
     Array.isArray(input.client_ids) ? input.client_ids
@@ -441,16 +441,49 @@ function recoverBlock(input = {}) {
   const be = wpData().select('core/block-editor');
   const blocks = wpBlocks();
   const dispatch = wpData().dispatch('core/block-editor');
+
+  const canRecreate = (b) =>
+    !!b && b.name !== 'core/missing' && !!blocks.getBlockType?.(b.name);
+  // Rebuild a block from its attributes, recursing so invalid descendants are
+  // fixed too; unregistered blocks are passed through untouched.
+  const recreate = (b) =>
+    canRecreate(b) ?
+      blocks.createBlock(
+        b.name,
+        b.attributes,
+        (b.innerBlocks || []).map(recreate),
+      )
+    : b;
+  const descendantIds = (b, acc = []) => {
+    for (const c of b.innerBlocks || []) {
+      acc.push(c.clientId);
+      descendantIds(c, acc);
+    }
+    return acc;
+  };
+
+  // Ancestors first: recovering a block rebuilds its whole subtree (with new
+  // clientIds), so a separately-requested descendant would no longer exist.
+  // Track what each recovery covers and skip those.
+  const ordered = [...new Set(ids)]
+    .map((id) => ({id, depth: (be.getBlockParents?.(id) || []).length}))
+    .sort((a, b) => a.depth - b.depth);
+
   const recovered = [];
   const failed = [];
+  const covered = new Set();
 
-  for (const id of ids) {
+  for (const {id} of ordered) {
+    if (covered.has(id)) continue; // rebuilt as part of a recovered ancestor
     const block = be.getBlock?.(id);
     if (!block) {
-      failed.push({client_id: id, reason: 'not found'});
+      failed.push({
+        client_id: id,
+        reason: 'no longer exists — re-read for current clientIds',
+      });
       continue;
     }
-    if (block.name === 'core/missing' || !blocks.getBlockType?.(block.name)) {
+    if (!canRecreate(block)) {
       const name = block.attributes?.originalName || block.name;
       failed.push({
         client_id: id,
@@ -458,18 +491,23 @@ function recoverBlock(input = {}) {
       });
       continue;
     }
-    const fresh = blocks.createBlock(
-      block.name,
-      block.attributes,
-      block.innerBlocks,
-    );
+    descendantIds(block).forEach((d) => covered.add(d));
+    const fresh = recreate(block);
     dispatch.replaceBlock(id, fresh);
-    recovered.push({
-      client_id: id,
-      new_client_id: fresh.clientId,
-      name: block.name,
-    });
+    // replaceBlock is a silent no-op on a stale id — confirm it landed.
+    if (be.getBlock?.(fresh.clientId)) {
+      recovered.push({
+        client_id: id,
+        new_client_id: fresh.clientId,
+        name: block.name,
+      });
+    } else {
+      failed.push({
+        client_id: id,
+        reason: 'recovery did not apply — re-read and retry',
+      });
+    }
   }
 
-  return {ok: recovered.length > 0, recovered, failed};
+  return {ok: failed.length === 0, recovered, failed};
 }
