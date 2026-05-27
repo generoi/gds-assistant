@@ -676,6 +676,7 @@ export function useAssistantRuntime() {
             id: nextMessageId(),
             role: "user",
             content: [{ type: "text", text }],
+            timestamp: m.ts || undefined,
           });
           return acc;
         }
@@ -714,7 +715,12 @@ export function useAssistantRuntime() {
 
         if (!parts.length) return acc;
 
-        acc.push({ id: nextMessageId(), role: "assistant", content: parts });
+        acc.push({
+          id: nextMessageId(),
+          role: "assistant",
+          content: parts,
+          timestamp: m.ts || undefined,
+        });
         return acc;
       }, []);
 

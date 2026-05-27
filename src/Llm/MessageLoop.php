@@ -87,7 +87,9 @@ class MessageLoop
             // Compress context if conversation is getting long
             $tokensBefore = ContextCompressor::estimateTokens($messages);
             $compressed = ContextCompressor::compress($messages, $this->existingSummary);
-            $messagesForLlm = $compressed['messages'];
+            // Providers only accept {role, content}; drop display metadata we
+            // carry on stored messages (e.g. per-message `ts` timestamps).
+            $messagesForLlm = self::stripMessageMeta($compressed['messages']);
             $tokensAfter = ContextCompressor::estimateTokens($messagesForLlm);
             if (! empty($compressed['summary'])) {
                 $this->updatedSummary = $compressed['summary'];
@@ -273,6 +275,22 @@ class MessageLoop
         }
 
         return $messages;
+    }
+
+    /**
+     * Reduce messages to the {role, content} pair the providers accept, dropping
+     * any display/storage metadata (e.g. per-message `ts`). Applied only to the
+     * provider-bound copy — the returned/persisted transcript keeps its extras.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array{role: string, content: mixed}>
+     */
+    private static function stripMessageMeta(array $messages): array
+    {
+        return array_map(
+            fn ($m) => ['role' => $m['role'] ?? 'user', 'content' => $m['content'] ?? ''],
+            $messages,
+        );
     }
 
     private function isDestructive(string $abilityName): bool

@@ -2,6 +2,7 @@
 
 namespace GeneroWP\Assistant\Tests\Integration;
 
+use GeneroWP\Assistant\Api\ChatEndpoint;
 use GeneroWP\Assistant\Api\RateLimiter;
 use GeneroWP\Assistant\Storage\ConversationStore;
 use GeneroWP\Assistant\Tests\TestCase;
@@ -125,7 +126,7 @@ class ChatEndpointTest extends TestCase
 
     private function mergeRoles(array $messages): array
     {
-        $m = new \ReflectionMethod(\GeneroWP\Assistant\Api\ChatEndpoint::class, 'mergeConsecutiveRoles');
+        $m = new \ReflectionMethod(ChatEndpoint::class, 'mergeConsecutiveRoles');
         $m->setAccessible(true);
 
         return $m->invoke(null, $messages);
