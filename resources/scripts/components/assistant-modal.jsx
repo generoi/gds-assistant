@@ -1691,7 +1691,28 @@ function ReadAloudController() {
       wasRunning = running;
     };
 
-    tick();
+    // Seed: every assistant message that already exists on mount (i.e. was
+    // loaded from a previous session on page refresh, or was generated before
+    // the user enabled read-aloud) is marked as fully spoken so we don't
+    // narrate stale history. Only NEW replies that arrive after mount fire
+    // speech.
+    {
+      const seedState = threadRuntime.getState?.();
+      const seedMessages = seedState?.messages || [];
+      for (let i = 0; i < seedMessages.length; i++) {
+        const m = seedMessages[i];
+        if (m?.role !== 'assistant') continue;
+        const key = m.id || `idx:${i}`;
+        const text = extractAssistantText(m);
+        progress.set(key, {
+          offset: text.length,
+          lastTextLen: text.length,
+          finalised: true,
+        });
+      }
+      wasRunning = !!seedState?.isRunning;
+    }
+
     const unsub = threadRuntime.subscribe(tick);
     return () => {
       if (typeof unsub === 'function') unsub();
