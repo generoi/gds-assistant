@@ -937,6 +937,71 @@ abbr.gds-tool {
   padding: 0 1px;
 }
 
+/*
+ * Inline write-at-cursor overlay (Cmd+J). A compact pill anchored above (or
+ * below) the active block — slot of space lets the user type a one-line
+ * prompt without breaking the Gutenberg editing flow.
+ */
+.gds-assistant__write-overlay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  min-width: 320px;
+  max-width: 480px;
+  background: #fff;
+  border: 1px solid #d6e4f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  z-index: 1000000;
+}
+
+.gds-assistant__write-overlay-icon {
+  flex: 0 0 auto;
+  color: #2271b1;
+}
+
+.gds-assistant__write-overlay-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.gds-assistant__write-overlay-input:focus {
+  outline: none;
+  border-color: #2271b1;
+  box-shadow: 0 0 0 1px #2271b1;
+}
+
+.gds-assistant__write-overlay-submit {
+  flex: 0 0 auto;
+  border: 1px solid #2271b1;
+  background: #2271b1;
+  color: #fff;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.gds-assistant__write-overlay-submit:hover {
+  background: #135e96;
+  border-color: #135e96;
+}
+
+.gds-assistant__write-overlay-hint {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #757575;
+  white-space: nowrap;
+}
+
 .gds-assistant__tool-call-summary {
   padding: 6px 10px;
   cursor: pointer;
