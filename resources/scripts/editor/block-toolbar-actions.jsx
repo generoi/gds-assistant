@@ -47,6 +47,35 @@ function getBlockText(clientId) {
   return plainText(attrs.content || attrs.text || attrs.value || '');
 }
 
+/**
+ * If the user has a non-empty text selection inside this block's rich-text
+ * attribute, return just that substring. Otherwise return ''. wp.data keeps
+ * the selection across toolbar clicks, so this works after the dropdown opens.
+ */
+function getBlockSelectionText(clientId) {
+  const select = window.wp?.data?.select?.('core/block-editor');
+  if (!select) return '';
+  const start = select.getSelectionStart?.();
+  const end = select.getSelectionEnd?.();
+  if (!start || !end) return '';
+  if (start.clientId !== clientId || end.clientId !== clientId) return '';
+  if (start.attributeKey !== end.attributeKey) return '';
+  if (start.offset == null || end.offset == null) return '';
+  if (start.offset === end.offset) return '';
+
+  const block = select.getBlock?.(clientId);
+  const attrValue = block?.attributes?.[start.attributeKey];
+  if (typeof attrValue !== 'string') return '';
+
+  // Offsets are over the rich-text plain text, not the HTML — use wp.richText
+  // to map back. Fall back to a naive HTML strip if richText isn't around.
+  const from = Math.min(start.offset, end.offset);
+  const to = Math.max(start.offset, end.offset);
+  const rich = window.wp?.richText?.create?.({html: attrValue});
+  const text = rich?.text ?? plainText(attrValue);
+  return text.slice(from, to).trim();
+}
+
 /** Open the chat panel if it's closed, then send the message as the user. */
 function sendToChat(message) {
   if (!message) return;
@@ -77,14 +106,20 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
     const label = blockLabel(props.name);
 
     const buildMessage = (action) => {
-      const text = getBlockText(props.clientId);
+      // Prefer an in-block text selection over the whole block — so "Expand"
+      // on a marked phrase rewrites just that phrase, not the entire paragraph.
+      const selection = getBlockSelectionText(props.clientId);
+      const text = selection || getBlockText(props.clientId);
       if (!text) {
         return `${action} the selected ${label}.`;
       }
+      const target = selection
+        ? `this selection inside the ${label}`
+        : `this ${label}`;
       // Including the text + the block's clientId saves the assistant a
       // read_selection round-trip; the assistant can apply via
       // editor__update_block_attributes targeting clientId ${props.clientId}.
-      return `${action} this ${label} (block ${props.clientId}):\n\n"${text}"`;
+      return `${action} ${target} (block ${props.clientId}):\n\n"${text}"`;
     };
 
     const controls = [
@@ -107,11 +142,18 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
       ...translateTargets.map((l) => ({
         title: `Translate to ${l.name}`,
         onClick: () => {
-          const text = getBlockText(props.clientId);
-          const msg = text
-            ? `Translate this ${label} to ${l.name}, preserving tone (block ${props.clientId}):\n\n"${text}"`
-            : `Translate the selected ${label} to ${l.name}.`;
-          sendToChat(msg);
+          const selection = getBlockSelectionText(props.clientId);
+          const text = selection || getBlockText(props.clientId);
+          if (!text) {
+            sendToChat(`Translate the selected ${label} to ${l.name}.`);
+            return;
+          }
+          const target = selection
+            ? `this selection inside the ${label}`
+            : `this ${label}`;
+          sendToChat(
+            `Translate ${target} to ${l.name}, preserving tone (block ${props.clientId}):\n\n"${text}"`,
+          );
         },
       })),
     ];
