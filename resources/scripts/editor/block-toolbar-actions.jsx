@@ -32,7 +32,7 @@ function blockLabel(name) {
 }
 
 /** Strip HTML + collapse whitespace, for a clean snippet in the chat message. */
-function plainText(value) {
+function stripHtml(value) {
   if (typeof value !== 'string') return '';
   return value
     .replace(/<[^>]+>/g, '')
@@ -40,11 +40,30 @@ function plainText(value) {
     .trim();
 }
 
+/**
+ * Block rich-text attributes can be one of two shapes depending on WP version:
+ *  - an HTML string (legacy)
+ *  - a RichTextValue object with `.text` + `.formats` (WP 7.0+)
+ * Normalise both to plain text.
+ */
+function attrToPlainText(attrValue) {
+  if (typeof attrValue === 'string') {
+    const rich = window.wp?.richText?.create?.({html: attrValue});
+    if (typeof rich?.text === 'string') return rich.text;
+    return stripHtml(attrValue);
+  }
+  if (attrValue && typeof attrValue === 'object' && typeof attrValue.text === 'string') {
+    return attrValue.text;
+  }
+  return '';
+}
+
 function getBlockText(clientId) {
   const block = window.wp?.data?.select?.('core/block-editor')?.getBlock?.(clientId);
   if (!block) return '';
   const attrs = block.attributes || {};
-  return plainText(attrs.content || attrs.text || attrs.value || '');
+  const value = attrs.content ?? attrs.text ?? attrs.value;
+  return attrToPlainText(value).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -65,14 +84,12 @@ function getBlockSelectionText(clientId) {
 
   const block = select.getBlock?.(clientId);
   const attrValue = block?.attributes?.[start.attributeKey];
-  if (typeof attrValue !== 'string') return '';
+  const text = attrToPlainText(attrValue);
+  if (!text) return '';
 
-  // Offsets are over the rich-text plain text, not the HTML — use wp.richText
-  // to map back. Fall back to a naive HTML strip if richText isn't around.
+  // Rich-text selection offsets index the plain text (not the source HTML).
   const from = Math.min(start.offset, end.offset);
   const to = Math.max(start.offset, end.offset);
-  const rich = window.wp?.richText?.create?.({html: attrValue});
-  const text = rich?.text ?? plainText(attrValue);
   return text.slice(from, to).trim();
 }
 
