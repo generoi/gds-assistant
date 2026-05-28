@@ -912,6 +912,31 @@ abbr.gds-tool {
   font-style: italic;
 }
 
+/*
+ * Inline word-level highlight inside a paired modified line (git's
+ * --word-diff). Unchanged tokens inherit the row's pale tint; changed
+ * tokens overlay a darker tint so the eye lands on the actual replacement.
+ */
+.gds-assistant__edit-diff-word--eq {
+  /* No background — the row tint already says "this line changed".
+     Slightly softer text colour so the changed tokens stand out. */
+  opacity: 0.75;
+}
+
+.gds-assistant__edit-diff-word--del {
+  background: #f7c2c6;
+  color: #5a0d14;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.gds-assistant__edit-diff-word--add {
+  background: #b6e3c0;
+  color: #0c451e;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .gds-assistant__tool-call-summary {
   padding: 6px 10px;
   cursor: pointer;

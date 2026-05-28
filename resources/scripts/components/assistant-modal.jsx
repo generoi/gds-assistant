@@ -20,7 +20,11 @@ import {
   readVoiceLang,
   TTS_EVENTS,
 } from '../hooks/use-tts';
-import {diffLines, collapseUnchanged} from '../editor/diff';
+import {
+  diffLines,
+  collapseUnchanged,
+  pairModifiedLines,
+} from '../editor/diff';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -30,6 +34,7 @@ import {
   useMemo,
   createContext,
   useContext,
+  Fragment,
 } from '@wordpress/element';
 import {
   onUsageUpdate,
@@ -2288,9 +2293,13 @@ function summarizeArgs(args) {
  * presentation; no buttons, no state.
  */
 function DiffViewer({diff}) {
-  const segments = useMemo(() => {
+  const rows = useMemo(() => {
     if (!diff) return [];
-    return collapseUnchanged(diffLines(diff.before || '', diff.after || ''), 2);
+    const lines = collapseUnchanged(
+      diffLines(diff.before || '', diff.after || ''),
+      2,
+    );
+    return pairModifiedLines(lines);
   }, [diff]);
   if (!diff) return null;
   return (
@@ -2298,21 +2307,66 @@ function DiffViewer({diff}) {
       {diff.summary && (
         <div className="gds-assistant__edit-diff-title">{diff.summary}</div>
       )}
-      {/* `<div>` not `<pre>`: there's an assistant-message-scoped dark-pre
-          theme above us, and switching tag avoids playing specificity games
-          to override it. `white-space: pre-wrap` on the lines preserves
-          spacing without inheriting the dark colour scheme. */}
+      {/* `<div>` not `<pre>` so we don't inherit the assistant-message-scoped
+          dark `pre` theme; `white-space: pre-wrap` on each text span preserves
+          indentation without dragging the dark colour scheme in. */}
       <div className="gds-assistant__edit-diff-unified">
-        {segments.map((seg, i) => {
+        {rows.map((row, i) => {
+          if (row.type === 'mod') {
+            // Render the pair as two rows (red + green) with inline word
+            // highlighting — git's --word-diff. Unchanged tokens stay on the
+            // row's light tint; changed tokens light up darker.
+            const delTokens = row.words.filter((w) => w.type !== 'add');
+            const addTokens = row.words.filter((w) => w.type !== 'del');
+            return (
+              <Fragment key={i}>
+                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--del">
+                  <span className="gds-assistant__edit-diff-prefix">-</span>
+                  <span className="gds-assistant__edit-diff-text">
+                    {delTokens.map((tok, k) => (
+                      <span
+                        key={k}
+                        className={
+                          tok.type === 'del'
+                            ? 'gds-assistant__edit-diff-word--del'
+                            : 'gds-assistant__edit-diff-word--eq'
+                        }
+                      >
+                        {tok.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--add">
+                  <span className="gds-assistant__edit-diff-prefix">+</span>
+                  <span className="gds-assistant__edit-diff-text">
+                    {addTokens.map((tok, k) => (
+                      <span
+                        key={k}
+                        className={
+                          tok.type === 'add'
+                            ? 'gds-assistant__edit-diff-word--add'
+                            : 'gds-assistant__edit-diff-word--eq'
+                        }
+                      >
+                        {tok.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </Fragment>
+            );
+          }
+          // Solo line: eq / add / del / gap — same as before.
           const cls =
-            seg.type === 'add' ? 'gds-assistant__edit-diff-line--add'
-            : seg.type === 'del' ? 'gds-assistant__edit-diff-line--del'
-            : seg.type === 'gap' ? 'gds-assistant__edit-diff-line--gap'
+            row.type === 'add' ? 'gds-assistant__edit-diff-line--add'
+            : row.type === 'del' ? 'gds-assistant__edit-diff-line--del'
+            : row.type === 'gap' ? 'gds-assistant__edit-diff-line--gap'
             : 'gds-assistant__edit-diff-line--eq';
           const prefix =
-            seg.type === 'add' ? '+'
-            : seg.type === 'del' ? '-'
-            : seg.type === 'gap' ? '⋮'
+            row.type === 'add' ? '+'
+            : row.type === 'del' ? '-'
+            : row.type === 'gap' ? '⋮'
             : ' ';
           return (
             <div
@@ -2320,7 +2374,7 @@ function DiffViewer({diff}) {
               className={`gds-assistant__edit-diff-line ${cls}`}
             >
               <span className="gds-assistant__edit-diff-prefix">{prefix}</span>
-              <span className="gds-assistant__edit-diff-text">{seg.text}</span>
+              <span className="gds-assistant__edit-diff-text">{row.text}</span>
             </div>
           );
         })}
