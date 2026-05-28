@@ -37,6 +37,48 @@ const AiIcon = (
 
 const withAssistantBlockToolbar = createHigherOrderComponent(
   (BlockEdit) => (props) => {
+    // Image blocks get their own AI-image dropdown — generate / replace via
+    // the server-side image generation tool and apply through the existing
+    // editor tools.
+    if (props.name === 'core/image') {
+      return (
+        <Fragment>
+          <BlockEdit {...props} />
+          <BlockControls group="other">
+            <ToolbarGroup>
+              <ToolbarDropdownMenu
+                icon={AiIcon}
+                label="AI image"
+                controls={[
+                  {
+                    title: 'Replace with AI image…',
+                    onClick: () => {
+                      const current = props.attributes?.alt
+                        ? ` (currently: "${props.attributes.alt}")`
+                        : '';
+                      sendToChat(
+                        `Replace the image in block ${props.clientId} with a new AI-generated image${current}. Ask me what the new image should show, then call assistant__generate_image and update the block with editor__update_block_attributes (set id, url, alt to the new attachment).`,
+                      );
+                    },
+                  },
+                  {
+                    title: 'Improve alt text',
+                    onClick: () => {
+                      const url = props.attributes?.url || '';
+                      const alt = props.attributes?.alt || '';
+                      sendToChat(
+                        `Suggest a better alt text for the image in block ${props.clientId} (current alt: "${alt}", image url: ${url}). When I confirm, set it via editor__update_block_attributes.`,
+                      );
+                    },
+                  },
+                ]}
+              />
+            </ToolbarGroup>
+          </BlockControls>
+        </Fragment>
+      );
+    }
+
     if (!TEXT_BLOCKS.has(props.name)) {
       return <BlockEdit {...props} />;
     }

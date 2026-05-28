@@ -304,6 +304,13 @@ class Plugin
         // Undo tools (restore a previous change from the audit-log snapshot)
         $registry->register(new Bridge\UndoToolProvider);
 
+        // Image generation via OpenAI gpt-image-1 → WP media library. Only
+        // registers when an OpenAI key is configured; the model would just
+        // see a phantom tool otherwise.
+        if (Llm\ProviderRegistry::getApiKey('openai')) {
+            $registry->register(new Bridge\ImageGenerationToolProvider);
+        }
+
         // Remote MCP server tools (Asana, Figma, etc.) — only registers if
         // gds-assistant/mcp_servers or GDS_ASSISTANT_MCP_SERVERS is set.
         if (! empty(Mcp\ServerRegistry::all())) {
