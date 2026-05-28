@@ -62,6 +62,21 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
                     },
                   },
                   {
+                    title: 'Vary this image (keep style)…',
+                    onClick: () => {
+                      const id = props.attributes?.id;
+                      const altSuffix = props.attributes?.alt
+                        ? ` (alt: "${props.attributes.alt}")`
+                        : '';
+                      const refClause = id
+                        ? ` Use the current image as the reference (reference_attachment_id: ${id})${altSuffix} so the new one keeps the same composition/style.`
+                        : ` Use the current image as the reference (reference_image_url: ${props.attributes?.url || ''})${altSuffix} so the new one keeps the same composition/style.`;
+                      sendToChat(
+                        `Generate a variation of the image in block ${props.clientId}.${refClause} Ask me what should change, then call assistant__generate_image and update the block with editor__update_block_attributes.`,
+                      );
+                    },
+                  },
+                  {
                     title: 'Improve alt text',
                     onClick: () => {
                       const url = props.attributes?.url || '';

@@ -30,18 +30,18 @@ class ImageGenerationToolProvider implements ToolProviderInterface
         return [
             [
                 'name' => 'assistant__generate_image',
-                'description' => 'Generate an image with OpenAI gpt-image-1 and import it into the WordPress media library. Returns the attachment_id + url + alt — use them with editor__insert_blocks (for a new core/image block) or editor__update_block_attributes (to swap an existing image block\'s id/url/alt). Describe the subject in `prompt` — gpt-image-1 follows specific direction well.',
+                'description' => 'Generate an image with OpenAI gpt-image-1 and import it into the WordPress media library. Returns the attachment_id + url + alt — use them with editor__insert_blocks (for a new core/image block) or editor__update_block_attributes (to swap an existing image block\'s id/url/alt). Describe the subject in `prompt` — gpt-image-1 follows specific direction well. Pass `reference_image_url` OR `reference_attachment_id` to base the new image on an existing one (uses gpt-image-1\'s edit endpoint) — e.g. when the user asks to "replace this image but keep the same style".',
                 'input_schema' => [
                     'type' => 'object',
                     'properties' => [
                         'prompt' => [
                             'type' => 'string',
-                            'description' => 'What the image should show. Be specific (subject, style, lighting, mood).',
+                            'description' => 'What the image should show. Be specific (subject, style, lighting, mood). When a reference image is supplied, describe what should CHANGE relative to it.',
                         ],
                         'aspect_ratio' => [
                             'type' => 'string',
                             'enum' => ['square', 'landscape', 'portrait'],
-                            'description' => 'square (1024x1024), landscape (1536x1024), or portrait (1024x1536). Default: square.',
+                            'description' => 'square (1024x1024), landscape (1536x1024), or portrait (1024x1536). Default: square. Ignored when editing a reference image (output matches the reference\'s aspect).',
                         ],
                         'quality' => [
                             'type' => 'string',
@@ -51,6 +51,14 @@ class ImageGenerationToolProvider implements ToolProviderInterface
                         'alt' => [
                             'type' => 'string',
                             'description' => 'Alt text to set on the resulting attachment. Defaults to the prompt — override if the image is decorative or the prompt isn\'t a good alt.',
+                        ],
+                        'reference_image_url' => [
+                            'type' => 'string',
+                            'description' => 'Optional URL of an existing image to use as the basis. Must be a PNG / JPG / WEBP and reachable from the server. Triggers the gpt-image-1 edit flow so the output preserves the reference\'s subject/composition.',
+                        ],
+                        'reference_attachment_id' => [
+                            'type' => 'integer',
+                            'description' => 'Alternative to reference_image_url: a WP attachment id. Convenient when the user pointed at a media-library image (e.g. the current core/image block\'s id).',
                         ],
                     ],
                     'required' => ['prompt'],
@@ -112,21 +120,32 @@ class ImageGenerationToolProvider implements ToolProviderInterface
             $quality = 'medium';
         }
 
-        $response = wp_remote_post('https://api.openai.com/v1/images/generations', [
-            'headers' => [
-                'Authorization' => 'Bearer '.$apiKey,
-                'Content-Type' => 'application/json',
-            ],
-            'body' => wp_json_encode([
-                'model' => 'gpt-image-1',
-                'prompt' => $prompt,
-                'size' => $size,
-                'quality' => $quality,
-                'n' => 1,
-                'output_format' => 'png',
-            ]),
-            'timeout' => self::REQUEST_TIMEOUT_SECONDS,
-        ]);
+        // Resolve a reference image (URL or attachment id) — when one is
+        // supplied we hit the `/images/edits` endpoint, which preserves the
+        // input's composition while applying the prompt as the change. No
+        // reference → straight generation.
+        $referenceBinary = null;
+        $referenceMime = null;
+        $referenceSource = null;
+        if (! empty($input['reference_attachment_id'])) {
+            [$referenceBinary, $referenceMime, $referenceSource] = $this->loadAttachment(
+                (int) $input['reference_attachment_id'],
+            );
+            if ($referenceBinary instanceof \WP_Error) {
+                return $referenceBinary;
+            }
+        } elseif (! empty($input['reference_image_url'])) {
+            [$referenceBinary, $referenceMime, $referenceSource] = $this->loadRemoteImage(
+                (string) $input['reference_image_url'],
+            );
+            if ($referenceBinary instanceof \WP_Error) {
+                return $referenceBinary;
+            }
+        }
+
+        $response = $referenceBinary !== null
+            ? $this->callEditEndpoint($apiKey, $prompt, $quality, $referenceBinary, $referenceMime)
+            : $this->callGenerateEndpoint($apiKey, $prompt, $size, $quality);
 
         if (is_wp_error($response)) {
             return $response;
@@ -162,10 +181,157 @@ class ImageGenerationToolProvider implements ToolProviderInterface
             'attachment_id' => $attachmentId,
             'url' => wp_get_attachment_url($attachmentId),
             'alt' => $alt,
-            'size' => $size,
+            'size' => $referenceBinary !== null ? 'matches reference' : $size,
             'quality' => $quality,
+            'based_on_reference' => $referenceSource,
             'budget_remaining' => $limit > 0 ? max(0, $limit - $usedToday - 1) : null,
         ];
+    }
+
+    /**
+     * POST to /v1/images/generations — text-only generation.
+     *
+     * @return array|\WP_Error raw wp_remote_post result
+     */
+    private function callGenerateEndpoint(string $apiKey, string $prompt, string $size, string $quality)
+    {
+        return wp_remote_post('https://api.openai.com/v1/images/generations', [
+            'headers' => [
+                'Authorization' => 'Bearer '.$apiKey,
+                'Content-Type' => 'application/json',
+            ],
+            'body' => wp_json_encode([
+                'model' => 'gpt-image-1',
+                'prompt' => $prompt,
+                'size' => $size,
+                'quality' => $quality,
+                'n' => 1,
+                'output_format' => 'png',
+            ]),
+            'timeout' => self::REQUEST_TIMEOUT_SECONDS,
+        ]);
+    }
+
+    /**
+     * POST to /v1/images/edits — image-conditioned generation. The endpoint
+     * uses multipart/form-data with an `image` file part; wp_remote_post
+     * doesn't have first-class multipart support, so we build the body and
+     * boundary by hand.
+     *
+     * @return array|\WP_Error raw wp_remote_post result
+     */
+    private function callEditEndpoint(
+        string $apiKey,
+        string $prompt,
+        string $quality,
+        string $imageBinary,
+        ?string $mime,
+    ) {
+        $boundary = wp_generate_password(24, false);
+        $eol = "\r\n";
+        $ext = match ($mime) {
+            'image/png' => 'png',
+            'image/jpeg' => 'jpg',
+            'image/webp' => 'webp',
+            default => 'png',
+        };
+        $contentType = $mime ?: 'image/png';
+
+        $parts = '';
+        // image file part
+        $parts .= "--{$boundary}{$eol}";
+        $parts .= "Content-Disposition: form-data; name=\"image\"; filename=\"reference.{$ext}\"{$eol}";
+        $parts .= "Content-Type: {$contentType}{$eol}{$eol}";
+        $parts .= $imageBinary.$eol;
+        // simple text fields
+        foreach (
+            ['model' => 'gpt-image-1', 'prompt' => $prompt, 'quality' => $quality, 'n' => '1'] as $name => $value
+        ) {
+            $parts .= "--{$boundary}{$eol}";
+            $parts .= "Content-Disposition: form-data; name=\"{$name}\"{$eol}{$eol}";
+            $parts .= $value.$eol;
+        }
+        $parts .= "--{$boundary}--{$eol}";
+
+        return wp_remote_post('https://api.openai.com/v1/images/edits', [
+            'headers' => [
+                'Authorization' => 'Bearer '.$apiKey,
+                'Content-Type' => "multipart/form-data; boundary={$boundary}",
+            ],
+            'body' => $parts,
+            'timeout' => self::REQUEST_TIMEOUT_SECONDS,
+        ]);
+    }
+
+    /**
+     * Resolve a WP attachment id to its raw bytes + mime + a human-readable
+     * source label for the result payload.
+     *
+     * @return array{0: string|\WP_Error, 1: string|null, 2: string|null}
+     */
+    private function loadAttachment(int $attachmentId): array
+    {
+        if ($attachmentId <= 0) {
+            return [new \WP_Error('bad_attachment', 'reference_attachment_id must be a positive integer'), null, null];
+        }
+        $path = get_attached_file($attachmentId);
+        if (! $path || ! file_exists($path)) {
+            return [new \WP_Error('attachment_missing', "Attachment {$attachmentId} has no file on disk"), null, null];
+        }
+        $mime = get_post_mime_type($attachmentId) ?: 'image/png';
+        if (! str_starts_with($mime, 'image/')) {
+            return [new \WP_Error('not_an_image', "Attachment {$attachmentId} is not an image ({$mime})"), null, null];
+        }
+        $size = filesize($path);
+        if ($size > 20 * 1024 * 1024) {
+            return [new \WP_Error('reference_too_large', 'Reference image is over 20 MB — gpt-image-1 won\'t accept it'), null, null];
+        }
+        $binary = file_get_contents($path);
+        if ($binary === false) {
+            return [new \WP_Error('attachment_read_failed', "Couldn't read attachment {$attachmentId}"), null, null];
+        }
+
+        return [$binary, $mime, "attachment {$attachmentId}"];
+    }
+
+    /**
+     * Fetch an external image URL, with bounded size + mime guarding.
+     *
+     * @return array{0: string|\WP_Error, 1: string|null, 2: string|null}
+     */
+    private function loadRemoteImage(string $url): array
+    {
+        $url = trim($url);
+        if ($url === '' || ! wp_http_validate_url($url)) {
+            return [new \WP_Error('bad_url', 'reference_image_url is not a valid URL'), null, null];
+        }
+        $response = wp_remote_get($url, [
+            'timeout' => 30,
+            // Cap roughly at 20 MB by reading the full body but bailing if
+            // it exceeds — gpt-image-1's per-file limit is 25 MB.
+            'limit_response_size' => 20 * 1024 * 1024,
+        ]);
+        if (is_wp_error($response)) {
+            return [$response, null, null];
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            return [new \WP_Error('fetch_failed', "Reference URL returned HTTP {$code}"), null, null];
+        }
+        $body = wp_remote_retrieve_body($response);
+        if ($body === '') {
+            return [new \WP_Error('empty_response', 'Reference URL returned an empty body'), null, null];
+        }
+        $mime = wp_remote_retrieve_header($response, 'content-type') ?: null;
+        // Strip charset suffix if any.
+        if ($mime && str_contains($mime, ';')) {
+            $mime = trim(explode(';', $mime, 2)[0]);
+        }
+        if (! $mime || ! str_starts_with($mime, 'image/')) {
+            return [new \WP_Error('not_an_image', "Reference URL is not an image (Content-Type: {$mime})"), null, null];
+        }
+
+        return [$body, $mime, 'url '.$url];
     }
 
     /**
