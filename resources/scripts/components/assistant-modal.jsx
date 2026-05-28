@@ -2055,19 +2055,117 @@ function MessageTimestamp() {
   );
 }
 
+/**
+ * Replace any "(block <clientId>)" / "(clientId: <id>)" mentions in a user
+ * message with a compact chip — keeps the conversation readable when the
+ * model is targeted at a specific block via the toolbar dropdowns or Cmd+J
+ * shortcut. Clicking the chip scrolls + selects that block in the editor.
+ */
+// Two accepted shapes:
+//   (block <uuid>)                 — clientId only (we look up the label live)
+//   (block <uuid> — paragraph)     — clientId + cached label (chip stays
+//                                    accurate even after the block is gone)
+const BLOCK_REF_RE =
+  /\((?:block|clientId)[:\s]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s+[—–-]\s+([^)]+))?\)/gi;
+
+function BlockChip({clientId, cachedLabel}) {
+  const liveName =
+    window.wp?.data?.select?.('core/block-editor')?.getBlockName?.(clientId) || '';
+  const label =
+    liveName ?
+      liveName.replace(/^core\//, '').replace(/-/g, ' ')
+    : cachedLabel
+      ? cachedLabel.trim()
+      : 'block';
+  const onClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const sel = `[data-block="${clientId}"]`;
+      const inMain = document.querySelector(sel);
+      if (inMain) inMain.scrollIntoView({behavior: 'smooth', block: 'center'});
+      else {
+        const iframe = document.querySelector('iframe[name="editor-canvas"]');
+        iframe?.contentDocument
+          ?.querySelector(sel)
+          ?.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+      window.wp?.data?.dispatch?.('core/block-editor')?.selectBlock?.(clientId);
+    } catch {
+      // Ignore — block may be gone after later edits.
+    }
+  };
+  return (
+    <button
+      type="button"
+      className="gds-assistant__block-chip"
+      onClick={onClick}
+      title={`Click to focus this block (${clientId})`}
+    >
+      <svg
+        className="gds-assistant__block-chip-icon"
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <line x1="4" y1="12" x2="20" y2="12" />
+      </svg>
+      {label}
+    </button>
+  );
+}
+
+function renderTextWithBlockChips(text) {
+  const out = [];
+  let last = 0;
+  let m;
+  BLOCK_REF_RE.lastIndex = 0;
+  while ((m = BLOCK_REF_RE.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push({chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}`});
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  if (out.length === 1 && typeof out[0] === 'string') return null;
+  return out;
+}
+
 function UserMessageText({text}) {
   // Long skill prompts: show collapsed with expand toggle
   const isLong = text.length > 200;
   const [expanded, setExpanded] = useState(!isLong);
 
+  const renderText = (raw) => {
+    const parts = renderTextWithBlockChips(raw);
+    if (!parts) return raw;
+    return parts.map((p, i) =>
+      typeof p === 'string' ?
+        <span key={i}>{p}</span>
+      : <BlockChip key={p.key} clientId={p.chip} cachedLabel={p.cached} />,
+    );
+  };
+
   if (!isLong) {
-    return <p style={{whiteSpace: 'pre-wrap'}}>{text}</p>;
+    return <p style={{whiteSpace: 'pre-wrap'}}>{renderText(text)}</p>;
   }
 
+  // Also strip block clientIds from the truncated preview — otherwise long
+  // messages keep showing the raw UUID even when chips render in the full
+  // expansion. Truncation runs first, regex second, so a cut-off chip
+  // gracefully degrades to plain text instead of breaking layout.
   return (
     <div>
       <p style={{whiteSpace: 'pre-wrap'}}>
-        {expanded ? text : text.slice(0, 120) + '...'}
+        {expanded ?
+          renderText(text)
+        : renderText(text.slice(0, 120) + '...')}
       </p>
       <button
         type="button"

@@ -54,10 +54,10 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
                     title: 'Replace with AI image…',
                     onClick: () => {
                       const current = props.attributes?.alt
-                        ? ` (currently: "${props.attributes.alt}")`
+                        ? ` (current alt: "${props.attributes.alt}")`
                         : '';
                       sendToChat(
-                        `Replace the image in block ${props.clientId} with a new AI-generated image${current}. Ask me what the new image should show, then call assistant__generate_image and update the block with editor__update_block_attributes (set id, url, alt to the new attachment).`,
+                        `Replace the image (block ${props.clientId} — image)${current} with a new AI-generated image. Ask me what the new image should show, then call assistant__generate_image and update the block with editor__update_block_attributes (set id, url, alt to the new attachment).`,
                       );
                     },
                   },
@@ -72,7 +72,7 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
                         ? ` Use the current image as the reference (reference_attachment_id: ${id})${altSuffix} so the new one keeps the same composition/style.`
                         : ` Use the current image as the reference (reference_image_url: ${props.attributes?.url || ''})${altSuffix} so the new one keeps the same composition/style.`;
                       sendToChat(
-                        `Generate a variation of the image in block ${props.clientId}.${refClause} Ask me what should change, then call assistant__generate_image and update the block with editor__update_block_attributes.`,
+                        `Generate a variation of the image (block ${props.clientId} — image).${refClause} Ask me what should change, then call assistant__generate_image and update the block with editor__update_block_attributes.`,
                       );
                     },
                   },
@@ -82,7 +82,7 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
                       const url = props.attributes?.url || '';
                       const alt = props.attributes?.alt || '';
                       sendToChat(
-                        `Suggest a better alt text for the image in block ${props.clientId} (current alt: "${alt}", image url: ${url}). When I confirm, set it via editor__update_block_attributes.`,
+                        `Suggest a better alt text for the image (block ${props.clientId} — image) — current alt: "${alt}", image url: ${url}. When I confirm, set it via editor__update_block_attributes.`,
                       );
                     },
                   },
@@ -122,7 +122,7 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
       // Including the text + the block's clientId saves the assistant a
       // read_selection round-trip; the assistant can apply via
       // editor__update_block_attributes targeting clientId ${props.clientId}.
-      return `${action} ${target} (block ${props.clientId}):\n\n"${text}"`;
+      return `${action} ${target} (block ${props.clientId} — ${label}):\n\n"${text}"`;
     };
 
     const controls = [
@@ -155,7 +155,7 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
             ? `this selection inside the ${label}`
             : `this ${label}`;
           sendToChat(
-            `Translate ${target} to ${l.name}, preserving tone (block ${props.clientId}):\n\n"${text}"`,
+            `Translate ${target} to ${l.name}, preserving tone (block ${props.clientId} — ${label}):\n\n"${text}"`,
           );
         },
       })),
