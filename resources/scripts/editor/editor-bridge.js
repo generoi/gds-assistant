@@ -664,35 +664,6 @@ function highlightChangedBlocks(clientIds) {
   });
 }
 
-/**
- * Replace `originalText` with `newText` inside one block's text attribute (a
- * plain substring replace — works for typical rich-text content where the
- * selected phrase appears once verbatim). Reuses the change-highlight so the
- * edit is visible.
- *
- * @param {{clientId: string, attributeKey?: string, text: string}} info
- * @param {string} newText
- * @return {{ok: boolean, error?: string}}
- */
-export function applyInlineRewrite(info, newText) {
-  const block = wpData().select('core/block-editor').getBlock?.(info.clientId);
-  if (!block) return {ok: false, error: 'block not found'};
-  const key = info.attributeKey || 'content';
-  const current = block.attributes?.[key];
-  if (typeof current !== 'string') {
-    return {ok: false, error: 'attribute is not a string'};
-  }
-  if (!current.includes(info.text)) {
-    return {ok: false, error: 'selected text not found in block — selection may have spanned formatting'};
-  }
-  const updated = current.replace(info.text, newText);
-  wpData().dispatch('core/block-editor').updateBlockAttributes(info.clientId, {
-    [key]: updated,
-  });
-  highlightChangedBlocks([info.clientId]);
-  return {ok: true};
-}
-
 const capText = (v, n = 160) =>
   v ?
     String(v).replace(/\s+/g, ' ').trim().slice(0, n) || undefined
