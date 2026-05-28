@@ -1643,10 +1643,24 @@ function MicButton() {
 //   - the component unmounts (chat panel closes)
 
 // Auto-reject any pending edit approvals if the chat goes away (e.g. the
-// user navigates off the page). Otherwise the model would be stuck waiting
-// on a Promise that never resolves.
+// user navigates off the page), AND when a fresh user run starts — typing
+// a new message into the composer is itself a signal that the user has
+// moved on from any in-flight approval card, and leaving it pending would
+// strand a tool_use without a tool_result and silently break the next turn.
 function ApprovalCleanup() {
-  useEffect(() => () => clearAllApprovals(), []);
+  const threadRuntime = useThreadRuntime();
+  useEffect(() => {
+    let prevRunning = false;
+    const unsub = threadRuntime.subscribe(() => {
+      const running = !!threadRuntime.getState?.()?.isRunning;
+      if (running && !prevRunning) clearAllApprovals();
+      prevRunning = running;
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      clearAllApprovals();
+    };
+  }, [threadRuntime]);
   return null;
 }
 

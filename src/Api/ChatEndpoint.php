@@ -144,6 +144,14 @@ class ChatEndpoint
             $storedMessages = $conversation['messages'] ?? [];
             if (! empty($storedMessages)) {
                 $storedMessages = self::sanitizeMessages($storedMessages);
+                // Recover from stranded client tool calls: if a previous turn
+                // emitted a `tool_use` (e.g. an editor write tool) whose
+                // approval Promise never resolved — page refresh mid-decision,
+                // CDP timeout in a test, etc. — Anthropic would reject the
+                // next request because every tool_use needs a matching
+                // tool_result. Inject a synthetic "cancelled" result so the
+                // conversation can continue instead of silently failing.
+                $storedMessages = self::patchOrphanToolUses($storedMessages);
                 $messages = array_merge($storedMessages, $messages);
             }
         } else {
@@ -489,6 +497,81 @@ class ChatEndpoint
         }
 
         return $messages;
+    }
+
+    /**
+     * Walk loaded conversation history and inject a synthetic tool_result for
+     * any tool_use that doesn't have a matching tool_result downstream.
+     *
+     * This recovers from "the editor approval was never decided" scenarios:
+     * a tool_use lands in history, the matching tool_result never arrives
+     * (page refresh during the diff card, browser tab crash, etc.), and
+     * Anthropic rejects every subsequent /chat call with "tool_use without
+     * corresponding tool_result". The injected result is a regular user
+     * message with a tool_result block declaring the call cancelled, so the
+     * model can move on instead of the conversation getting permanently
+     * stuck.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function patchOrphanToolUses(array $messages): array
+    {
+        // First pass: collect every tool_use_id that already has a tool_result.
+        $resolved = [];
+        foreach ($messages as $msg) {
+            if (($msg['role'] ?? null) !== 'user') {
+                continue;
+            }
+            $content = $msg['content'] ?? [];
+            if (! is_array($content)) {
+                continue;
+            }
+            foreach ($content as $part) {
+                if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                    $id = $part['tool_use_id'] ?? null;
+                    if (is_string($id) && $id !== '') {
+                        $resolved[$id] = true;
+                    }
+                }
+            }
+        }
+
+        // Second pass: for any assistant tool_use whose id isn't in $resolved,
+        // splice a synthetic cancellation result immediately after.
+        $out = [];
+        foreach ($messages as $msg) {
+            $out[] = $msg;
+            if (($msg['role'] ?? null) !== 'assistant') {
+                continue;
+            }
+            $content = $msg['content'] ?? [];
+            if (! is_array($content)) {
+                continue;
+            }
+            $orphanResults = [];
+            foreach ($content as $part) {
+                if (! is_array($part) || ($part['type'] ?? null) !== 'tool_use') {
+                    continue;
+                }
+                $id = $part['id'] ?? null;
+                if (! is_string($id) || $id === '' || isset($resolved[$id])) {
+                    continue;
+                }
+                $orphanResults[] = [
+                    'type' => 'tool_result',
+                    'tool_use_id' => $id,
+                    'content' => 'Edit cancelled — the user closed the chat before deciding.',
+                    'is_error' => true,
+                ];
+                $resolved[$id] = true; // don't double-patch
+            }
+            if ($orphanResults) {
+                $out[] = ['role' => 'user', 'content' => $orphanResults];
+            }
+        }
+
+        return $out;
     }
 
     /**
