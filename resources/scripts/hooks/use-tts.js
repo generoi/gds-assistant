@@ -11,6 +11,16 @@ import {useEffect, useState} from '@wordpress/element';
 const ENABLED_KEY = 'gds-assistant-read-aloud';
 const LANG_KEY = 'gds-assistant-voice-lang';
 const PREF_EVENT = 'gds-assistant-tts-pref';
+// Default Web Speech rate is 1.0; macOS system voices feel sluggish at that.
+// 1.35 is noticeably snappier without sounding chipmunked — still well below
+// the typical comprehension ceiling of ~1.7x.
+const TTS_RATE = 1.35;
+// Events the mic listens for so it can pause dictation while the AI is
+// speaking — otherwise the AI's own voice goes through the mic and back into
+// the composer as user input.
+const TTS_START_EVENT = 'gds-assistant-tts-start';
+const TTS_END_EVENT = 'gds-assistant-tts-end';
+export const TTS_EVENTS = {start: TTS_START_EVENT, end: TTS_END_EVENT};
 
 export function ttsSupported() {
   return (
@@ -152,10 +162,30 @@ function queueUtterances(chunks, lang) {
   const synth = window.speechSynthesis;
   const voices = synth.getVoices?.() || [];
   const voice = pickVoice(voices, lang);
+  // Only fire start/end events on the FIRST and LAST utterances so listeners
+  // (the mic auto-pause) see one start and one end per AI reply, even though
+  // the reply is split into multiple speak() calls internally.
+  let firstStartFired = false;
+  let endsRemaining = chunks.length;
+  const fireStart = () => {
+    if (firstStartFired) return;
+    firstStartFired = true;
+    window.dispatchEvent(new CustomEvent(TTS_START_EVENT));
+  };
+  const tickEnd = () => {
+    endsRemaining -= 1;
+    if (endsRemaining <= 0) {
+      window.dispatchEvent(new CustomEvent(TTS_END_EVENT));
+    }
+  };
   for (const chunk of chunks) {
     const u = new window.SpeechSynthesisUtterance(chunk);
     if (lang) u.lang = lang;
     if (voice) u.voice = voice;
+    u.rate = TTS_RATE;
+    u.onstart = fireStart;
+    u.onend = tickEnd;
+    u.onerror = tickEnd;
     synth.speak(u);
   }
 }
@@ -186,10 +216,17 @@ export function speak(text, lang) {
 
 export function cancelTts() {
   if (!ttsSupported()) return;
+  const synth = window.speechSynthesis;
+  const wasActive = synth.speaking || synth.pending;
   try {
-    window.speechSynthesis.cancel();
+    synth.cancel();
   } catch {
     // ignore
+  }
+  // Make sure any mic-pause listener releases when we stop early — chunked
+  // utterance `onend` may not all fire after a hard cancel.
+  if (wasActive) {
+    window.dispatchEvent(new CustomEvent(TTS_END_EVENT));
   }
 }
 

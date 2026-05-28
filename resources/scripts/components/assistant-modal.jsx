@@ -17,6 +17,7 @@ import {
   cancelTts,
   extractAssistantText,
   readVoiceLang,
+  TTS_EVENTS,
 } from '../hooks/use-tts';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
@@ -1340,13 +1341,77 @@ function MicButton() {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [langOpen]);
 
+  // Skype-style half-duplex: while the user "wants the mic on" we shuttle it
+  // off during the AI's turn (so we don't transcribe its own voice back in)
+  // and turn it back on once the AI is done. The user's intent flips only on
+  // explicit mic taps — auto pause/resume keeps it consistent across replies.
+  const intendsRef = useRef(false);
+  const listeningRef = useRef(false);
+  const readAloudRef = useRef(readAloud);
+  const threadRuntime = useThreadRuntime();
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
+  useEffect(() => {
+    readAloudRef.current = readAloud;
+  }, [readAloud]);
+
+  const tryRestart = useCallback(() => {
+    if (!intendsRef.current) return;
+    if (listeningRef.current) return;
+    // Don't restart while TTS is still draining (cancel/end race).
+    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
+    baseRef.current = composer.getState?.()?.text || '';
+    start();
+  }, [start, composer]);
+
+  // TTS start → drop the mic; TTS end → bring it back if the user still wants it.
+  useEffect(() => {
+    if (!supported) return undefined;
+    const onTtsStart = () => {
+      if (listeningRef.current) stop();
+    };
+    const onTtsEnd = () => {
+      // Small delay so the cancel-drained queue settles before we re-listen.
+      setTimeout(tryRestart, 80);
+    };
+    window.addEventListener(TTS_EVENTS.start, onTtsStart);
+    window.addEventListener(TTS_EVENTS.end, onTtsEnd);
+    return () => {
+      window.removeEventListener(TTS_EVENTS.start, onTtsStart);
+      window.removeEventListener(TTS_EVENTS.end, onTtsEnd);
+    };
+  }, [supported, stop, tryRestart]);
+
+  // Mute the mic for the assistant's turn (so a user mid-sentence doesn't get
+  // recorded talking over the run), and resume on turn-end when read-aloud is
+  // OFF (when it's ON, the TTS_END handler above takes care of resuming).
+  useEffect(() => {
+    if (!supported) return undefined;
+    let prevRunning = false;
+    return threadRuntime.subscribe(() => {
+      const running = !!threadRuntime.getState?.()?.isRunning;
+      if (running && !prevRunning && listeningRef.current) {
+        stop();
+      }
+      if (!running && prevRunning && !readAloudRef.current) {
+        setTimeout(tryRestart, 80);
+      }
+      prevRunning = running;
+    });
+  }, [supported, stop, tryRestart, threadRuntime]);
+
   if (!supported) return null;
 
   const handle = () => {
     if (listening) {
+      intendsRef.current = false;
       stop();
       return;
     }
+    intendsRef.current = true;
+    // User taking a turn — shut the AI up so we don't transcribe its voice.
+    cancelTts();
     baseRef.current = composer.getState?.()?.text || '';
     start();
   };
