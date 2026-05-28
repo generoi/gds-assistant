@@ -245,28 +245,26 @@ class ChatEndpoint
                 'total_messages' => count($messages),
             ]);
 
-            // When the user typed into the chat with a text selection active in
-            // the editor, the client attaches the highlighted substring to the
-            // editor context. Prepend it to the latest user message body so the
-            // model has the snippet inline (avoids an `editor__read_selection`
-            // round-trip on common "rewrite this" prompts). Done here instead
-            // of in the system prompt to keep the prompt cache stable across
-            // selection changes. Skip when resuming a tool / approval flow:
-            // those branches popped the trailing control message above, so
-            // there's no fresh user message to annotate.
+            // When the user typed into the chat with something selected in the
+            // editor, the client attaches a selection snapshot on the editor
+            // context. Prepend a short summary to the latest user message body
+            // so the model has the snippet inline (avoids an
+            // `editor__read_selection` round-trip on common "rewrite this" /
+            // "translate these" prompts). Done here instead of in the system
+            // prompt to keep the prompt cache stable across selection changes.
+            // Skip when resuming a tool / approval flow: those branches
+            // popped the trailing control message above, so there's no fresh
+            // user message to annotate.
             if (
                 is_array($editorContext)
                 && ! empty($editorContext['has_editor'])
-                && ! empty($editorContext['selected_text'])
                 && ! is_array($clientResults)
                 && ! $approval
             ) {
-                $messages = $this->prependSelectionToLatestUser(
-                    $messages,
-                    (string) $editorContext['selected_text'],
-                    (string) ($editorContext['selected_block_label'] ?? 'block'),
-                    (string) ($editorContext['selected_block_client_id'] ?? '')
-                );
+                $preamble = $this->buildSelectionPreamble($editorContext);
+                if ($preamble !== '') {
+                    $messages = $this->prependToLatestUser($messages, $preamble);
+                }
             }
 
             // Collapse any consecutive same-role messages (e.g. an undo note
@@ -394,11 +392,59 @@ class ChatEndpoint
     }
 
     /**
-     * Prepend a short "[Highlighted text…]" preamble to the latest user
-     * message's content, so the model sees the user's selection inline with
-     * what they typed. The preamble lives inside the user message (not the
-     * system prompt) so it doesn't invalidate the prompt cache as selection
-     * changes from turn to turn.
+     * Build the short "[The user has selected …]" preamble for the latest
+     * user message, based on the editor-context selection snapshot. Returns
+     * '' when there's nothing meaningful to attach (empty selection / unknown
+     * shape).
+     *
+     * @param  array<string, mixed>  $ctx  editor_context payload
+     */
+    private function buildSelectionPreamble(array $ctx): string
+    {
+        $mode = $ctx['selection_mode'] ?? null;
+
+        if ($mode === 'text-range' && ! empty($ctx['selected_text'])) {
+            $label = (string) ($ctx['selected_block_label'] ?? 'block');
+            $idHint = ! empty($ctx['selected_block_client_id'])
+                ? ' (block '.$ctx['selected_block_client_id'].')'
+                : '';
+
+            return '[The user has highlighted text in the '.$label.$idHint.': "'
+                .$ctx['selected_text'].'"]'."\n\n";
+        }
+
+        if ($mode === 'whole-block' && ! empty($ctx['selected_block_label'])) {
+            $label = (string) $ctx['selected_block_label'];
+            $idHint = ! empty($ctx['selected_block_client_id'])
+                ? ' (block '.$ctx['selected_block_client_id'].')'
+                : '';
+            $text = (string) ($ctx['selected_block_text'] ?? '');
+            if ($text !== '') {
+                return '[The user has selected the '.$label.$idHint.': "'.$text.'"]'."\n\n";
+            }
+
+            // Non-text block (image / gallery / etc.) — just announce it.
+            return '[The user has selected a '.$label.' block'.$idHint.']'."\n\n";
+        }
+
+        if ($mode === 'multi-block') {
+            $count = (int) ($ctx['selected_block_count'] ?? 0);
+            $labels = is_array($ctx['selected_block_labels'] ?? null)
+                ? array_values(array_filter($ctx['selected_block_labels'], 'is_string'))
+                : [];
+            $list = $labels ? ': '.implode(', ', array_slice($labels, 0, 10)) : '';
+
+            return '[The user has selected '.$count.' blocks'.$list.']'."\n\n";
+        }
+
+        return '';
+    }
+
+    /**
+     * Prepend a short preamble to the latest user message's content, so the
+     * model sees the user's editor selection inline with what they typed.
+     * Lives inside the user message (not the system prompt) so it doesn't
+     * invalidate the prompt cache as the selection changes turn to turn.
      *
      * Handles both content shapes the client may send:
      *   - string content → prepend to the string
@@ -408,13 +454,9 @@ class ChatEndpoint
      * @param  array<int, array<string, mixed>>  $messages
      * @return array<int, array<string, mixed>>
      */
-    private function prependSelectionToLatestUser(
-        array $messages,
-        string $selectedText,
-        string $blockLabel,
-        string $clientId,
-    ): array {
-        // Find the LAST user message (newest one — the one we just received).
+    private function prependToLatestUser(array $messages, string $preamble): array
+    {
+        // Find the LAST user message (the one we just received).
         $idx = -1;
         for ($i = count($messages) - 1; $i >= 0; $i--) {
             if (($messages[$i]['role'] ?? null) === 'user') {
@@ -425,11 +467,6 @@ class ChatEndpoint
         if ($idx < 0) {
             return $messages;
         }
-
-        // Keep it terse — the chat UI shows the chip; this is just the bit the
-        // model sees in the message body.
-        $idHint = $clientId !== '' ? " (block {$clientId})" : '';
-        $preamble = "[The user has highlighted text in the {$blockLabel}{$idHint}: \"{$selectedText}\"]\n\n";
 
         $content = $messages[$idx]['content'] ?? '';
 

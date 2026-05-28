@@ -45,12 +45,23 @@ export function getEditorContext() {
     // selection store not ready — treat as no text selection
   }
 
-  // When the user has highlighted a span of text inside a text block we
-  // attach the substring here so the server can prepend it to the user's
-  // message — saves an `editor__read_selection` round-trip on common
-  // "rewrite this" prompts. Lives outside the system prompt to stay
-  // cache-friendly across messages.
+  // What the user has selected right now — text range / whole block /
+  // multi-block. The server prepends a short summary to the latest user
+  // message body so the model has the snippet inline (avoids an
+  // `editor__read_selection` round-trip on common "rewrite this" / "translate
+  // this" prompts). Lives outside the system prompt to stay cache-friendly
+  // across selection changes.
   const sel = getCurrentSelectionContext();
+  const selectionPayload = {
+    selection_mode: sel?.mode || null,
+    selected_text: sel?.mode === 'text-range' ? sel.selectedText : null,
+    selected_block_text: sel?.mode === 'whole-block' ? sel.blockText : null,
+    selected_block_label: sel?.mode !== 'multi-block' ? sel?.blockLabel || null : null,
+    selected_block_client_id:
+      sel?.mode !== 'multi-block' ? sel?.clientId || null : null,
+    selected_block_labels: sel?.mode === 'multi-block' ? sel.blockLabels : null,
+    selected_block_client_ids: sel?.mode === 'multi-block' ? sel.clientIds : null,
+  };
 
   return {
     has_editor: true,
@@ -59,9 +70,7 @@ export function getEditorContext() {
     selected_block_count: ids.length,
     selected_block_types: types.slice(0, 20),
     has_text_selection: hasText,
-    selected_text: sel?.selectedText || null,
-    selected_block_label: sel?.blockLabel || null,
-    selected_block_client_id: sel?.clientId || null,
+    ...selectionPayload,
     // Derived from the theme (theme.json settings.color.custom) so the model
     // knows whether raw hex is allowed without us hardcoding it.
     custom_colors: !be.getSettings?.()?.disableCustomColors,

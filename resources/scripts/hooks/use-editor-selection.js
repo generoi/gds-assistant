@@ -15,11 +15,28 @@ import {getCurrentSelectionContext} from '../editor/selection';
 function sameSelection(a, b) {
   if (a === b) return true;
   if (!a || !b) return false;
-  return (
-    a.clientId === b.clientId &&
-    a.blockName === b.blockName &&
-    a.selectedText === b.selectedText
-  );
+  if (a.mode !== b.mode) return false;
+  if (a.mode === 'text-range') {
+    return (
+      a.clientId === b.clientId &&
+      a.selectedText === b.selectedText &&
+      a.blockText === b.blockText
+    );
+  }
+  if (a.mode === 'whole-block') {
+    return (
+      a.clientId === b.clientId &&
+      a.blockName === b.blockName &&
+      a.blockText === b.blockText
+    );
+  }
+  if (a.mode === 'multi-block') {
+    return (
+      a.count === b.count &&
+      (a.clientIds || []).join('|') === (b.clientIds || []).join('|')
+    );
+  }
+  return false;
 }
 
 export function useEditorSelection() {

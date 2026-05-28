@@ -95,27 +95,65 @@ export function getBlockSelectionText(clientId) {
 }
 
 /**
- * Single-block "user has highlighted something" snapshot, or null. Returned
- * when there's exactly one selected text-bearing block AND a non-empty
- * text-range selection within it. Drives the composer chip + the inline
- * context we send to the model.
+ * Snapshot of what the user has selected in the editor right now, or null when
+ * nothing is selected. Drives both the composer chip and the inline context we
+ * attach to outgoing messages. Three shapes:
+ *
+ *   {mode: 'text-range',  clientId, blockName, blockLabel, selectedText, blockText}
+ *     A single text-bearing block with a non-empty text-range selection.
+ *
+ *   {mode: 'whole-block', clientId, blockName, blockLabel, blockText}
+ *     A single block selected with no text range (text-bearing or otherwise;
+ *     `blockText` is empty for non-text blocks).
+ *
+ *   {mode: 'multi-block', count, clientIds, blockNames, blockLabels}
+ *     Multiple blocks selected at once.
  */
 export function getCurrentSelectionContext() {
   const select = window.wp?.data?.select?.('core/block-editor');
   if (!select) return null;
   const ids = select.getSelectedBlockClientIds?.() || [];
-  if (ids.length !== 1) return null;
+  if (!ids.length) return null;
+
+  if (ids.length > 1) {
+    const names = ids.map((id) => select.getBlockName?.(id)).filter(Boolean);
+    if (!names.length) return null;
+    return {
+      mode: 'multi-block',
+      count: ids.length,
+      clientIds: ids,
+      blockNames: names,
+      blockLabels: names.map((n) => blockLabel(n)),
+    };
+  }
+
   const clientId = ids[0];
   const name = select.getBlockName?.(clientId);
-  if (!name || !TEXT_BLOCKS.has(name)) return null;
+  if (!name) return null;
+  const label = blockLabel(name);
 
-  const selectedText = getBlockSelectionText(clientId);
-  if (!selectedText) return null;
+  // Text-range mode requires the block to be text-bearing AND have a non-empty
+  // range. Anything else falls through to whole-block.
+  if (TEXT_BLOCKS.has(name)) {
+    const selectedText = getBlockSelectionText(clientId);
+    if (selectedText) {
+      return {
+        mode: 'text-range',
+        clientId,
+        blockName: name,
+        blockLabel: label,
+        selectedText,
+        blockText: getBlockText(clientId),
+      };
+    }
+  }
 
+  // Whole-block (text-bearing without a range, or any non-text block).
   return {
+    mode: 'whole-block',
     clientId,
     blockName: name,
-    blockLabel: blockLabel(name),
-    selectedText,
+    blockLabel: label,
+    blockText: TEXT_BLOCKS.has(name) ? getBlockText(clientId) : '',
   };
 }

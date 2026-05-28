@@ -1433,45 +1433,77 @@ function MicButton() {
 
 // ── Editor-selection chip ───────────────────────────────────
 //
-// Shows above the composer input whenever the user has highlighted a span of
-// text inside a block. Gives a visible signal that the next message will go
-// out with that text already attached as context (server-side, prepended to
-// the user's message body), so prompts like "make this punchier" work without
-// the model needing an `editor__read_selection` round-trip.
+// Shows above the composer input whenever the user has something selected in
+// the editor — a text range, a whole block, or several blocks. Gives a visible
+// signal that the next message will go out with that selection already
+// attached as context (server-side, prepended to the user's message body), so
+// prompts like "make this punchier" or "translate these" work without the
+// model needing an `editor__read_selection` round-trip.
 
-function truncate(text, max = 64) {
+// Hard cap on snippet length sent to the chip so we don't ship megabytes into
+// the tooltip on huge documents. CSS (-webkit-line-clamp) handles the visual
+// truncation; this is just a backstop.
+function clampSnippet(text, max = 280) {
+  if (typeof text !== 'string') return '';
   if (text.length <= max) return text;
   return text.slice(0, max - 1).trimEnd() + '…';
 }
 
+const SelectionIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 7V4h16v3" />
+    <path d="M9 20h6" />
+    <path d="M12 4v16" />
+  </svg>
+);
+
 function SelectionChip() {
   const selection = useEditorSelection();
   if (!selection) return null;
-  const snippet = truncate(selection.selectedText);
+
+  let label;
+  let snippet;
+  let title;
+
+  if (selection.mode === 'multi-block') {
+    const labels = selection.blockLabels || [];
+    const head = labels.slice(0, 3).join(', ');
+    const more = labels.length > 3 ? ` +${labels.length - 3} more` : '';
+    label = `Selected ${selection.count} blocks`;
+    snippet = labels.length ? `${head}${more}` : '';
+    title = `Selected ${selection.count} blocks: ${labels.join(', ')}`;
+  } else {
+    const text =
+      selection.mode === 'text-range'
+        ? selection.selectedText
+        : selection.blockText;
+    label = `Selected ${selection.blockLabel}`;
+    snippet = clampSnippet(text);
+    title = text
+      ? `${label}: ${text}`
+      : `${label} (block ${selection.clientId})`;
+  }
+
   return (
-    <div
-      className="gds-assistant__selection-chip"
-      title={`Selected ${selection.blockLabel}: ${selection.selectedText}`}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M4 7V4h16v3" />
-        <path d="M9 20h6" />
-        <path d="M12 4v16" />
-      </svg>
+    <div className="gds-assistant__selection-chip" title={title}>
+      {SelectionIcon}
       <span className="gds-assistant__selection-chip-label">
-        Selected {selection.blockLabel}:
+        {label}
+        {snippet ? ':' : ''}
       </span>
-      <span className="gds-assistant__selection-chip-text">“{snippet}”</span>
+      {snippet && (
+        <span className="gds-assistant__selection-chip-text">“{snippet}”</span>
+      )}
     </div>
   );
 }

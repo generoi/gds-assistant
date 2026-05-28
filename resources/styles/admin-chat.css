@@ -901,17 +901,23 @@ abbr.gds-tool {
 
 /*
  * Editor-selection chip — surfaced above the input when the user has marked
- * text inside a block. The chip occupies a full row above the input/buttons
- * via flex-basis: 100% (the composer is a wrapping flex row).
+ * text in / clicked into a block / selected several blocks. Occupies a full
+ * row above the input via flex-basis: 100% (composer is a wrapping flex row).
+ *
+ * The icon + label stay on a single line; the snippet clamps to 2 lines on
+ * its own so long selections stay readable instead of getting cut off after a
+ * few words. Border-radius matches the size: pill at one line, rounded
+ * rectangle once the snippet wraps to two lines.
  */
 .gds-assistant__selection-chip {
   flex: 0 0 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   border: 1px solid #d6e4f0;
-  border-radius: 999px;
+  border-radius: 12px;
   background: #f1f7ff;
   color: #1d4f80;
   font-size: 12px;
@@ -922,22 +928,33 @@ abbr.gds-tool {
 
 .gds-assistant__selection-chip svg {
   flex: 0 0 auto;
+  margin-top: 2px;
   opacity: 0.7;
 }
 
 .gds-assistant__selection-chip-label {
   flex: 0 0 auto;
+  max-width: 100%;
   font-weight: 500;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gds-assistant__selection-chip-text {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin: 0;
   color: #2a2a2a;
+
+  /* Clamp the snippet to two lines so a long selection is still readable
+   * (single-line ellipsis cuts off after a handful of words). */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .gds-assistant__input {
