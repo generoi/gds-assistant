@@ -109,18 +109,20 @@ function snapshotBefore(toolName, input) {
     }
   };
 
+  // Schema-aligned field names: write tools take snake_case input
+  // (client_ids, client_id, markup, after_client_id, attributes, etc.).
   switch (toolName) {
     case 'editor__replace_blocks': {
-      const ids = Array.isArray(input?.clientIds) ? input.clientIds : [];
+      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
       return {
         kind: 'replace',
         before: ids.map(blockText).filter(Boolean).join('\n\n'),
-        after: typeof input?.content === 'string' ? input.content : '',
+        after: typeof input?.markup === 'string' ? input.markup : '',
         summary: `Replace ${ids.length} block${ids.length === 1 ? '' : 's'}`,
       };
     }
     case 'editor__insert_blocks': {
-      const after = typeof input?.content === 'string' ? input.content : '';
+      const after = typeof input?.markup === 'string' ? input.markup : '';
       // Rough count by walking top-level block comments in the markup.
       const count = (after.match(/<!--\s*wp:/g) || []).length || 1;
       return {
@@ -131,29 +133,37 @@ function snapshotBefore(toolName, input) {
       };
     }
     case 'editor__update_block_attributes': {
-      const clientId = input?.clientId;
+      const clientId = input?.client_id;
       const block = clientId ? be?.getBlock?.(clientId) : null;
       const beforeAttrs = block?.attributes || {};
       const patch = input?.attributes || {};
+      const keys = Object.keys(patch);
+      // RichTextValue objects don't stringify cleanly; expose `.text` so the
+      // diff isn't a wall of "{}" placeholders.
+      const norm = (v) =>
+        v && typeof v === 'object' && typeof v.text === 'string' ? v.text : v;
       return {
         kind: 'attrs',
         clientId,
         before: JSON.stringify(
-          Object.fromEntries(
-            Object.keys(patch).map((k) => [k, beforeAttrs[k]]),
-          ),
+          Object.fromEntries(keys.map((k) => [k, norm(beforeAttrs[k])])),
           null,
           2,
         ),
-        after: JSON.stringify(patch, null, 2),
-        summary: `Update ${Object.keys(patch).length} attribute${Object.keys(patch).length === 1 ? '' : 's'} on ${block?.name || 'block'}`,
+        after: JSON.stringify(
+          Object.fromEntries(keys.map((k) => [k, norm(patch[k])])),
+          null,
+          2,
+        ),
+        summary: `Update ${keys.length} attribute${keys.length === 1 ? '' : 's'} on ${block?.name || 'block'}`,
       };
     }
     case 'editor__update_post': {
+      const fields = ['title', 'slug', 'excerpt', 'template', 'featured_media', 'author', 'meta'];
       const current = {};
-      if ('title' in (input || {})) current.title = ed?.getEditedPostAttribute?.('title') || '';
-      if ('excerpt' in (input || {})) current.excerpt = ed?.getEditedPostAttribute?.('excerpt') || '';
-      if ('status' in (input || {})) current.status = ed?.getEditedPostAttribute?.('status') || '';
+      for (const f of fields) {
+        if (f in (input || {})) current[f] = ed?.getEditedPostAttribute?.(f) ?? '';
+      }
       return {
         kind: 'post',
         before: JSON.stringify(current, null, 2),
@@ -162,7 +172,7 @@ function snapshotBefore(toolName, input) {
       };
     }
     case 'editor__recover_block': {
-      const ids = Array.isArray(input?.clientIds) ? input.clientIds : [];
+      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
       return {
         kind: 'recover',
         before: ids.map(blockText).filter(Boolean).join('\n\n'),
