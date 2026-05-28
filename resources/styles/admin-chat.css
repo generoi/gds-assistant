@@ -1236,11 +1236,24 @@ abbr.gds-tool {
   }
 }
 
+/*
+ * "Stopped" badge after the user cancels a run. Positioned above the composer
+ * so it doesn't overlap the input, and styled as a proper chip so it reads as
+ * a status (instead of floating red text). Fades after 2s.
+ */
 .gds-assistant__stopped {
   position: absolute;
-  right: 52px;
+  right: 16px;
+  bottom: calc(100% + 4px);
+  padding: 2px 8px;
   font-size: 11px;
-  color: #d63638;
+  line-height: 1.4;
+  color: #b32d2e;
+  background: #fce9ea;
+  border: 1px solid #f5c2c4;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
   animation: gds-assistant-fade-out 2s ease-out forwards;
 }
 

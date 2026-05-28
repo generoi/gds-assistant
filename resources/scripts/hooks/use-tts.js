@@ -9,8 +9,10 @@
 import {useEffect, useState} from '@wordpress/element';
 
 const ENABLED_KEY = 'gds-assistant-read-aloud';
+const VOICE_MODE_KEY = 'gds-assistant-voice-mode';
 const LANG_KEY = 'gds-assistant-voice-lang';
 const PREF_EVENT = 'gds-assistant-tts-pref';
+const VOICE_MODE_EVENT = 'gds-assistant-voice-mode-pref';
 // Default Web Speech rate is 1.0; macOS system voices feel sluggish at that.
 // 1.35 is noticeably snappier without sounding chipmunked — still well below
 // the typical comprehension ceiling of ~1.7x.
@@ -74,6 +76,55 @@ export function useTtsEnabled() {
     setEnabledState(next);
     // Turning the toggle off mid-speech should silence it immediately.
     if (!next) cancelTts();
+  };
+
+  return [enabled, setEnabled];
+}
+
+// ── Voice mode preference (silence-based auto-send) ─────────
+
+function readVoiceMode() {
+  try {
+    return localStorage.getItem(VOICE_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeVoiceMode(value) {
+  try {
+    if (value) {
+      localStorage.setItem(VOICE_MODE_KEY, '1');
+    } else {
+      localStorage.removeItem(VOICE_MODE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(new CustomEvent(VOICE_MODE_EVENT));
+}
+
+/**
+ * React hook for the "Voice mode" preference — when on, the mic auto-sends
+ * the message after a short silence (Skype-style turn taking) instead of
+ * just dictating into the composer. Mirrors useTtsEnabled in shape.
+ */
+export function useVoiceMode() {
+  const [enabled, setEnabledState] = useState(readVoiceMode);
+
+  useEffect(() => {
+    const sync = () => setEnabledState(readVoiceMode());
+    window.addEventListener('storage', sync);
+    window.addEventListener(VOICE_MODE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(VOICE_MODE_EVENT, sync);
+    };
+  }, []);
+
+  const setEnabled = (value) => {
+    writeVoiceMode(!!value);
+    setEnabledState(!!value);
   };
 
   return [enabled, setEnabled];
@@ -158,39 +209,64 @@ function pickVoice(voices, lang) {
   );
 }
 
+// Session-level state so a streamed reply (many speakAppend calls) still emits
+// a SINGLE tts-start at the first utterance and a SINGLE tts-end when the
+// whole queue finally drains. Without this the mic auto-pause would chatter
+// on and off as each sentence finishes.
+let outstandingUtterances = 0;
+let sessionActive = false;
+
+function markUtteranceStart() {
+  if (!sessionActive) {
+    sessionActive = true;
+    window.dispatchEvent(new CustomEvent(TTS_START_EVENT));
+  }
+}
+
+function markUtteranceEnd() {
+  outstandingUtterances = Math.max(0, outstandingUtterances - 1);
+  if (outstandingUtterances === 0 && sessionActive) {
+    sessionActive = false;
+    window.dispatchEvent(new CustomEvent(TTS_END_EVENT));
+  }
+}
+
 function queueUtterances(chunks, lang) {
   const synth = window.speechSynthesis;
   const voices = synth.getVoices?.() || [];
   const voice = pickVoice(voices, lang);
-  // Only fire start/end events on the FIRST and LAST utterances so listeners
-  // (the mic auto-pause) see one start and one end per AI reply, even though
-  // the reply is split into multiple speak() calls internally.
-  let firstStartFired = false;
-  let endsRemaining = chunks.length;
-  const fireStart = () => {
-    if (firstStartFired) return;
-    firstStartFired = true;
-    window.dispatchEvent(new CustomEvent(TTS_START_EVENT));
-  };
-  const tickEnd = () => {
-    endsRemaining -= 1;
-    if (endsRemaining <= 0) {
-      window.dispatchEvent(new CustomEvent(TTS_END_EVENT));
-    }
-  };
   for (const chunk of chunks) {
     const u = new window.SpeechSynthesisUtterance(chunk);
     if (lang) u.lang = lang;
     if (voice) u.voice = voice;
     u.rate = TTS_RATE;
-    u.onstart = fireStart;
-    u.onend = tickEnd;
-    u.onerror = tickEnd;
+    u.onstart = markUtteranceStart;
+    u.onend = markUtteranceEnd;
+    u.onerror = markUtteranceEnd;
+    outstandingUtterances += 1;
     synth.speak(u);
   }
 }
 
-/** Start speaking. Cancels any in-flight utterance first. */
+/**
+ * Append text to the active TTS queue without canceling what's already
+ * playing. The streaming-read-aloud controller calls this once per
+ * sentence-complete chunk so longer replies start narrating immediately
+ * instead of waiting for the full message.
+ */
+export function speakAppend(text, lang) {
+  if (!ttsSupported()) return;
+  const clean = cleanForSpeech(text);
+  if (!clean) return;
+  const chunks = chunkForUtterance(clean, 220);
+  voicesReady().then(() => queueUtterances(chunks, lang));
+}
+
+/**
+ * Start a fresh utterance session — cancels anything currently playing then
+ * speaks the given text. Use for one-shot reads (e.g. completed messages with
+ * no streaming). For streaming, use speakAppend after an initial cancelTts.
+ */
 export function speak(text, lang) {
   if (!ttsSupported()) return;
   const clean = cleanForSpeech(text);
@@ -204,7 +280,7 @@ export function speak(text, lang) {
   // no-op (Chrome returns [] from getVoices() until `voiceschanged` fires).
   const launch = () => queueUtterances(chunks, lang);
   const needCancel = synth.speaking || synth.pending;
-  if (needCancel) synth.cancel();
+  if (needCancel) cancelTts();
   voicesReady().then(() => {
     if (needCancel) {
       setTimeout(launch, 50);
@@ -217,7 +293,9 @@ export function speak(text, lang) {
 export function cancelTts() {
   if (!ttsSupported()) return;
   const synth = window.speechSynthesis;
-  const wasActive = synth.speaking || synth.pending;
+  const wasActive = sessionActive || synth.speaking || synth.pending;
+  outstandingUtterances = 0;
+  sessionActive = false;
   try {
     synth.cancel();
   } catch {

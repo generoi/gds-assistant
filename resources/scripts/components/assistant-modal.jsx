@@ -12,8 +12,9 @@ import {useVoiceInput} from '../hooks/use-voice-input';
 import {useEditorSelection} from '../hooks/use-editor-selection';
 import {
   useTtsEnabled,
+  useVoiceMode,
   ttsSupported,
-  speak,
+  speakAppend,
   cancelTts,
   extractAssistantText,
   readVoiceLang,
@@ -1319,13 +1320,45 @@ function MicButton() {
   const [langOpen, setLangOpen] = useState(false);
   const wrapRef = useRef(null);
   const [readAloud, setReadAloud] = useTtsEnabled();
+  const [voiceMode, setVoiceMode] = useVoiceMode();
   const ttsAvail = ttsSupported();
+  // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
+  // every render and so its handlers see the freshest composer/threadRuntime
+  // values.
+  const silenceTimerRef = useRef(null);
+  const voiceModeRef = useRef(voiceMode);
+  const hasFinalRef = useRef(false);
+  useEffect(() => {
+    voiceModeRef.current = voiceMode;
+  }, [voiceMode]);
   const {supported, listening, start, stop} = useVoiceInput({
     lang,
-    onResult: (transcript) => {
+    onResult: (transcript, isFinal) => {
       const base = baseRef.current;
       const sep = base && !/\s$/.test(base) ? ' ' : '';
       composer.setText(base + sep + transcript);
+
+      if (isFinal) hasFinalRef.current = true;
+
+      // Voice mode: any result event (interim or final) resets the silence
+      // window; if no further events arrive within SEND_AFTER_SILENCE_MS the
+      // composer auto-sends. We only arm after we've seen at least one final
+      // so the user has to actually say something.
+      if (voiceModeRef.current) {
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null;
+          if (!hasFinalRef.current) return;
+          const text = composer.getState?.()?.text || '';
+          if (!text.trim()) return;
+          hasFinalRef.current = false;
+          baseRef.current = '';
+          composer.send?.();
+        }, 1500);
+      }
     },
   });
 
@@ -1406,10 +1439,16 @@ function MicButton() {
   const handle = () => {
     if (listening) {
       intendsRef.current = false;
+      // Explicit stop overrides any pending auto-send timer.
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       stop();
       return;
     }
     intendsRef.current = true;
+    hasFinalRef.current = false;
     // User taking a turn — shut the AI up so we don't transcribe its voice.
     cancelTts();
     baseRef.current = composer.getState?.()?.text || '';
@@ -1481,6 +1520,22 @@ function MicButton() {
               </span>
             </button>
           )}
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={voiceMode}
+            className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${voiceMode ? ' is-active' : ''}`}
+            onClick={() => setVoiceMode(!voiceMode)}
+            title="Auto-send the message after a short pause when dictating"
+          >
+            <span>Voice mode (auto-send)</span>
+            <span
+              className={`gds-assistant__voice-switch${voiceMode ? ' is-on' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="gds-assistant__voice-switch-knob" />
+            </span>
+          </button>
         </div>
       )}
       <button
@@ -1557,38 +1612,86 @@ function ReadAloudController() {
     if (!enabled || !ttsSupported()) return undefined;
 
     let wasRunning = false;
-    let lastSpokenId = null;
+    // Per-message bookkeeping for streaming reads. We track the offset into
+    // the message's plain text that we've already queued for speech, so each
+    // tick we only enqueue the *new* fully-formed sentences. Map keyed by a
+    // stable per-message key so an interim id changing to a final id (which
+    // assistant-ui sometimes does on completion) doesn't reset progress.
+    const progress = new Map(); // key -> {offset, lastTextLen, finalised}
+
+    const speakUpTo = (key, text, lang, atEnd) => {
+      const state = progress.get(key) || {offset: 0, lastTextLen: 0, finalised: false};
+      const remainder = text.slice(state.offset);
+      if (!remainder.length) {
+        progress.set(key, {...state, lastTextLen: text.length});
+        return;
+      }
+
+      // Mid-stream: only queue *complete* sentences so we don't speak a half
+      // word the engine then re-pronounces when the next token arrives. At
+      // the end of the run, just speak everything that's left regardless.
+      let consume = 0;
+      if (atEnd) {
+        consume = remainder.length;
+      } else {
+        // Last sentence-terminator in the remainder. JS regex doesn't expose
+        // lastIndexOf for patterns, so iterate.
+        const re = /[.!?。！？]["')\]]?(?=\s|$)/g;
+        let m;
+        let lastEnd = -1;
+        while ((m = re.exec(remainder)) !== null) {
+          lastEnd = m.index + m[0].length;
+        }
+        if (lastEnd < 0) return;
+        // Don't speak less than a few words; avoids machine-gun queueing
+        // when the model emits short fragments token-by-token.
+        if (lastEnd < 16) return;
+        consume = lastEnd;
+      }
+
+      const chunk = remainder.slice(0, consume).trim();
+      if (chunk) speakAppend(chunk, lang);
+      progress.set(key, {
+        offset: state.offset + consume,
+        lastTextLen: text.length,
+        finalised: atEnd,
+      });
+    };
 
     const tick = () => {
       const state = threadRuntime.getState?.();
       if (!state) return;
       const running = !!state.isRunning;
+      const messages = state.messages || [];
 
-      // Run started — silence whatever we were saying about the prior turn.
+      // Run just started — drop anything left over from the previous turn so
+      // we don't keep narrating an obsolete answer.
       if (running && !wasRunning) {
         cancelTts();
+        progress.clear();
       }
 
-      // Run completed — speak the latest assistant message exactly once.
-      if (!running && wasRunning) {
-        const messages = state.messages || [];
-        for (let i = messages.length - 1; i >= 0; i--) {
-          const m = messages[i];
-          if (m?.role !== 'assistant') continue;
-          if (m.id && m.id === lastSpokenId) break;
-          const text = extractAssistantText(m);
-          if (text) {
-            lastSpokenId = m.id || `idx:${i}`;
-            speak(text, readVoiceLang());
-          }
+      // Find the latest assistant message (the one that may be growing).
+      let latest = null;
+      let latestIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'assistant') {
+          latest = messages[i];
+          latestIdx = i;
           break;
         }
+      }
+
+      if (latest) {
+        const key = latest.id || `idx:${latestIdx}`;
+        const text = extractAssistantText(latest);
+        if (text) speakUpTo(key, text, readVoiceLang(), !running);
       }
 
       wasRunning = running;
     };
 
-    tick(); // seed
+    tick();
     const unsub = threadRuntime.subscribe(tick);
     return () => {
       if (typeof unsub === 'function') unsub();
@@ -1731,6 +1834,9 @@ function Composer() {
 
   const handleCancel = useCallback(() => {
     threadRuntime.cancelRun();
+    // Stop also silences any in-flight read-aloud — otherwise the AI keeps
+    // talking even after the user pressed Stop, which feels broken.
+    cancelTts();
     setWasStopped(true);
   }, [threadRuntime]);
 
