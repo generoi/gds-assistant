@@ -9,9 +9,20 @@
  */
 
 import {getCurrentSelectionContext} from './selection';
+import {confirmEditsEnabled, enqueueApproval} from './approval-queue';
 
 const wpData = () => window.wp?.data;
 const wpBlocks = () => window.wp?.blocks;
+
+// Editor tools the inline-diff approval gate applies to (the writes). Reads
+// and DOM probes go through unguarded.
+const WRITE_TOOLS = new Set([
+  'editor__replace_blocks',
+  'editor__insert_blocks',
+  'editor__update_block_attributes',
+  'editor__update_post',
+  'editor__recover_block',
+]);
 
 /** Is the block editor present and ready on this page? */
 export function hasEditor() {
@@ -78,17 +89,126 @@ export function getEditorContext() {
 }
 
 /**
+ * Snapshot the relevant editor state for a write tool's "before" pane in the
+ * diff card. Lightweight: we just pull plain text + (for attribute changes)
+ * the current attribute values, not the full serialised markup.
+ */
+function snapshotForApproval(toolName, input) {
+  const be = wpData()?.select?.('core/block-editor');
+  const ed = wpData()?.select?.('core/editor');
+  const blocks = wpBlocks();
+
+  const blockText = (clientId) => {
+    const b = be?.getBlock?.(clientId);
+    if (!b) return '';
+    try {
+      return blocks?.serialize?.([b]) || '';
+    } catch {
+      return '';
+    }
+  };
+
+  switch (toolName) {
+    case 'editor__replace_blocks': {
+      const ids = Array.isArray(input?.clientIds) ? input.clientIds : [];
+      return {
+        kind: 'replace',
+        before: ids.map(blockText).filter(Boolean).join('\n\n'),
+        after: typeof input?.content === 'string' ? input.content : '',
+        summary: `Replace ${ids.length} block${ids.length === 1 ? '' : 's'}`,
+      };
+    }
+    case 'editor__insert_blocks': {
+      const after = typeof input?.content === 'string' ? input.content : '';
+      // Rough count by walking top-level block comments in the markup.
+      const count = (after.match(/<!--\s*wp:/g) || []).length || 1;
+      return {
+        kind: 'insert',
+        before: '',
+        after,
+        summary: `Insert ${count} block${count === 1 ? '' : 's'}`,
+      };
+    }
+    case 'editor__update_block_attributes': {
+      const clientId = input?.clientId;
+      const block = clientId ? be?.getBlock?.(clientId) : null;
+      const beforeAttrs = block?.attributes || {};
+      const patch = input?.attributes || {};
+      return {
+        kind: 'attrs',
+        clientId,
+        before: JSON.stringify(
+          Object.fromEntries(
+            Object.keys(patch).map((k) => [k, beforeAttrs[k]]),
+          ),
+          null,
+          2,
+        ),
+        after: JSON.stringify(patch, null, 2),
+        summary: `Update ${Object.keys(patch).length} attribute${Object.keys(patch).length === 1 ? '' : 's'} on ${block?.name || 'block'}`,
+      };
+    }
+    case 'editor__update_post': {
+      const current = {};
+      if ('title' in (input || {})) current.title = ed?.getEditedPostAttribute?.('title') || '';
+      if ('excerpt' in (input || {})) current.excerpt = ed?.getEditedPostAttribute?.('excerpt') || '';
+      if ('status' in (input || {})) current.status = ed?.getEditedPostAttribute?.('status') || '';
+      return {
+        kind: 'post',
+        before: JSON.stringify(current, null, 2),
+        after: JSON.stringify(input || {}, null, 2),
+        summary: 'Update post fields',
+      };
+    }
+    case 'editor__recover_block': {
+      const ids = Array.isArray(input?.clientIds) ? input.clientIds : [];
+      return {
+        kind: 'recover',
+        before: ids.map(blockText).filter(Boolean).join('\n\n'),
+        after: '(re-parsed from existing attributes)',
+        summary: `Recover ${ids.length} invalid block${ids.length === 1 ? '' : 's'}`,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Run a client editor tool. Always resolves to a plain result object (never
  * throws) so it can be posted straight back to the loop.
  *
- * @param {string} toolName Editor tool name (editor__*).
- * @param {Object} input    Tool input from the model.
+ * @param {string} toolName  Editor tool name (editor__*).
+ * @param {Object} input     Tool input from the model.
+ * @param {string} toolUseId Stable tool_use_id (used to correlate with the
+ *                           in-chat approval card).
  * @return {Promise<Object>} Result object (or {error}).
  */
-export async function executeClientTool(toolName, input = {}) {
+export async function executeClientTool(toolName, input = {}, toolUseId = '') {
   if (!hasEditor()) {
     return {error: 'No block editor is open on this page.'};
   }
+
+  // Inline-diff approval gate: pause write tools until the user clicks Apply
+  // or Reject in the chat. Read-only tools (read_selection, query_dom, focus,
+  // open_sidebar) execute unguarded.
+  if (WRITE_TOOLS.has(toolName) && confirmEditsEnabled() && toolUseId) {
+    const snapshot = snapshotForApproval(toolName, input);
+    const decision = await enqueueApproval(toolUseId, {
+      toolName,
+      input,
+      ...(snapshot || {}),
+    });
+    if (!decision.approved) {
+      return {
+        rejected: true,
+        error: decision.aborted
+          ? 'Edit canceled — chat closed before the user decided.'
+          : 'Edit rejected by user.',
+      };
+    }
+  }
+
   try {
     switch (toolName) {
       case 'editor__read_selection':

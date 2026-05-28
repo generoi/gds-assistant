@@ -20,6 +20,15 @@ import {
   readVoiceLang,
   TTS_EVENTS,
 } from '../hooks/use-tts';
+import {
+  subscribeApprovals,
+  getApproval,
+  resolveApproval,
+  clearAllApprovals,
+  confirmEditsEnabled,
+  setConfirmEdits,
+  CONFIRM_PREF_EVENT,
+} from '../editor/approval-queue';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -1321,6 +1330,16 @@ function MicButton() {
   const wrapRef = useRef(null);
   const [readAloud, setReadAloud] = useTtsEnabled();
   const [voiceMode, setVoiceMode] = useVoiceMode();
+  const [confirmEdits, setConfirmEditsState] = useState(confirmEditsEnabled);
+  useEffect(() => {
+    const sync = () => setConfirmEditsState(confirmEditsEnabled());
+    window.addEventListener('storage', sync);
+    window.addEventListener(CONFIRM_PREF_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(CONFIRM_PREF_EVENT, sync);
+    };
+  }, []);
   const ttsAvail = ttsSupported();
   // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
   // every render and so its handlers see the freshest composer/threadRuntime
@@ -1536,6 +1555,25 @@ function MicButton() {
               <span className="gds-assistant__voice-switch-knob" />
             </span>
           </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={confirmEdits}
+            className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${confirmEdits ? ' is-active' : ''}`}
+            onClick={() => {
+              setConfirmEdits(!confirmEdits);
+              setConfirmEditsState(!confirmEdits);
+            }}
+            title="Show a diff card with Apply / Reject before editor changes"
+          >
+            <span>Confirm edits before applying</span>
+            <span
+              className={`gds-assistant__voice-switch${confirmEdits ? ' is-on' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="gds-assistant__voice-switch-knob" />
+            </span>
+          </button>
         </div>
       )}
       <button
@@ -1603,6 +1641,14 @@ function MicButton() {
 //   - a new run starts (user sent the next message)
 //   - the toggle is flipped off
 //   - the component unmounts (chat panel closes)
+
+// Auto-reject any pending edit approvals if the chat goes away (e.g. the
+// user navigates off the page). Otherwise the model would be stuck waiting
+// on a Promise that never resolves.
+function ApprovalCleanup() {
+  useEffect(() => () => clearAllApprovals(), []);
+  return null;
+}
 
 function ReadAloudController() {
   const [enabled] = useTtsEnabled();
@@ -1882,6 +1928,7 @@ function Composer() {
   return (
     <ComposerPrimitive.Root className="gds-assistant__composer">
       <ReadAloudController />
+      <ApprovalCleanup />
       {slashQuery !== null && (
         <SlashAutocomplete
           query={slashQuery}
@@ -2280,18 +2327,91 @@ function summarizeArgs(args) {
     .join(' ');
 }
 
+/**
+ * Hook: live snapshot of the inline-edit approval entry for this tool call,
+ * if any. Re-renders the host card whenever the queue changes.
+ */
+function usePendingApproval(toolCallId) {
+  const [entry, setEntry] = useState(() => getApproval(toolCallId));
+  useEffect(() => {
+    const sync = () => setEntry(getApproval(toolCallId));
+    sync();
+    return subscribeApprovals(sync);
+  }, [toolCallId]);
+  return entry;
+}
+
+/**
+ * Diff card content for an editor write tool waiting on inline approval.
+ * Plain text "Before" / "After" panes — character-level highlighting is a
+ * follow-up; v1 just shows the two states side by side so the user can see
+ * what's about to change before they click Apply.
+ */
+function EditApprovalCard({entry, toolCallId}) {
+  if (!entry) return null;
+  const showBefore = entry.kind === 'replace' || entry.kind === 'attrs' || entry.kind === 'post' || entry.kind === 'recover';
+  return (
+    <div className="gds-assistant__edit-diff">
+      <div className="gds-assistant__edit-diff-title">
+        {entry.summary || 'Proposed edit'}
+      </div>
+      <div className="gds-assistant__edit-diff-panes">
+        {showBefore && (
+          <div className="gds-assistant__edit-diff-pane gds-assistant__edit-diff-pane--before">
+            <div className="gds-assistant__edit-diff-label">Before</div>
+            <pre className="gds-assistant__edit-diff-content">
+              {entry.before || '(empty)'}
+            </pre>
+          </div>
+        )}
+        <div className="gds-assistant__edit-diff-pane gds-assistant__edit-diff-pane--after">
+          <div className="gds-assistant__edit-diff-label">After</div>
+          <pre className="gds-assistant__edit-diff-content">
+            {entry.after || '(empty)'}
+          </pre>
+        </div>
+      </div>
+      <div className="gds-assistant__edit-diff-actions">
+        <button
+          type="button"
+          className="gds-assistant__edit-diff-btn gds-assistant__edit-diff-btn--reject"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resolveApproval(toolCallId, false);
+          }}
+        >
+          Reject
+        </button>
+        <button
+          type="button"
+          className="gds-assistant__edit-diff-btn gds-assistant__edit-diff-btn--apply"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resolveApproval(toolCallId, true);
+          }}
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
   const argsHint = summarizeArgs(args);
   const ctx = useContext(UndoContext);
   const {undoableActions, onUndo, pendingApprovalIds} = ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
+  const editApproval = usePendingApproval(toolCallId);
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
-      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
+      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval || editApproval ? 'gds-assistant__tool-call--approval' : ''}`}
     >
-      <details>
+      <details open={!!editApproval || undefined}>
         <summary className="gds-assistant__tool-call-summary">
           <span className="gds-assistant__tool-call-name">{toolName}</span>
           {argsHint && (
@@ -2304,7 +2424,12 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
               Approval required
             </span>
           )}
-          {!needsApproval && result === undefined && (
+          {!needsApproval && editApproval && (
+            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--approval">
+              Awaiting confirmation
+            </span>
+          )}
+          {!needsApproval && !editApproval && result === undefined && (
             <span className="gds-assistant__tool-call-status">Running...</span>
           )}
           {!needsApproval && result !== undefined && !isError && (
@@ -2341,6 +2466,9 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
                 {undo.pending ? 'Undoing…' : '↩ Undo'}
               </button>)}
         </summary>
+        {editApproval && (
+          <EditApprovalCard entry={editApproval} toolCallId={toolCallId} />
+        )}
         {args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">
             {JSON.stringify(args, null, 2)}
