@@ -831,6 +831,145 @@ abbr.gds-tool {
   background: #fcf0f1;
 }
 
+.gds-assistant__tool-call--approval {
+  border-color: #2271b1;
+  background: #f1f7ff;
+}
+
+/*
+ * Unified diff inside an editor tool-call card. Renders after the mutation
+ * applies — no buttons, no gate, just so the user can see what changed in the
+ * conversation record. Line prefixes (+/-/⋮) are in a narrow gutter so the
+ * content text aligns regardless of length.
+ */
+.gds-assistant__edit-diff {
+  padding: 8px 10px 10px;
+  border-top: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+.gds-assistant__edit-diff-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4f80;
+  margin-bottom: 6px;
+}
+
+.gds-assistant__edit-diff-unified {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #1e1e1e;
+  max-height: 320px;
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 6px 0;
+}
+
+.gds-assistant__edit-diff-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.gds-assistant__edit-diff-prefix {
+  flex: 0 0 22px;
+  text-align: center;
+  color: #aaa;
+  user-select: none;
+}
+
+.gds-assistant__edit-diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-right: 10px;
+}
+
+.gds-assistant__edit-diff-line--add {
+  background: #e9f7ec;
+  color: #1a5e2b;
+}
+
+.gds-assistant__edit-diff-line--add .gds-assistant__edit-diff-prefix {
+  color: #2ea043;
+}
+
+.gds-assistant__edit-diff-line--del {
+  background: #fdebec;
+  color: #8a1f27;
+}
+
+.gds-assistant__edit-diff-line--del .gds-assistant__edit-diff-prefix {
+  color: #c4373f;
+}
+
+.gds-assistant__edit-diff-line--gap {
+  color: #aaa;
+  font-style: italic;
+}
+
+/*
+ * Inline word-level highlight inside a paired modified line (git's
+ * --word-diff). Unchanged tokens inherit the row's pale tint; changed
+ * tokens overlay a darker tint so the eye lands on the actual replacement.
+ */
+.gds-assistant__edit-diff-word--eq {
+  /* No background — the row tint already says "this line changed".
+     Slightly softer text colour so the changed tokens stand out. */
+  opacity: 0.75;
+}
+
+.gds-assistant__edit-diff-word--del {
+  background: #f7c2c6;
+  color: #5a0d14;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.gds-assistant__edit-diff-word--add {
+  background: #b6e3c0;
+  color: #0c451e;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/*
+ * Inline block reference chip in user chat messages — replaces the raw
+ * "(block <clientId>)" suffix the toolbar dropdowns and Cmd+J emit so the
+ * conversation reads as "rewrite this [paragraph]" instead of "rewrite this
+ * (block 2947eb88-…)". Clickable to scroll the editor to that block.
+ */
+.gds-assistant__block-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  margin: 0 2px;
+  background: #e6f0fa;
+  border: 1px solid #c2d8ec;
+  border-radius: 999px;
+  color: #1d4f80;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: inherit;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.gds-assistant__block-chip:hover {
+  background: #d8e8f5;
+  border-color: #a7c4e0;
+}
+
+.gds-assistant__block-chip-icon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .gds-assistant__tool-call-summary {
   padding: 6px 10px;
   cursor: pointer;
@@ -897,6 +1036,64 @@ abbr.gds-tool {
   padding: 12px 16px;
   border-top: 1px solid #e0e0e0;
   background: #fff;
+}
+
+/*
+ * Editor-selection chip — surfaced above the input when the user has marked
+ * text in / clicked into a block / selected several blocks. Occupies a full
+ * row above the input via flex-basis: 100% (composer is a wrapping flex row).
+ *
+ * The icon + label stay on a single line; the snippet clamps to 2 lines on
+ * its own so long selections stay readable instead of getting cut off after a
+ * few words. Border-radius matches the size: pill at one line, rounded
+ * rectangle once the snippet wraps to two lines.
+ */
+.gds-assistant__selection-chip {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #d6e4f0;
+  border-radius: 12px;
+  background: #f1f7ff;
+  color: #1d4f80;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.gds-assistant__selection-chip svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.gds-assistant__selection-chip-label {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gds-assistant__selection-chip-text {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  color: #2a2a2a;
+
+  /* Clamp the snippet to two lines so a long selection is still readable
+   * (single-line ellipsis cuts off after a handful of words). */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .gds-assistant__input {
@@ -1046,6 +1243,60 @@ abbr.gds-tool {
   font-size: 12px;
 }
 
+/* Visual divider between the language list and the read-aloud toggle. */
+.gds-assistant__voice-langs-sep {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 6px;
+}
+
+/*
+ * "Read replies aloud" toggle row. Mirrors the language item layout (label
+ * left, control right) but swaps the check for a small switch so it reads as
+ * a stateful preference rather than a one-shot selection.
+ */
+.gds-assistant__voice-langs-toggle {
+  color: #1e1e1e;
+  font-weight: normal;
+
+  &.is-active {
+    color: #1e1e1e;
+    font-weight: normal;
+  }
+}
+
+.gds-assistant__voice-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #c3c4c7;
+  transition: background-color 120ms ease;
+  flex: 0 0 auto;
+}
+
+/* On-state colors. Standalone selectors instead of nested `&.is-on` /
+   `.is-on &` so they survive native CSS nesting (which can be flaky around
+   ancestor-side combinators in this build). */
+.gds-assistant__voice-switch.is-on {
+  background: #2271b1;
+}
+
+.gds-assistant__voice-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 120ms ease;
+}
+
+.gds-assistant__voice-switch.is-on .gds-assistant__voice-switch-knob {
+  transform: translateX(12px);
+}
+
 /* Active/recording state — solid fill + white icon + pulsing ring. Written as a
    standalone selector (not `&--listening`): this build uses native CSS nesting,
    which can't concatenate text onto `&`, so the SCSS-style form silently drops.
@@ -1124,11 +1375,24 @@ abbr.gds-tool {
   }
 }
 
+/*
+ * "Stopped" badge after the user cancels a run. Positioned above the composer
+ * so it doesn't overlap the input, and styled as a proper chip so it reads as
+ * a status (instead of floating red text). Fades after 2s.
+ */
 .gds-assistant__stopped {
   position: absolute;
-  right: 52px;
+  right: 16px;
+  bottom: calc(100% + 4px);
+  padding: 2px 8px;
   font-size: 11px;
-  color: #d63638;
+  line-height: 1.4;
+  color: #b32d2e;
+  background: #fce9ea;
+  border: 1px solid #f5c2c4;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
   animation: gds-assistant-fade-out 2s ease-out forwards;
 }
 
@@ -1589,3 +1853,4 @@ abbr.gds-tool {
     height: calc(100vh - 100px);
   }
 }
+

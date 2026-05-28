@@ -1,5 +1,11 @@
 import {useExternalStoreRuntime} from '@assistant-ui/react';
-import {useState, useRef, useCallback, useMemo} from '@wordpress/element';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useMemo,
+} from '@wordpress/element';
 import {getEditorContext, executeClientTool} from '../editor/editor-bridge';
 
 // Session state
@@ -1038,6 +1044,30 @@ export function useAssistantRuntime() {
 
   // Keep ref to onNew for approval callbacks
   onNewRef.current = onNew;
+
+  // Expose hooks for external integrations (e.g. the Gutenberg block toolbar)
+  // to send a chat message as the user and open the chat panel. Attached to
+  // window.gdsAssistant alongside the localized config — both keys are added,
+  // the localized properties are preserved.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    window.gdsAssistant = window.gdsAssistant || {};
+    window.gdsAssistant.sendChatMessage = (text) => {
+      if (typeof text !== 'string' || !text.trim()) return;
+      onNewRef.current?.({content: text});
+    };
+    window.gdsAssistant.openChat = () => {
+      const trigger = document.querySelector('.gds-assistant__trigger');
+      if (trigger && trigger.getAttribute('data-state') !== 'open') {
+        trigger.click();
+      }
+    };
+    return () => {
+      if (!window.gdsAssistant) return;
+      delete window.gdsAssistant.sendChatMessage;
+      delete window.gdsAssistant.openChat;
+    };
+  }, []);
 
   // Approve/Deny always act on the FIRST pending approval; the server
   // batch-resolves ALL currently-pending stubs when any one is approved or

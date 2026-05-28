@@ -8,8 +8,21 @@
  * text-range edits are deferred.
  */
 
+import {getCurrentSelectionContext} from './selection';
+
 const wpData = () => window.wp?.data;
 const wpBlocks = () => window.wp?.blocks;
+
+// Editor tools we capture a before-snapshot for, so the chat tool-call card
+// can render a real unified diff after the change is applied. Read-only and
+// DOM probe tools have no "before" to compare against.
+const WRITE_TOOLS = new Set([
+  'editor__replace_blocks',
+  'editor__insert_blocks',
+  'editor__update_block_attributes',
+  'editor__update_post',
+  'editor__recover_block',
+]);
 
 /** Is the block editor present and ready on this page? */
 export function hasEditor() {
@@ -43,6 +56,24 @@ export function getEditorContext() {
     // selection store not ready — treat as no text selection
   }
 
+  // What the user has selected right now — text range / whole block /
+  // multi-block. The server prepends a short summary to the latest user
+  // message body so the model has the snippet inline (avoids an
+  // `editor__read_selection` round-trip on common "rewrite this" / "translate
+  // this" prompts). Lives outside the system prompt to stay cache-friendly
+  // across selection changes.
+  const sel = getCurrentSelectionContext();
+  const selectionPayload = {
+    selection_mode: sel?.mode || null,
+    selected_text: sel?.mode === 'text-range' ? sel.selectedText : null,
+    selected_block_text: sel?.mode === 'whole-block' ? sel.blockText : null,
+    selected_block_label: sel?.mode !== 'multi-block' ? sel?.blockLabel || null : null,
+    selected_block_client_id:
+      sel?.mode !== 'multi-block' ? sel?.clientId || null : null,
+    selected_block_labels: sel?.mode === 'multi-block' ? sel.blockLabels : null,
+    selected_block_client_ids: sel?.mode === 'multi-block' ? sel.clientIds : null,
+  };
+
   return {
     has_editor: true,
     post_id: ed.getCurrentPostId?.() || null,
@@ -50,6 +81,7 @@ export function getEditorContext() {
     selected_block_count: ids.length,
     selected_block_types: types.slice(0, 20),
     has_text_selection: hasText,
+    ...selectionPayload,
     // Derived from the theme (theme.json settings.color.custom) so the model
     // knows whether raw hex is allowed without us hardcoding it.
     custom_colors: !be.getSettings?.()?.disableCustomColors,
@@ -57,43 +89,163 @@ export function getEditorContext() {
 }
 
 /**
+ * Snapshot the relevant editor state BEFORE a write tool runs so the
+ * tool-call card can show a real diff after it applies. We pull just enough
+ * to make the diff meaningful — serialised markup for block writes, current
+ * attribute values for attribute writes — not the full document.
+ */
+function snapshotBefore(toolName, input) {
+  const be = wpData()?.select?.('core/block-editor');
+  const ed = wpData()?.select?.('core/editor');
+  const blocks = wpBlocks();
+
+  const blockText = (clientId) => {
+    const b = be?.getBlock?.(clientId);
+    if (!b) return '';
+    try {
+      return blocks?.serialize?.([b]) || '';
+    } catch {
+      return '';
+    }
+  };
+
+  // Schema-aligned field names: write tools take snake_case input
+  // (client_ids, client_id, markup, after_client_id, attributes, etc.).
+  switch (toolName) {
+    case 'editor__replace_blocks': {
+      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
+      return {
+        kind: 'replace',
+        before: ids.map(blockText).filter(Boolean).join('\n\n'),
+        after: typeof input?.markup === 'string' ? input.markup : '',
+        summary: `Replace ${ids.length} block${ids.length === 1 ? '' : 's'}`,
+      };
+    }
+    case 'editor__insert_blocks': {
+      const after = typeof input?.markup === 'string' ? input.markup : '';
+      // Rough count by walking top-level block comments in the markup.
+      const count = (after.match(/<!--\s*wp:/g) || []).length || 1;
+      return {
+        kind: 'insert',
+        before: '',
+        after,
+        summary: `Insert ${count} block${count === 1 ? '' : 's'}`,
+      };
+    }
+    case 'editor__update_block_attributes': {
+      const clientId = input?.client_id;
+      const block = clientId ? be?.getBlock?.(clientId) : null;
+      const beforeAttrs = block?.attributes || {};
+      const patch = input?.attributes || {};
+      const keys = Object.keys(patch);
+      // RichTextValue objects don't stringify cleanly; expose `.text` so the
+      // diff isn't a wall of "{}" placeholders.
+      const norm = (v) =>
+        v && typeof v === 'object' && typeof v.text === 'string' ? v.text : v;
+      return {
+        kind: 'attrs',
+        clientId,
+        before: JSON.stringify(
+          Object.fromEntries(keys.map((k) => [k, norm(beforeAttrs[k])])),
+          null,
+          2,
+        ),
+        after: JSON.stringify(
+          Object.fromEntries(keys.map((k) => [k, norm(patch[k])])),
+          null,
+          2,
+        ),
+        summary: `Update ${keys.length} attribute${keys.length === 1 ? '' : 's'} on ${block?.name || 'block'}`,
+      };
+    }
+    case 'editor__update_post': {
+      const fields = ['title', 'slug', 'excerpt', 'template', 'featured_media', 'author', 'meta'];
+      const current = {};
+      for (const f of fields) {
+        if (f in (input || {})) current[f] = ed?.getEditedPostAttribute?.(f) ?? '';
+      }
+      return {
+        kind: 'post',
+        before: JSON.stringify(current, null, 2),
+        after: JSON.stringify(input || {}, null, 2),
+        summary: 'Update post fields',
+      };
+    }
+    case 'editor__recover_block': {
+      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
+      return {
+        kind: 'recover',
+        before: ids.map(blockText).filter(Boolean).join('\n\n'),
+        after: '(re-parsed from existing attributes)',
+        summary: `Recover ${ids.length} invalid block${ids.length === 1 ? '' : 's'}`,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Run a client editor tool. Always resolves to a plain result object (never
  * throws) so it can be posted straight back to the loop.
  *
- * @param {string} toolName Editor tool name (editor__*).
- * @param {Object} input    Tool input from the model.
+ * @param {string} toolName  Editor tool name (editor__*).
+ * @param {Object} input     Tool input from the model.
+ * @param {string} toolUseId Stable tool_use_id (used to correlate with the
+ *                           in-chat approval card).
  * @return {Promise<Object>} Result object (or {error}).
  */
 export async function executeClientTool(toolName, input = {}) {
   if (!hasEditor()) {
     return {error: 'No block editor is open on this page.'};
   }
+
+  // Capture a before-snapshot for write tools so the tool-call card can show
+  // a real diff of what changed (post-apply, no approval gate). Reads + DOM
+  // probes have nothing meaningful to diff.
+  const snap = WRITE_TOOLS.has(toolName) ? snapshotBefore(toolName, input) : null;
+
+  let result;
   try {
     switch (toolName) {
       case 'editor__read_selection':
-        return await readSelection();
+        result = await readSelection();
+        break;
       case 'editor__replace_blocks':
-        return replaceBlocks(input);
+        result = replaceBlocks(input);
+        break;
       case 'editor__insert_blocks':
-        return insertBlocks(input);
+        result = insertBlocks(input);
+        break;
       case 'editor__update_block_attributes':
-        return updateBlockAttributes(input);
+        result = updateBlockAttributes(input);
+        break;
       case 'editor__update_post':
-        return updatePost(input);
+        result = updatePost(input);
+        break;
       case 'editor__recover_block':
-        return recoverBlock(input);
+        result = recoverBlock(input);
+        break;
       case 'editor__query_dom':
-        return queryDom(input);
+        result = queryDom(input);
+        break;
       case 'editor__focus':
-        return focusElement(input);
+        result = focusElement(input);
+        break;
       case 'editor__open_sidebar':
-        return openSidebar(input);
+        result = openSidebar(input);
+        break;
       default:
         return {error: `Unknown editor tool: ${toolName}`};
     }
   } catch (e) {
     return {error: String(e?.message || e)};
   }
+
+  if (snap && result && typeof result === 'object' && !result.error) {
+    result.diff = snap;
+  }
+  return result;
 }
 
 // ── Ops ─────────────────────────────────────────────────────
@@ -412,6 +564,7 @@ function replaceBlocks(input = {}) {
   // target follow-up edits without re-reading (old ids are now dead).
   const newIds = parsed.map((b) => b.clientId);
   wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
+  highlightChangedBlocks(newIds);
   return {ok: true, replaced: ids.length, new_client_ids: newIds};
 }
 
@@ -471,6 +624,7 @@ function insertBlocks(input = {}) {
   } else {
     dispatch.insertBlocks(parsed);
   }
+  highlightChangedBlocks(newIds);
   return {ok: true, inserted: parsed.length, new_client_ids: newIds};
 }
 
@@ -492,6 +646,7 @@ function updateBlockAttributes(input = {}) {
   wpData()
     .dispatch('core/block-editor')
     .updateBlockAttributes(clientId, input.attributes || {});
+  highlightChangedBlocks([clientId]);
   return {ok: true, client_id: clientId};
 }
 
@@ -578,6 +733,7 @@ function recoverBlock(input = {}) {
     }
   }
 
+  highlightChangedBlocks(recovered.map((r) => r.new_client_id));
   return {ok: failed.length === 0, recovered, failed};
 }
 
@@ -591,6 +747,73 @@ function editorDocs() {
   const cvs = document.querySelector('iframe[name="editor-canvas"]');
   if (cvs?.contentDocument) docs.push(cvs.contentDocument);
   return docs;
+}
+
+// ── Visual "we just changed this" cue ───────────────────────
+// After each editor edit we briefly highlight the affected block(s) and scroll
+// the first into view, so it's obvious what the assistant just touched.
+
+const HIGHLIGHT_CSS = `
+.gds-assistant-changed-block {
+  animation: gds-assistant-block-flash 1.6s ease-out;
+  border-radius: 4px;
+}
+@keyframes gds-assistant-block-flash {
+  0% {
+    box-shadow:
+      0 0 0 2px rgba(255, 196, 0, 0.85),
+      0 0 0 6px rgba(255, 196, 0, 0.25);
+    background-color: rgba(255, 247, 196, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 196, 0, 0);
+    background-color: transparent;
+  }
+}`;
+
+// Inject the flash CSS into every editor doc that needs it (top doc + canvas
+// iframe). Cheap to call repeatedly — it skips docs that already have it.
+function ensureHighlightStyles() {
+  for (const doc of editorDocs()) {
+    if (!doc.head || doc.head.querySelector('style[data-gds-highlight]')) continue;
+    const style = doc.createElement('style');
+    style.setAttribute('data-gds-highlight', '');
+    style.textContent = HIGHLIGHT_CSS;
+    doc.head.appendChild(style);
+  }
+}
+
+/**
+ * Briefly highlight the blocks with these clientIds and scroll the first one
+ * into view. Silently no-ops if the block element isn't in the DOM yet.
+ *
+ * @param {string[]} clientIds Block clientIds to highlight.
+ */
+function highlightChangedBlocks(clientIds) {
+  if (!Array.isArray(clientIds) || clientIds.length === 0) return;
+  ensureHighlightStyles();
+  // Defer one frame so React has a chance to mount any newly-inserted blocks
+  // before we look them up by clientId.
+  requestAnimationFrame(() => {
+    let first = null;
+    for (const id of clientIds) {
+      for (const doc of editorDocs()) {
+        const el = doc.querySelector(`[data-block="${id}"]`);
+        if (!el) continue;
+        if (!first) first = el;
+        // Restart the animation if the same block flashes back-to-back.
+        el.classList.remove('gds-assistant-changed-block');
+        // Force reflow so re-adding the class restarts the animation.
+        void el.offsetWidth;
+        el.classList.add('gds-assistant-changed-block');
+        setTimeout(
+          () => el.classList.remove('gds-assistant-changed-block'),
+          1700,
+        );
+      }
+    }
+    first?.scrollIntoView({behavior: 'smooth', block: 'center'});
+  });
 }
 
 const capText = (v, n = 160) =>

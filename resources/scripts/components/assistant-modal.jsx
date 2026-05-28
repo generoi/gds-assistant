@@ -9,6 +9,22 @@ import {
   useMessage,
 } from '@assistant-ui/react';
 import {useVoiceInput} from '../hooks/use-voice-input';
+import {useEditorSelection} from '../hooks/use-editor-selection';
+import {
+  useTtsEnabled,
+  useVoiceMode,
+  ttsSupported,
+  speakAppend,
+  cancelTts,
+  extractAssistantText,
+  readVoiceLang,
+  TTS_EVENTS,
+} from '../hooks/use-tts';
+import {
+  diffLines,
+  collapseUnchanged,
+  pairModifiedLines,
+} from '../editor/diff';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -18,6 +34,7 @@ import {
   useMemo,
   createContext,
   useContext,
+  Fragment,
 } from '@wordpress/element';
 import {
   onUsageUpdate,
@@ -1308,12 +1325,46 @@ function MicButton() {
   const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
   const [langOpen, setLangOpen] = useState(false);
   const wrapRef = useRef(null);
+  const [readAloud, setReadAloud] = useTtsEnabled();
+  const [voiceMode, setVoiceMode] = useVoiceMode();
+  const ttsAvail = ttsSupported();
+  // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
+  // every render and so its handlers see the freshest composer/threadRuntime
+  // values.
+  const silenceTimerRef = useRef(null);
+  const voiceModeRef = useRef(voiceMode);
+  const hasFinalRef = useRef(false);
+  useEffect(() => {
+    voiceModeRef.current = voiceMode;
+  }, [voiceMode]);
   const {supported, listening, start, stop} = useVoiceInput({
     lang,
-    onResult: (transcript) => {
+    onResult: (transcript, isFinal) => {
       const base = baseRef.current;
       const sep = base && !/\s$/.test(base) ? ' ' : '';
       composer.setText(base + sep + transcript);
+
+      if (isFinal) hasFinalRef.current = true;
+
+      // Voice mode: any result event (interim or final) resets the silence
+      // window; if no further events arrive within SEND_AFTER_SILENCE_MS the
+      // composer auto-sends. We only arm after we've seen at least one final
+      // so the user has to actually say something.
+      if (voiceModeRef.current) {
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null;
+          if (!hasFinalRef.current) return;
+          const text = composer.getState?.()?.text || '';
+          if (!text.trim()) return;
+          hasFinalRef.current = false;
+          baseRef.current = '';
+          composer.send?.();
+        }, 1500);
+      }
     },
   });
 
@@ -1329,13 +1380,83 @@ function MicButton() {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [langOpen]);
 
+  // Skype-style half-duplex: while the user "wants the mic on" we shuttle it
+  // off during the AI's turn (so we don't transcribe its own voice back in)
+  // and turn it back on once the AI is done. The user's intent flips only on
+  // explicit mic taps — auto pause/resume keeps it consistent across replies.
+  const intendsRef = useRef(false);
+  const listeningRef = useRef(false);
+  const readAloudRef = useRef(readAloud);
+  const threadRuntime = useThreadRuntime();
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
+  useEffect(() => {
+    readAloudRef.current = readAloud;
+  }, [readAloud]);
+
+  const tryRestart = useCallback(() => {
+    if (!intendsRef.current) return;
+    if (listeningRef.current) return;
+    // Don't restart while TTS is still draining (cancel/end race).
+    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
+    baseRef.current = composer.getState?.()?.text || '';
+    start();
+  }, [start, composer]);
+
+  // TTS start → drop the mic; TTS end → bring it back if the user still wants it.
+  useEffect(() => {
+    if (!supported) return undefined;
+    const onTtsStart = () => {
+      if (listeningRef.current) stop();
+    };
+    const onTtsEnd = () => {
+      // Small delay so the cancel-drained queue settles before we re-listen.
+      setTimeout(tryRestart, 80);
+    };
+    window.addEventListener(TTS_EVENTS.start, onTtsStart);
+    window.addEventListener(TTS_EVENTS.end, onTtsEnd);
+    return () => {
+      window.removeEventListener(TTS_EVENTS.start, onTtsStart);
+      window.removeEventListener(TTS_EVENTS.end, onTtsEnd);
+    };
+  }, [supported, stop, tryRestart]);
+
+  // Mute the mic for the assistant's turn (so a user mid-sentence doesn't get
+  // recorded talking over the run), and resume on turn-end when read-aloud is
+  // OFF (when it's ON, the TTS_END handler above takes care of resuming).
+  useEffect(() => {
+    if (!supported) return undefined;
+    let prevRunning = false;
+    return threadRuntime.subscribe(() => {
+      const running = !!threadRuntime.getState?.()?.isRunning;
+      if (running && !prevRunning && listeningRef.current) {
+        stop();
+      }
+      if (!running && prevRunning && !readAloudRef.current) {
+        setTimeout(tryRestart, 80);
+      }
+      prevRunning = running;
+    });
+  }, [supported, stop, tryRestart, threadRuntime]);
+
   if (!supported) return null;
 
   const handle = () => {
     if (listening) {
+      intendsRef.current = false;
+      // Explicit stop overrides any pending auto-send timer.
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       stop();
       return;
     }
+    intendsRef.current = true;
+    hasFinalRef.current = false;
+    // User taking a turn — shut the AI up so we don't transcribe its voice.
+    cancelTts();
     baseRef.current = composer.getState?.()?.text || '';
     start();
   };
@@ -1350,31 +1471,77 @@ function MicButton() {
     }
   };
 
+  // Chevron + popover are useful when there's >1 dictation language OR when
+  // TTS is supported (so the user can flip the read-aloud toggle); hide the
+  // chevron only when neither is true.
+  const showPopoverToggle = langs.length > 1 || ttsAvail;
+
   return (
     <div className="gds-assistant__voice" ref={wrapRef}>
       {/* Popover opens upward (composer is pinned to the panel bottom). */}
-      {langs.length > 1 && langOpen && (
+      {showPopoverToggle && langOpen && (
         <div className="gds-assistant__voice-langs" role="menu">
-          {langs.map((l) => (
+          {langs.length > 1 &&
+            langs.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                role="menuitemradio"
+                aria-checked={l.code === lang}
+                className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
+                onClick={() => choose(l.code)}
+              >
+                <span>{l.name}</span>
+                {l.code === lang && (
+                  <span
+                    className="gds-assistant__voice-langs-check"
+                    aria-hidden="true"
+                  >
+                    ✓
+                  </span>
+                )}
+              </button>
+            ))}
+          {ttsAvail && langs.length > 1 && (
+            <div
+              className="gds-assistant__voice-langs-sep"
+              aria-hidden="true"
+            />
+          )}
+          {ttsAvail && (
             <button
-              key={l.code}
               type="button"
-              role="menuitemradio"
-              aria-checked={l.code === lang}
-              className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
-              onClick={() => choose(l.code)}
+              role="menuitemcheckbox"
+              aria-checked={readAloud}
+              className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${readAloud ? ' is-active' : ''}`}
+              onClick={() => setReadAloud(!readAloud)}
+              title="Read assistant replies aloud using Web Speech"
             >
-              <span>{l.name}</span>
-              {l.code === lang && (
-                <span
-                  className="gds-assistant__voice-langs-check"
-                  aria-hidden="true"
-                >
-                  ✓
-                </span>
-              )}
+              <span>Read replies aloud</span>
+              <span
+                className={`gds-assistant__voice-switch${readAloud ? ' is-on' : ''}`}
+                aria-hidden="true"
+              >
+                <span className="gds-assistant__voice-switch-knob" />
+              </span>
             </button>
-          ))}
+          )}
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={voiceMode}
+            className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${voiceMode ? ' is-active' : ''}`}
+            onClick={() => setVoiceMode(!voiceMode)}
+            title="Auto-send the message after a short pause when dictating"
+          >
+            <span>Voice mode (auto-send)</span>
+            <span
+              className={`gds-assistant__voice-switch${voiceMode ? ' is-on' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="gds-assistant__voice-switch-knob" />
+            </span>
+          </button>
         </div>
       )}
       <button
@@ -1400,13 +1567,17 @@ function MicButton() {
           <line x1="8" y1="23" x2="16" y2="23" />
         </svg>
       </button>
-      {langs.length > 1 && (
+      {showPopoverToggle && (
         <button
           type="button"
           className="gds-assistant__voice-lang"
           onClick={() => setLangOpen((v) => !v)}
           disabled={listening}
-          title="Dictation language"
+          title={
+            langs.length > 1
+              ? 'Voice settings (dictation language + read aloud)'
+              : 'Voice settings'
+          }
           aria-haspopup="menu"
           aria-expanded={langOpen}
         >
@@ -1425,6 +1596,206 @@ function MicButton() {
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
+      )}
+    </div>
+  );
+}
+
+// ── Read-aloud controller ───────────────────────────────────
+//
+// Side-effect component (renders nothing). Subscribes to the thread runtime
+// and, when the toggle is on, reads each completed assistant message aloud
+// via the Web Speech API. Speech is cancelled when:
+//   - a new run starts (user sent the next message)
+//   - the toggle is flipped off
+//   - the component unmounts (chat panel closes)
+
+function ReadAloudController() {
+  const [enabled] = useTtsEnabled();
+  const threadRuntime = useThreadRuntime();
+
+  useEffect(() => {
+    if (!enabled || !ttsSupported()) return undefined;
+
+    let wasRunning = false;
+    // Per-message bookkeeping for streaming reads. We track the offset into
+    // the message's plain text that we've already queued for speech, so each
+    // tick we only enqueue the *new* fully-formed sentences. Map keyed by a
+    // stable per-message key so an interim id changing to a final id (which
+    // assistant-ui sometimes does on completion) doesn't reset progress.
+    const progress = new Map(); // key -> {offset, lastTextLen, finalised}
+
+    const speakUpTo = (key, text, lang, atEnd) => {
+      const state = progress.get(key) || {offset: 0, lastTextLen: 0, finalised: false};
+      const remainder = text.slice(state.offset);
+      if (!remainder.length) {
+        progress.set(key, {...state, lastTextLen: text.length});
+        return;
+      }
+
+      // Mid-stream: only queue *complete* sentences so we don't speak a half
+      // word the engine then re-pronounces when the next token arrives. At
+      // the end of the run, just speak everything that's left regardless.
+      let consume = 0;
+      if (atEnd) {
+        consume = remainder.length;
+      } else {
+        // Last sentence-terminator in the remainder. JS regex doesn't expose
+        // lastIndexOf for patterns, so iterate.
+        const re = /[.!?。！？]["')\]]?(?=\s|$)/g;
+        let m;
+        let lastEnd = -1;
+        while ((m = re.exec(remainder)) !== null) {
+          lastEnd = m.index + m[0].length;
+        }
+        if (lastEnd < 0) return;
+        // Don't speak less than a few words; avoids machine-gun queueing
+        // when the model emits short fragments token-by-token.
+        if (lastEnd < 16) return;
+        consume = lastEnd;
+      }
+
+      const chunk = remainder.slice(0, consume).trim();
+      if (chunk) speakAppend(chunk, lang);
+      progress.set(key, {
+        offset: state.offset + consume,
+        lastTextLen: text.length,
+        finalised: atEnd,
+      });
+    };
+
+    // Has the user actually started a run in *this* mount? Until they do,
+    // every assistant message we see is loaded history — never to be
+    // narrated. This is the only reliable refresh-safety check: seeding
+    // messages on mount doesn't help because the runtime loads them
+    // asynchronously *after* the controller has subscribed.
+    let armed = false;
+
+    const tick = () => {
+      const state = threadRuntime.getState?.();
+      if (!state) return;
+      const running = !!state.isRunning;
+      const messages = state.messages || [];
+
+      // A false → true transition is the user-initiated signal that turns on
+      // narration. Until then we silently track state and never speak.
+      if (running && !wasRunning) {
+        armed = true;
+        cancelTts();
+      }
+
+      if (!armed) {
+        wasRunning = running;
+        return;
+      }
+
+      // Only narrate when the most recent message in the thread is an
+      // assistant message. After a user send the tail is the user's message,
+      // so falling back to the *previous* assistant would speak the prior
+      // reply. The tail index doubles as the key so an id change between
+      // interim and final doesn't reset the spoken offset.
+      const tail = messages[messages.length - 1];
+      if (tail?.role !== 'assistant') {
+        wasRunning = running;
+        return;
+      }
+
+      const tailIdx = messages.length - 1;
+      const key = tail.id || `idx:${tailIdx}`;
+      const text = extractAssistantText(tail);
+      if (text) speakUpTo(key, text, readVoiceLang(), !running);
+
+      wasRunning = running;
+    };
+
+    // Seed `wasRunning` from the current state so a refresh that lands
+    // mid-stream doesn't fire a spurious "run just started" cancel on the
+    // first tick. (The `armed` gate above takes care of the "don't narrate
+    // history" guarantee.)
+    wasRunning = !!threadRuntime.getState?.()?.isRunning;
+
+    const unsub = threadRuntime.subscribe(tick);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      cancelTts();
+    };
+  }, [enabled, threadRuntime]);
+
+  return null;
+}
+
+// ── Editor-selection chip ───────────────────────────────────
+//
+// Shows above the composer input whenever the user has something selected in
+// the editor — a text range, a whole block, or several blocks. Gives a visible
+// signal that the next message will go out with that selection already
+// attached as context (server-side, prepended to the user's message body), so
+// prompts like "make this punchier" or "translate these" work without the
+// model needing an `editor__read_selection` round-trip.
+
+// Hard cap on snippet length sent to the chip so we don't ship megabytes into
+// the tooltip on huge documents. CSS (-webkit-line-clamp) handles the visual
+// truncation; this is just a backstop.
+function clampSnippet(text, max = 280) {
+  if (typeof text !== 'string') return '';
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1).trimEnd() + '…';
+}
+
+const SelectionIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 7V4h16v3" />
+    <path d="M9 20h6" />
+    <path d="M12 4v16" />
+  </svg>
+);
+
+function SelectionChip() {
+  const selection = useEditorSelection();
+  if (!selection) return null;
+
+  let label;
+  let snippet;
+  let title;
+
+  if (selection.mode === 'multi-block') {
+    const labels = selection.blockLabels || [];
+    const head = labels.slice(0, 3).join(', ');
+    const more = labels.length > 3 ? ` +${labels.length - 3} more` : '';
+    label = `Selected ${selection.count} blocks`;
+    snippet = labels.length ? `${head}${more}` : '';
+    title = `Selected ${selection.count} blocks: ${labels.join(', ')}`;
+  } else {
+    const text =
+      selection.mode === 'text-range'
+        ? selection.selectedText
+        : selection.blockText;
+    label = `Selected ${selection.blockLabel}`;
+    snippet = clampSnippet(text);
+    title = text
+      ? `${label}: ${text}`
+      : `${label} (block ${selection.clientId})`;
+  }
+
+  return (
+    <div className="gds-assistant__selection-chip" title={title}>
+      {SelectionIcon}
+      <span className="gds-assistant__selection-chip-label">
+        {label}
+        {snippet ? ':' : ''}
+      </span>
+      {snippet && (
+        <span className="gds-assistant__selection-chip-text">“{snippet}”</span>
       )}
     </div>
   );
@@ -1485,6 +1856,9 @@ function Composer() {
 
   const handleCancel = useCallback(() => {
     threadRuntime.cancelRun();
+    // Stop also silences any in-flight read-aloud — otherwise the AI keeps
+    // talking even after the user pressed Stop, which feels broken.
+    cancelTts();
     setWasStopped(true);
   }, [threadRuntime]);
 
@@ -1513,6 +1887,7 @@ function Composer() {
 
   return (
     <ComposerPrimitive.Root className="gds-assistant__composer">
+      <ReadAloudController />
       {slashQuery !== null && (
         <SlashAutocomplete
           query={slashQuery}
@@ -1520,6 +1895,7 @@ function Composer() {
           onDismiss={() => setSlashQuery(null)}
         />
       )}
+      <SelectionChip />
       <div className="gds-assistant__attachments">
         <ComposerPrimitive.Attachments
           components={{
@@ -1679,19 +2055,117 @@ function MessageTimestamp() {
   );
 }
 
+/**
+ * Replace any "(block <clientId>)" / "(clientId: <id>)" mentions in a user
+ * message with a compact chip — keeps the conversation readable when the
+ * model is targeted at a specific block via the toolbar dropdowns or Cmd+J
+ * shortcut. Clicking the chip scrolls + selects that block in the editor.
+ */
+// Two accepted shapes:
+//   (block <uuid>)                 — clientId only (we look up the label live)
+//   (block <uuid> — paragraph)     — clientId + cached label (chip stays
+//                                    accurate even after the block is gone)
+const BLOCK_REF_RE =
+  /\((?:block|clientId)[:\s]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s+[—–-]\s+([^)]+))?\)/gi;
+
+function BlockChip({clientId, cachedLabel}) {
+  const liveName =
+    window.wp?.data?.select?.('core/block-editor')?.getBlockName?.(clientId) || '';
+  const label =
+    liveName ?
+      liveName.replace(/^core\//, '').replace(/-/g, ' ')
+    : cachedLabel
+      ? cachedLabel.trim()
+      : 'block';
+  const onClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const sel = `[data-block="${clientId}"]`;
+      const inMain = document.querySelector(sel);
+      if (inMain) inMain.scrollIntoView({behavior: 'smooth', block: 'center'});
+      else {
+        const iframe = document.querySelector('iframe[name="editor-canvas"]');
+        iframe?.contentDocument
+          ?.querySelector(sel)
+          ?.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+      window.wp?.data?.dispatch?.('core/block-editor')?.selectBlock?.(clientId);
+    } catch {
+      // Ignore — block may be gone after later edits.
+    }
+  };
+  return (
+    <button
+      type="button"
+      className="gds-assistant__block-chip"
+      onClick={onClick}
+      title={`Click to focus this block (${clientId})`}
+    >
+      <svg
+        className="gds-assistant__block-chip-icon"
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <line x1="4" y1="12" x2="20" y2="12" />
+      </svg>
+      {label}
+    </button>
+  );
+}
+
+function renderTextWithBlockChips(text) {
+  const out = [];
+  let last = 0;
+  let m;
+  BLOCK_REF_RE.lastIndex = 0;
+  while ((m = BLOCK_REF_RE.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push({chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}`});
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  if (out.length === 1 && typeof out[0] === 'string') return null;
+  return out;
+}
+
 function UserMessageText({text}) {
   // Long skill prompts: show collapsed with expand toggle
   const isLong = text.length > 200;
   const [expanded, setExpanded] = useState(!isLong);
 
+  const renderText = (raw) => {
+    const parts = renderTextWithBlockChips(raw);
+    if (!parts) return raw;
+    return parts.map((p, i) =>
+      typeof p === 'string' ?
+        <span key={i}>{p}</span>
+      : <BlockChip key={p.key} clientId={p.chip} cachedLabel={p.cached} />,
+    );
+  };
+
   if (!isLong) {
-    return <p style={{whiteSpace: 'pre-wrap'}}>{text}</p>;
+    return <p style={{whiteSpace: 'pre-wrap'}}>{renderText(text)}</p>;
   }
 
+  // Also strip block clientIds from the truncated preview — otherwise long
+  // messages keep showing the raw UUID even when chips render in the full
+  // expansion. Truncation runs first, regex second, so a cut-off chip
+  // gracefully degrades to plain text instead of breaking layout.
   return (
     <div>
       <p style={{whiteSpace: 'pre-wrap'}}>
-        {expanded ? text : text.slice(0, 120) + '...'}
+        {expanded ?
+          renderText(text)
+        : renderText(text.slice(0, 120) + '...')}
       </p>
       <button
         type="button"
@@ -1910,18 +2384,116 @@ function summarizeArgs(args) {
     .join(' ');
 }
 
+/**
+ * Unified diff display for an editor write tool's result. Reads `diff` from
+ * the tool result (set by editor-bridge after the mutation applied) — shows
+ * line-level +/- with surrounding context collapsed to "…" stubs. Pure
+ * presentation; no buttons, no state.
+ */
+function DiffViewer({diff}) {
+  const rows = useMemo(() => {
+    if (!diff) return [];
+    const lines = collapseUnchanged(
+      diffLines(diff.before || '', diff.after || ''),
+      2,
+    );
+    return pairModifiedLines(lines);
+  }, [diff]);
+  if (!diff) return null;
+  return (
+    <div className="gds-assistant__edit-diff">
+      {diff.summary && (
+        <div className="gds-assistant__edit-diff-title">{diff.summary}</div>
+      )}
+      {/* `<div>` not `<pre>` so we don't inherit the assistant-message-scoped
+          dark `pre` theme; `white-space: pre-wrap` on each text span preserves
+          indentation without dragging the dark colour scheme in. */}
+      <div className="gds-assistant__edit-diff-unified">
+        {rows.map((row, i) => {
+          if (row.type === 'mod') {
+            // Render the pair as two rows (red + green) with inline word
+            // highlighting — git's --word-diff. Unchanged tokens stay on the
+            // row's light tint; changed tokens light up darker.
+            const delTokens = row.words.filter((w) => w.type !== 'add');
+            const addTokens = row.words.filter((w) => w.type !== 'del');
+            return (
+              <Fragment key={i}>
+                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--del">
+                  <span className="gds-assistant__edit-diff-prefix">-</span>
+                  <span className="gds-assistant__edit-diff-text">
+                    {delTokens.map((tok, k) => (
+                      <span
+                        key={k}
+                        className={
+                          tok.type === 'del'
+                            ? 'gds-assistant__edit-diff-word--del'
+                            : 'gds-assistant__edit-diff-word--eq'
+                        }
+                      >
+                        {tok.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--add">
+                  <span className="gds-assistant__edit-diff-prefix">+</span>
+                  <span className="gds-assistant__edit-diff-text">
+                    {addTokens.map((tok, k) => (
+                      <span
+                        key={k}
+                        className={
+                          tok.type === 'add'
+                            ? 'gds-assistant__edit-diff-word--add'
+                            : 'gds-assistant__edit-diff-word--eq'
+                        }
+                      >
+                        {tok.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </Fragment>
+            );
+          }
+          // Solo line: eq / add / del / gap — same as before.
+          const cls =
+            row.type === 'add' ? 'gds-assistant__edit-diff-line--add'
+            : row.type === 'del' ? 'gds-assistant__edit-diff-line--del'
+            : row.type === 'gap' ? 'gds-assistant__edit-diff-line--gap'
+            : 'gds-assistant__edit-diff-line--eq';
+          const prefix =
+            row.type === 'add' ? '+'
+            : row.type === 'del' ? '-'
+            : row.type === 'gap' ? '⋮'
+            : ' ';
+          return (
+            <div
+              key={i}
+              className={`gds-assistant__edit-diff-line ${cls}`}
+            >
+              <span className="gds-assistant__edit-diff-prefix">{prefix}</span>
+              <span className="gds-assistant__edit-diff-text">{row.text}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
   const argsHint = summarizeArgs(args);
   const ctx = useContext(UndoContext);
   const {undoableActions, onUndo, pendingApprovalIds} = ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
+  const diff = result && typeof result === 'object' ? result.diff : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
       className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
     >
-      <details>
+      <details open={!!diff || undefined}>
         <summary className="gds-assistant__tool-call-summary">
           <span className="gds-assistant__tool-call-name">{toolName}</span>
           {argsHint && (
@@ -1971,12 +2543,16 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
                 {undo.pending ? 'Undoing…' : '↩ Undo'}
               </button>)}
         </summary>
-        {args && Object.keys(args).length > 0 && (
+        {diff && <DiffViewer diff={diff} />}
+        {/* Args + raw JSON result are redundant once the diff is rendered —
+            the diff already shows the same information in a much more
+            readable form. */}
+        {!diff && args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">
             {JSON.stringify(args, null, 2)}
           </pre>
         )}
-        {!needsApproval && result !== undefined && (
+        {!needsApproval && result !== undefined && !diff && (
           <pre className="gds-assistant__tool-call-result">
             {typeof result === 'string' ?
               result

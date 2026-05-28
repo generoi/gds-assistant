@@ -144,6 +144,20 @@ class ChatEndpoint
             $storedMessages = $conversation['messages'] ?? [];
             if (! empty($storedMessages)) {
                 $storedMessages = self::sanitizeMessages($storedMessages);
+                // Recover from stranded client tool calls: if a previous turn
+                // emitted a `tool_use` (e.g. an editor write tool) whose
+                // approval Promise never resolved — page refresh mid-decision,
+                // CDP timeout in a test, etc. — Anthropic would reject the
+                // next request because every tool_use needs a matching
+                // tool_result. Inject a synthetic "cancelled" result so the
+                // conversation can continue instead of silently failing.
+                $storedMessages = self::patchOrphanToolUses($storedMessages);
+                // Heal "mixed" user messages saved by the old merge logic
+                // (tool_result blocks combined with plain text in one bag) —
+                // split them back into a tool-result message followed by a
+                // text message so the OpenAI converter doesn't silently drop
+                // the text.
+                $storedMessages = self::splitMixedUserMessages($storedMessages);
                 $messages = array_merge($storedMessages, $messages);
             }
         } else {
@@ -244,6 +258,28 @@ class ChatEndpoint
                 'new_messages' => count($request->get_param('messages')),
                 'total_messages' => count($messages),
             ]);
+
+            // When the user typed into the chat with something selected in the
+            // editor, the client attaches a selection snapshot on the editor
+            // context. Prepend a short summary to the latest user message body
+            // so the model has the snippet inline (avoids an
+            // `editor__read_selection` round-trip on common "rewrite this" /
+            // "translate these" prompts). Done here instead of in the system
+            // prompt to keep the prompt cache stable across selection changes.
+            // Skip when resuming a tool / approval flow: those branches
+            // popped the trailing control message above, so there's no fresh
+            // user message to annotate.
+            if (
+                is_array($editorContext)
+                && ! empty($editorContext['has_editor'])
+                && ! is_array($clientResults)
+                && ! $approval
+            ) {
+                $preamble = $this->buildSelectionPreamble($editorContext);
+                if ($preamble !== '') {
+                    $messages = $this->prependToLatestUser($messages, $preamble);
+                }
+            }
 
             // Collapse any consecutive same-role messages (e.g. an undo note
             // appended out-of-band by the Undo button) so the provider sees
@@ -348,6 +384,14 @@ class ChatEndpoint
      * as the Undo button's "↩ Reverted…" user message can otherwise leave two
      * user messages in a row. Semantically equivalent for the provider.
      *
+     * One exception: a user message that carries a `tool_result` is treated
+     * as a different "kind" from a plain-text user message and won't merge
+     * with one. They look identical at the storage layer (both `role: user`)
+     * but the OpenAI converter splits them into `role: tool` vs `role: user`
+     * downstream — merging the two would smuggle plain text into a tool
+     * message and the converter silently drops it, leaving the model with
+     * "here is your tool result" and no actual user question to answer.
+     *
      * @param  array<int, array<string, mixed>>  $messages
      * @return array<int, array<string, mixed>>
      */
@@ -356,13 +400,273 @@ class ChatEndpoint
         $out = [];
         foreach ($messages as $msg) {
             $i = count($out) - 1;
-            if ($i >= 0 && ($out[$i]['role'] ?? null) === ($msg['role'] ?? null)) {
+            $sameRole = $i >= 0 && ($out[$i]['role'] ?? null) === ($msg['role'] ?? null);
+            $compatible = $sameRole && self::userKind($out[$i]) === self::userKind($msg);
+            if ($sameRole && $compatible) {
                 $out[$i]['content'] = array_merge(
                     self::asContentBlocks($out[$i]['content'] ?? ''),
                     self::asContentBlocks($msg['content'] ?? ''),
                 );
             } else {
                 $out[] = $msg;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * For user messages, distinguish "tool-result-bearing" from "plain text"
+     * and from already-mixed (legacy) so they don't merge together. Anything
+     * other than role=user falls through to a single bucket — assistant
+     * messages are merged by role alone like before.
+     */
+    private static function userKind(array $msg): string
+    {
+        if (($msg['role'] ?? null) !== 'user') {
+            return 'other';
+        }
+        $content = $msg['content'] ?? '';
+        if (is_string($content)) {
+            return 'text';
+        }
+        if (! is_array($content)) {
+            return 'text';
+        }
+        $hasToolResult = false;
+        $hasOther = false;
+        foreach ($content as $part) {
+            if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                $hasToolResult = true;
+            } elseif (is_array($part) || is_string($part)) {
+                $hasOther = true;
+            }
+        }
+        if ($hasToolResult && $hasOther) {
+            return 'mixed';
+        }
+        if ($hasToolResult) {
+            return 'tool_result';
+        }
+
+        return 'text';
+    }
+
+    /**
+     * Split any user message that already carries BOTH a tool_result and
+     * plain text/image content into two separate user messages — the tool
+     * result first, then the rest. We only re-emit if there's at least one
+     * tool_result AND at least one non-tool_result part; clean messages pass
+     * through unchanged.
+     *
+     * This heals conversations that were already saved in the mixed shape
+     * by the old `mergeConsecutiveRoles` (which would combine a tool_result
+     * with subsequent text into a single bag, after which the OpenAI
+     * converter silently dropped the text).
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function splitMixedUserMessages(array $messages): array
+    {
+        $out = [];
+        foreach ($messages as $msg) {
+            if (self::userKind($msg) !== 'mixed') {
+                $out[] = $msg;
+
+                continue;
+            }
+            $toolResults = [];
+            $rest = [];
+            foreach ((array) ($msg['content'] ?? []) as $part) {
+                if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                    $toolResults[] = $part;
+                } else {
+                    $rest[] = $part;
+                }
+            }
+            $base = $msg;
+            unset($base['content']);
+            if ($toolResults) {
+                $out[] = $base + ['content' => $toolResults];
+            }
+            if ($rest) {
+                $out[] = $base + ['content' => $rest];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Build the short "[The user has selected …]" preamble for the latest
+     * user message, based on the editor-context selection snapshot. Returns
+     * '' when there's nothing meaningful to attach (empty selection / unknown
+     * shape).
+     *
+     * @param  array<string, mixed>  $ctx  editor_context payload
+     */
+    private function buildSelectionPreamble(array $ctx): string
+    {
+        $mode = $ctx['selection_mode'] ?? null;
+
+        if ($mode === 'text-range' && ! empty($ctx['selected_text'])) {
+            $label = (string) ($ctx['selected_block_label'] ?? 'block');
+            $idHint = ! empty($ctx['selected_block_client_id'])
+                ? ' (block '.$ctx['selected_block_client_id'].')'
+                : '';
+
+            return '[The user has highlighted text in the '.$label.$idHint.': "'
+                .$ctx['selected_text'].'"]'."\n\n";
+        }
+
+        if ($mode === 'whole-block' && ! empty($ctx['selected_block_label'])) {
+            $label = (string) $ctx['selected_block_label'];
+            $idHint = ! empty($ctx['selected_block_client_id'])
+                ? ' (block '.$ctx['selected_block_client_id'].')'
+                : '';
+            $text = (string) ($ctx['selected_block_text'] ?? '');
+            if ($text !== '') {
+                return '[The user has selected the '.$label.$idHint.': "'.$text.'"]'."\n\n";
+            }
+
+            // Non-text block (image / gallery / etc.) — just announce it.
+            return '[The user has selected a '.$label.' block'.$idHint.']'."\n\n";
+        }
+
+        if ($mode === 'multi-block') {
+            $count = (int) ($ctx['selected_block_count'] ?? 0);
+            $labels = is_array($ctx['selected_block_labels'] ?? null)
+                ? array_values(array_filter($ctx['selected_block_labels'], 'is_string'))
+                : [];
+            $list = $labels ? ': '.implode(', ', array_slice($labels, 0, 10)) : '';
+
+            return '[The user has selected '.$count.' blocks'.$list.']'."\n\n";
+        }
+
+        return '';
+    }
+
+    /**
+     * Prepend a short preamble to the latest user message's content, so the
+     * model sees the user's editor selection inline with what they typed.
+     * Lives inside the user message (not the system prompt) so it doesn't
+     * invalidate the prompt cache as the selection changes turn to turn.
+     *
+     * Handles both content shapes the client may send:
+     *   - string content → prepend to the string
+     *   - array of content blocks → prepend a leading text block (or merge
+     *     into an existing leading text block)
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function prependToLatestUser(array $messages, string $preamble): array
+    {
+        // Find the LAST user message (the one we just received).
+        $idx = -1;
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if (($messages[$i]['role'] ?? null) === 'user') {
+                $idx = $i;
+                break;
+            }
+        }
+        if ($idx < 0) {
+            return $messages;
+        }
+
+        $content = $messages[$idx]['content'] ?? '';
+
+        if (is_string($content)) {
+            $messages[$idx]['content'] = $preamble.$content;
+
+            return $messages;
+        }
+
+        if (is_array($content)) {
+            $blocks = array_values($content);
+            // Merge into a leading text block if there is one so we don't
+            // bloat the content-blocks array unnecessarily.
+            if (! empty($blocks) && ($blocks[0]['type'] ?? null) === 'text') {
+                $blocks[0]['text'] = $preamble.($blocks[0]['text'] ?? '');
+            } else {
+                array_unshift($blocks, ['type' => 'text', 'text' => $preamble]);
+            }
+            $messages[$idx]['content'] = $blocks;
+        }
+
+        return $messages;
+    }
+
+    /**
+     * Walk loaded conversation history and inject a synthetic tool_result for
+     * any tool_use that doesn't have a matching tool_result downstream.
+     *
+     * This recovers from "the editor approval was never decided" scenarios:
+     * a tool_use lands in history, the matching tool_result never arrives
+     * (page refresh during the diff card, browser tab crash, etc.), and
+     * Anthropic rejects every subsequent /chat call with "tool_use without
+     * corresponding tool_result". The injected result is a regular user
+     * message with a tool_result block declaring the call cancelled, so the
+     * model can move on instead of the conversation getting permanently
+     * stuck.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function patchOrphanToolUses(array $messages): array
+    {
+        // First pass: collect every tool_use_id that already has a tool_result.
+        $resolved = [];
+        foreach ($messages as $msg) {
+            if (($msg['role'] ?? null) !== 'user') {
+                continue;
+            }
+            $content = $msg['content'] ?? [];
+            if (! is_array($content)) {
+                continue;
+            }
+            foreach ($content as $part) {
+                if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                    $id = $part['tool_use_id'] ?? null;
+                    if (is_string($id) && $id !== '') {
+                        $resolved[$id] = true;
+                    }
+                }
+            }
+        }
+
+        // Second pass: for any assistant tool_use whose id isn't in $resolved,
+        // splice a synthetic cancellation result immediately after.
+        $out = [];
+        foreach ($messages as $msg) {
+            $out[] = $msg;
+            if (($msg['role'] ?? null) !== 'assistant') {
+                continue;
+            }
+            $content = $msg['content'] ?? [];
+            if (! is_array($content)) {
+                continue;
+            }
+            $orphanResults = [];
+            foreach ($content as $part) {
+                if (! is_array($part) || ($part['type'] ?? null) !== 'tool_use') {
+                    continue;
+                }
+                $id = $part['id'] ?? null;
+                if (! is_string($id) || $id === '' || isset($resolved[$id])) {
+                    continue;
+                }
+                $orphanResults[] = [
+                    'type' => 'tool_result',
+                    'tool_use_id' => $id,
+                    'content' => 'Edit cancelled — the user closed the chat before deciding.',
+                    'is_error' => true,
+                ];
+                $resolved[$id] = true; // don't double-patch
+            }
+            if ($orphanResults) {
+                $out[] = ['role' => 'user', 'content' => $orphanResults];
             }
         }
 
