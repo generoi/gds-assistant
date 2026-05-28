@@ -836,115 +836,80 @@ abbr.gds-tool {
   background: #f1f7ff;
 }
 
-/* Inline diff card for editor write tools awaiting Apply / Reject. */
+/*
+ * Unified diff inside an editor tool-call card. Renders after the mutation
+ * applies — no buttons, no gate, just so the user can see what changed in the
+ * conversation record. Line prefixes (+/-/⋮) are in a narrow gutter so the
+ * content text aligns regardless of length.
+ */
 .gds-assistant__edit-diff {
   padding: 8px 10px 10px;
-  border-top: 1px solid #d6e4f0;
+  border-top: 1px solid #e0e0e0;
   background: #fff;
-  font-family: inherit;
 }
 
 .gds-assistant__edit-diff-title {
   font-size: 12px;
   font-weight: 600;
   color: #1d4f80;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
-.gds-assistant__edit-diff-panes {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 480px) {
-  .gds-assistant__edit-diff-panes:has(
-      .gds-assistant__edit-diff-pane--before
-    ) {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.gds-assistant__edit-diff-pane {
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  background: #fafbfc;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.gds-assistant__edit-diff-pane--before {
-  background: #fef6f6;
-  border-color: #f3c8ca;
-}
-
-.gds-assistant__edit-diff-pane--after {
-  background: #f1faf3;
-  border-color: #b8e4c2;
-}
-
-.gds-assistant__edit-diff-label {
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #555;
-  border-bottom: 1px solid inherit;
-}
-
-.gds-assistant__edit-diff-content {
-  margin: 0;
-  padding: 8px;
+.gds-assistant__edit-diff-unified {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: #1e1e1e;
+  max-height: 320px;
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 6px 0;
+}
+
+.gds-assistant__edit-diff-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.gds-assistant__edit-diff-prefix {
+  flex: 0 0 22px;
+  text-align: center;
+  color: #aaa;
+  user-select: none;
+}
+
+.gds-assistant__edit-diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 200px;
-  overflow: auto;
-  background: transparent;
-  border: none;
+  padding-right: 10px;
 }
 
-.gds-assistant__edit-diff-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
+.gds-assistant__edit-diff-line--add {
+  background: #e9f7ec;
+  color: #1a5e2b;
 }
 
-.gds-assistant__edit-diff-btn {
-  padding: 5px 14px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  background: #fff;
+.gds-assistant__edit-diff-line--add .gds-assistant__edit-diff-prefix {
+  color: #2ea043;
 }
 
-.gds-assistant__edit-diff-btn--reject {
-  border-color: #ccc;
-  color: #555;
-
-  &:hover {
-    background: #f5f5f5;
-    color: #1e1e1e;
-  }
+.gds-assistant__edit-diff-line--del {
+  background: #fdebec;
+  color: #8a1f27;
 }
 
-.gds-assistant__edit-diff-btn--apply {
-  background: #2271b1;
-  border-color: #2271b1;
-  color: #fff;
+.gds-assistant__edit-diff-line--del .gds-assistant__edit-diff-prefix {
+  color: #c4373f;
+}
 
-  &:hover {
-    background: #135e96;
-    border-color: #135e96;
-  }
+.gds-assistant__edit-diff-line--gap {
+  color: #aaa;
+  font-style: italic;
 }
 
 .gds-assistant__tool-call-summary {

@@ -9,13 +9,13 @@
  */
 
 import {getCurrentSelectionContext} from './selection';
-import {confirmEditsEnabled, enqueueApproval} from './approval-queue';
 
 const wpData = () => window.wp?.data;
 const wpBlocks = () => window.wp?.blocks;
 
-// Editor tools the inline-diff approval gate applies to (the writes). Reads
-// and DOM probes go through unguarded.
+// Editor tools we capture a before-snapshot for, so the chat tool-call card
+// can render a real unified diff after the change is applied. Read-only and
+// DOM probe tools have no "before" to compare against.
 const WRITE_TOOLS = new Set([
   'editor__replace_blocks',
   'editor__insert_blocks',
@@ -89,11 +89,12 @@ export function getEditorContext() {
 }
 
 /**
- * Snapshot the relevant editor state for a write tool's "before" pane in the
- * diff card. Lightweight: we just pull plain text + (for attribute changes)
- * the current attribute values, not the full serialised markup.
+ * Snapshot the relevant editor state BEFORE a write tool runs so the
+ * tool-call card can show a real diff after it applies. We pull just enough
+ * to make the diff meaningful — serialised markup for block writes, current
+ * attribute values for attribute writes — not the full document.
  */
-function snapshotForApproval(toolName, input) {
+function snapshotBefore(toolName, input) {
   const be = wpData()?.select?.('core/block-editor');
   const ed = wpData()?.select?.('core/editor');
   const blocks = wpBlocks();
@@ -184,57 +185,57 @@ function snapshotForApproval(toolName, input) {
  *                           in-chat approval card).
  * @return {Promise<Object>} Result object (or {error}).
  */
-export async function executeClientTool(toolName, input = {}, toolUseId = '') {
+export async function executeClientTool(toolName, input = {}) {
   if (!hasEditor()) {
     return {error: 'No block editor is open on this page.'};
   }
 
-  // Inline-diff approval gate: pause write tools until the user clicks Apply
-  // or Reject in the chat. Read-only tools (read_selection, query_dom, focus,
-  // open_sidebar) execute unguarded.
-  if (WRITE_TOOLS.has(toolName) && confirmEditsEnabled() && toolUseId) {
-    const snapshot = snapshotForApproval(toolName, input);
-    const decision = await enqueueApproval(toolUseId, {
-      toolName,
-      input,
-      ...(snapshot || {}),
-    });
-    if (!decision.approved) {
-      return {
-        rejected: true,
-        error: decision.aborted
-          ? 'Edit canceled — chat closed before the user decided.'
-          : 'Edit rejected by user.',
-      };
-    }
-  }
+  // Capture a before-snapshot for write tools so the tool-call card can show
+  // a real diff of what changed (post-apply, no approval gate). Reads + DOM
+  // probes have nothing meaningful to diff.
+  const snap = WRITE_TOOLS.has(toolName) ? snapshotBefore(toolName, input) : null;
 
+  let result;
   try {
     switch (toolName) {
       case 'editor__read_selection':
-        return await readSelection();
+        result = await readSelection();
+        break;
       case 'editor__replace_blocks':
-        return replaceBlocks(input);
+        result = replaceBlocks(input);
+        break;
       case 'editor__insert_blocks':
-        return insertBlocks(input);
+        result = insertBlocks(input);
+        break;
       case 'editor__update_block_attributes':
-        return updateBlockAttributes(input);
+        result = updateBlockAttributes(input);
+        break;
       case 'editor__update_post':
-        return updatePost(input);
+        result = updatePost(input);
+        break;
       case 'editor__recover_block':
-        return recoverBlock(input);
+        result = recoverBlock(input);
+        break;
       case 'editor__query_dom':
-        return queryDom(input);
+        result = queryDom(input);
+        break;
       case 'editor__focus':
-        return focusElement(input);
+        result = focusElement(input);
+        break;
       case 'editor__open_sidebar':
-        return openSidebar(input);
+        result = openSidebar(input);
+        break;
       default:
         return {error: `Unknown editor tool: ${toolName}`};
     }
   } catch (e) {
     return {error: String(e?.message || e)};
   }
+
+  if (snap && result && typeof result === 'object' && !result.error) {
+    result.diff = snap;
+  }
+  return result;
 }
 
 // ── Ops ─────────────────────────────────────────────────────

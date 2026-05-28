@@ -686,11 +686,7 @@ export function useAssistantRuntime() {
           const results = [];
           for (const call of pendingClientCalls) {
             setRunStatus(toolStatusLabel(call.toolName));
-            const result = await executeClientTool(
-              call.toolName,
-              call.input,
-              call.toolUseId,
-            );
+            const result = await executeClientTool(call.toolName, call.input);
             results.push({
               tool_use_id: call.toolUseId,
               result,

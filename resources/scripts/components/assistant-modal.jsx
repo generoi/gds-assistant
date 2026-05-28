@@ -20,15 +20,7 @@ import {
   readVoiceLang,
   TTS_EVENTS,
 } from '../hooks/use-tts';
-import {
-  subscribeApprovals,
-  getApproval,
-  resolveApproval,
-  clearAllApprovals,
-  confirmEditsEnabled,
-  setConfirmEdits,
-  CONFIRM_PREF_EVENT,
-} from '../editor/approval-queue';
+import {diffLines, collapseUnchanged} from '../editor/diff';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -1330,16 +1322,6 @@ function MicButton() {
   const wrapRef = useRef(null);
   const [readAloud, setReadAloud] = useTtsEnabled();
   const [voiceMode, setVoiceMode] = useVoiceMode();
-  const [confirmEdits, setConfirmEditsState] = useState(confirmEditsEnabled);
-  useEffect(() => {
-    const sync = () => setConfirmEditsState(confirmEditsEnabled());
-    window.addEventListener('storage', sync);
-    window.addEventListener(CONFIRM_PREF_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(CONFIRM_PREF_EVENT, sync);
-    };
-  }, []);
   const ttsAvail = ttsSupported();
   // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
   // every render and so its handlers see the freshest composer/threadRuntime
@@ -1555,25 +1537,6 @@ function MicButton() {
               <span className="gds-assistant__voice-switch-knob" />
             </span>
           </button>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={confirmEdits}
-            className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${confirmEdits ? ' is-active' : ''}`}
-            onClick={() => {
-              setConfirmEdits(!confirmEdits);
-              setConfirmEditsState(!confirmEdits);
-            }}
-            title="Show a diff card with Apply / Reject before editor changes"
-          >
-            <span>Confirm edits before applying</span>
-            <span
-              className={`gds-assistant__voice-switch${confirmEdits ? ' is-on' : ''}`}
-              aria-hidden="true"
-            >
-              <span className="gds-assistant__voice-switch-knob" />
-            </span>
-          </button>
         </div>
       )}
       <button
@@ -1641,28 +1604,6 @@ function MicButton() {
 //   - a new run starts (user sent the next message)
 //   - the toggle is flipped off
 //   - the component unmounts (chat panel closes)
-
-// Auto-reject any pending edit approvals if the chat goes away (e.g. the
-// user navigates off the page), AND when a fresh user run starts — typing
-// a new message into the composer is itself a signal that the user has
-// moved on from any in-flight approval card, and leaving it pending would
-// strand a tool_use without a tool_result and silently break the next turn.
-function ApprovalCleanup() {
-  const threadRuntime = useThreadRuntime();
-  useEffect(() => {
-    let prevRunning = false;
-    const unsub = threadRuntime.subscribe(() => {
-      const running = !!threadRuntime.getState?.()?.isRunning;
-      if (running && !prevRunning) clearAllApprovals();
-      prevRunning = running;
-    });
-    return () => {
-      if (typeof unsub === 'function') unsub();
-      clearAllApprovals();
-    };
-  }, [threadRuntime]);
-  return null;
-}
 
 function ReadAloudController() {
   const [enabled] = useTtsEnabled();
@@ -1942,7 +1883,6 @@ function Composer() {
   return (
     <ComposerPrimitive.Root className="gds-assistant__composer">
       <ReadAloudController />
-      <ApprovalCleanup />
       {slashQuery !== null && (
         <SlashAutocomplete
           query={slashQuery}
@@ -2342,72 +2282,48 @@ function summarizeArgs(args) {
 }
 
 /**
- * Hook: live snapshot of the inline-edit approval entry for this tool call,
- * if any. Re-renders the host card whenever the queue changes.
+ * Unified diff display for an editor write tool's result. Reads `diff` from
+ * the tool result (set by editor-bridge after the mutation applied) — shows
+ * line-level +/- with surrounding context collapsed to "…" stubs. Pure
+ * presentation; no buttons, no state.
  */
-function usePendingApproval(toolCallId) {
-  const [entry, setEntry] = useState(() => getApproval(toolCallId));
-  useEffect(() => {
-    const sync = () => setEntry(getApproval(toolCallId));
-    sync();
-    return subscribeApprovals(sync);
-  }, [toolCallId]);
-  return entry;
-}
-
-/**
- * Diff card content for an editor write tool waiting on inline approval.
- * Plain text "Before" / "After" panes — character-level highlighting is a
- * follow-up; v1 just shows the two states side by side so the user can see
- * what's about to change before they click Apply.
- */
-function EditApprovalCard({entry, toolCallId}) {
-  if (!entry) return null;
-  const showBefore = entry.kind === 'replace' || entry.kind === 'attrs' || entry.kind === 'post' || entry.kind === 'recover';
+function DiffViewer({diff}) {
+  const segments = useMemo(() => {
+    if (!diff) return [];
+    return collapseUnchanged(diffLines(diff.before || '', diff.after || ''), 2);
+  }, [diff]);
+  if (!diff) return null;
   return (
     <div className="gds-assistant__edit-diff">
-      <div className="gds-assistant__edit-diff-title">
-        {entry.summary || 'Proposed edit'}
-      </div>
-      <div className="gds-assistant__edit-diff-panes">
-        {showBefore && (
-          <div className="gds-assistant__edit-diff-pane gds-assistant__edit-diff-pane--before">
-            <div className="gds-assistant__edit-diff-label">Before</div>
-            <pre className="gds-assistant__edit-diff-content">
-              {entry.before || '(empty)'}
-            </pre>
-          </div>
-        )}
-        <div className="gds-assistant__edit-diff-pane gds-assistant__edit-diff-pane--after">
-          <div className="gds-assistant__edit-diff-label">After</div>
-          <pre className="gds-assistant__edit-diff-content">
-            {entry.after || '(empty)'}
-          </pre>
-        </div>
-      </div>
-      <div className="gds-assistant__edit-diff-actions">
-        <button
-          type="button"
-          className="gds-assistant__edit-diff-btn gds-assistant__edit-diff-btn--reject"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            resolveApproval(toolCallId, false);
-          }}
-        >
-          Reject
-        </button>
-        <button
-          type="button"
-          className="gds-assistant__edit-diff-btn gds-assistant__edit-diff-btn--apply"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            resolveApproval(toolCallId, true);
-          }}
-        >
-          Apply
-        </button>
+      {diff.summary && (
+        <div className="gds-assistant__edit-diff-title">{diff.summary}</div>
+      )}
+      {/* `<div>` not `<pre>`: there's an assistant-message-scoped dark-pre
+          theme above us, and switching tag avoids playing specificity games
+          to override it. `white-space: pre-wrap` on the lines preserves
+          spacing without inheriting the dark colour scheme. */}
+      <div className="gds-assistant__edit-diff-unified">
+        {segments.map((seg, i) => {
+          const cls =
+            seg.type === 'add' ? 'gds-assistant__edit-diff-line--add'
+            : seg.type === 'del' ? 'gds-assistant__edit-diff-line--del'
+            : seg.type === 'gap' ? 'gds-assistant__edit-diff-line--gap'
+            : 'gds-assistant__edit-diff-line--eq';
+          const prefix =
+            seg.type === 'add' ? '+'
+            : seg.type === 'del' ? '-'
+            : seg.type === 'gap' ? '⋮'
+            : ' ';
+          return (
+            <div
+              key={i}
+              className={`gds-assistant__edit-diff-line ${cls}`}
+            >
+              <span className="gds-assistant__edit-diff-prefix">{prefix}</span>
+              <span className="gds-assistant__edit-diff-text">{seg.text}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2418,14 +2334,14 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
   const ctx = useContext(UndoContext);
   const {undoableActions, onUndo, pendingApprovalIds} = ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
-  const editApproval = usePendingApproval(toolCallId);
+  const diff = result && typeof result === 'object' ? result.diff : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
-      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval || editApproval ? 'gds-assistant__tool-call--approval' : ''}`}
+      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
     >
-      <details open={!!editApproval || undefined}>
+      <details open={!!diff || undefined}>
         <summary className="gds-assistant__tool-call-summary">
           <span className="gds-assistant__tool-call-name">{toolName}</span>
           {argsHint && (
@@ -2438,12 +2354,7 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
               Approval required
             </span>
           )}
-          {!needsApproval && editApproval && (
-            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--approval">
-              Awaiting confirmation
-            </span>
-          )}
-          {!needsApproval && !editApproval && result === undefined && (
+          {!needsApproval && result === undefined && (
             <span className="gds-assistant__tool-call-status">Running...</span>
           )}
           {!needsApproval && result !== undefined && !isError && (
@@ -2480,15 +2391,16 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
                 {undo.pending ? 'Undoing…' : '↩ Undo'}
               </button>)}
         </summary>
-        {editApproval && (
-          <EditApprovalCard entry={editApproval} toolCallId={toolCallId} />
-        )}
-        {args && Object.keys(args).length > 0 && (
+        {diff && <DiffViewer diff={diff} />}
+        {/* Args + raw JSON result are redundant once the diff is rendered —
+            the diff already shows the same information in a much more
+            readable form. */}
+        {!diff && args && Object.keys(args).length > 0 && (
           <pre className="gds-assistant__tool-call-args">
             {JSON.stringify(args, null, 2)}
           </pre>
         )}
-        {!needsApproval && result !== undefined && (
+        {!needsApproval && result !== undefined && !diff && (
           <pre className="gds-assistant__tool-call-result">
             {typeof result === 'string' ?
               result
