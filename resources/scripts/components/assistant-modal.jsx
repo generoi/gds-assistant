@@ -1658,60 +1658,55 @@ function ReadAloudController() {
       });
     };
 
+    // Has the user actually started a run in *this* mount? Until they do,
+    // every assistant message we see is loaded history — never to be
+    // narrated. This is the only reliable refresh-safety check: seeding
+    // messages on mount doesn't help because the runtime loads them
+    // asynchronously *after* the controller has subscribed.
+    let armed = false;
+
     const tick = () => {
       const state = threadRuntime.getState?.();
       if (!state) return;
       const running = !!state.isRunning;
       const messages = state.messages || [];
 
-      // Run just started — drop anything left over from the previous turn so
-      // we don't keep narrating an obsolete answer.
+      // A false → true transition is the user-initiated signal that turns on
+      // narration. Until then we silently track state and never speak.
       if (running && !wasRunning) {
+        armed = true;
         cancelTts();
-        progress.clear();
       }
 
-      // Find the latest assistant message (the one that may be growing).
-      let latest = null;
-      let latestIdx = -1;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i]?.role === 'assistant') {
-          latest = messages[i];
-          latestIdx = i;
-          break;
-        }
+      if (!armed) {
+        wasRunning = running;
+        return;
       }
 
-      if (latest) {
-        const key = latest.id || `idx:${latestIdx}`;
-        const text = extractAssistantText(latest);
-        if (text) speakUpTo(key, text, readVoiceLang(), !running);
+      // Only narrate when the most recent message in the thread is an
+      // assistant message. After a user send the tail is the user's message,
+      // so falling back to the *previous* assistant would speak the prior
+      // reply. The tail index doubles as the key so an id change between
+      // interim and final doesn't reset the spoken offset.
+      const tail = messages[messages.length - 1];
+      if (tail?.role !== 'assistant') {
+        wasRunning = running;
+        return;
       }
+
+      const tailIdx = messages.length - 1;
+      const key = tail.id || `idx:${tailIdx}`;
+      const text = extractAssistantText(tail);
+      if (text) speakUpTo(key, text, readVoiceLang(), !running);
 
       wasRunning = running;
     };
 
-    // Seed: every assistant message that already exists on mount (i.e. was
-    // loaded from a previous session on page refresh, or was generated before
-    // the user enabled read-aloud) is marked as fully spoken so we don't
-    // narrate stale history. Only NEW replies that arrive after mount fire
-    // speech.
-    {
-      const seedState = threadRuntime.getState?.();
-      const seedMessages = seedState?.messages || [];
-      for (let i = 0; i < seedMessages.length; i++) {
-        const m = seedMessages[i];
-        if (m?.role !== 'assistant') continue;
-        const key = m.id || `idx:${i}`;
-        const text = extractAssistantText(m);
-        progress.set(key, {
-          offset: text.length,
-          lastTextLen: text.length,
-          finalised: true,
-        });
-      }
-      wasRunning = !!seedState?.isRunning;
-    }
+    // Seed `wasRunning` from the current state so a refresh that lands
+    // mid-stream doesn't fire a spurious "run just started" cancel on the
+    // first tick. (The `armed` gate above takes care of the "don't narrate
+    // history" guarantee.)
+    wasRunning = !!threadRuntime.getState?.()?.isRunning;
 
     const unsub = threadRuntime.subscribe(tick);
     return () => {
