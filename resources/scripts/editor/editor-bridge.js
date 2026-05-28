@@ -412,6 +412,7 @@ function replaceBlocks(input = {}) {
   // target follow-up edits without re-reading (old ids are now dead).
   const newIds = parsed.map((b) => b.clientId);
   wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
+  highlightChangedBlocks(newIds);
   return {ok: true, replaced: ids.length, new_client_ids: newIds};
 }
 
@@ -471,6 +472,7 @@ function insertBlocks(input = {}) {
   } else {
     dispatch.insertBlocks(parsed);
   }
+  highlightChangedBlocks(newIds);
   return {ok: true, inserted: parsed.length, new_client_ids: newIds};
 }
 
@@ -492,6 +494,7 @@ function updateBlockAttributes(input = {}) {
   wpData()
     .dispatch('core/block-editor')
     .updateBlockAttributes(clientId, input.attributes || {});
+  highlightChangedBlocks([clientId]);
   return {ok: true, client_id: clientId};
 }
 
@@ -578,6 +581,7 @@ function recoverBlock(input = {}) {
     }
   }
 
+  highlightChangedBlocks(recovered.map((r) => r.new_client_id));
   return {ok: failed.length === 0, recovered, failed};
 }
 
@@ -591,6 +595,102 @@ function editorDocs() {
   const cvs = document.querySelector('iframe[name="editor-canvas"]');
   if (cvs?.contentDocument) docs.push(cvs.contentDocument);
   return docs;
+}
+
+// ── Visual "we just changed this" cue ───────────────────────
+// After each editor edit we briefly highlight the affected block(s) and scroll
+// the first into view, so it's obvious what the assistant just touched.
+
+const HIGHLIGHT_CSS = `
+.gds-assistant-changed-block {
+  animation: gds-assistant-block-flash 1.6s ease-out;
+  border-radius: 4px;
+}
+@keyframes gds-assistant-block-flash {
+  0% {
+    box-shadow:
+      0 0 0 2px rgba(255, 196, 0, 0.85),
+      0 0 0 6px rgba(255, 196, 0, 0.25);
+    background-color: rgba(255, 247, 196, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 196, 0, 0);
+    background-color: transparent;
+  }
+}`;
+
+// Inject the flash CSS into every editor doc that needs it (top doc + canvas
+// iframe). Cheap to call repeatedly — it skips docs that already have it.
+function ensureHighlightStyles() {
+  for (const doc of editorDocs()) {
+    if (!doc.head || doc.head.querySelector('style[data-gds-highlight]')) continue;
+    const style = doc.createElement('style');
+    style.setAttribute('data-gds-highlight', '');
+    style.textContent = HIGHLIGHT_CSS;
+    doc.head.appendChild(style);
+  }
+}
+
+/**
+ * Briefly highlight the blocks with these clientIds and scroll the first one
+ * into view. Silently no-ops if the block element isn't in the DOM yet.
+ *
+ * @param {string[]} clientIds Block clientIds to highlight.
+ */
+function highlightChangedBlocks(clientIds) {
+  if (!Array.isArray(clientIds) || clientIds.length === 0) return;
+  ensureHighlightStyles();
+  // Defer one frame so React has a chance to mount any newly-inserted blocks
+  // before we look them up by clientId.
+  requestAnimationFrame(() => {
+    let first = null;
+    for (const id of clientIds) {
+      for (const doc of editorDocs()) {
+        const el = doc.querySelector(`[data-block="${id}"]`);
+        if (!el) continue;
+        if (!first) first = el;
+        // Restart the animation if the same block flashes back-to-back.
+        el.classList.remove('gds-assistant-changed-block');
+        // Force reflow so re-adding the class restarts the animation.
+        void el.offsetWidth;
+        el.classList.add('gds-assistant-changed-block');
+        setTimeout(
+          () => el.classList.remove('gds-assistant-changed-block'),
+          1700,
+        );
+      }
+    }
+    first?.scrollIntoView({behavior: 'smooth', block: 'center'});
+  });
+}
+
+/**
+ * Replace `originalText` with `newText` inside one block's text attribute (a
+ * plain substring replace — works for typical rich-text content where the
+ * selected phrase appears once verbatim). Reuses the change-highlight so the
+ * edit is visible.
+ *
+ * @param {{clientId: string, attributeKey?: string, text: string}} info
+ * @param {string} newText
+ * @return {{ok: boolean, error?: string}}
+ */
+export function applyInlineRewrite(info, newText) {
+  const block = wpData().select('core/block-editor').getBlock?.(info.clientId);
+  if (!block) return {ok: false, error: 'block not found'};
+  const key = info.attributeKey || 'content';
+  const current = block.attributes?.[key];
+  if (typeof current !== 'string') {
+    return {ok: false, error: 'attribute is not a string'};
+  }
+  if (!current.includes(info.text)) {
+    return {ok: false, error: 'selected text not found in block — selection may have spanned formatting'};
+  }
+  const updated = current.replace(info.text, newText);
+  wpData().dispatch('core/block-editor').updateBlockAttributes(info.clientId, {
+    [key]: updated,
+  });
+  highlightChangedBlocks([info.clientId]);
+  return {ok: true};
 }
 
 const capText = (v, n = 160) =>
