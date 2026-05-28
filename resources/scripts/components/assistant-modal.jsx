@@ -10,6 +10,14 @@ import {
 } from '@assistant-ui/react';
 import {useVoiceInput} from '../hooks/use-voice-input';
 import {useEditorSelection} from '../hooks/use-editor-selection';
+import {
+  useTtsEnabled,
+  ttsSupported,
+  speak,
+  cancelTts,
+  extractAssistantText,
+  readVoiceLang,
+} from '../hooks/use-tts';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -1309,6 +1317,8 @@ function MicButton() {
   const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
   const [langOpen, setLangOpen] = useState(false);
   const wrapRef = useRef(null);
+  const [readAloud, setReadAloud] = useTtsEnabled();
+  const ttsAvail = ttsSupported();
   const {supported, listening, start, stop} = useVoiceInput({
     lang,
     onResult: (transcript) => {
@@ -1351,31 +1361,61 @@ function MicButton() {
     }
   };
 
+  // Chevron + popover are useful when there's >1 dictation language OR when
+  // TTS is supported (so the user can flip the read-aloud toggle); hide the
+  // chevron only when neither is true.
+  const showPopoverToggle = langs.length > 1 || ttsAvail;
+
   return (
     <div className="gds-assistant__voice" ref={wrapRef}>
       {/* Popover opens upward (composer is pinned to the panel bottom). */}
-      {langs.length > 1 && langOpen && (
+      {showPopoverToggle && langOpen && (
         <div className="gds-assistant__voice-langs" role="menu">
-          {langs.map((l) => (
+          {langs.length > 1 &&
+            langs.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                role="menuitemradio"
+                aria-checked={l.code === lang}
+                className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
+                onClick={() => choose(l.code)}
+              >
+                <span>{l.name}</span>
+                {l.code === lang && (
+                  <span
+                    className="gds-assistant__voice-langs-check"
+                    aria-hidden="true"
+                  >
+                    ✓
+                  </span>
+                )}
+              </button>
+            ))}
+          {ttsAvail && langs.length > 1 && (
+            <div
+              className="gds-assistant__voice-langs-sep"
+              aria-hidden="true"
+            />
+          )}
+          {ttsAvail && (
             <button
-              key={l.code}
               type="button"
-              role="menuitemradio"
-              aria-checked={l.code === lang}
-              className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
-              onClick={() => choose(l.code)}
+              role="menuitemcheckbox"
+              aria-checked={readAloud}
+              className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${readAloud ? ' is-active' : ''}`}
+              onClick={() => setReadAloud(!readAloud)}
+              title="Read assistant replies aloud using Web Speech"
             >
-              <span>{l.name}</span>
-              {l.code === lang && (
-                <span
-                  className="gds-assistant__voice-langs-check"
-                  aria-hidden="true"
-                >
-                  ✓
-                </span>
-              )}
+              <span>Read replies aloud</span>
+              <span
+                className={`gds-assistant__voice-switch${readAloud ? ' is-on' : ''}`}
+                aria-hidden="true"
+              >
+                <span className="gds-assistant__voice-switch-knob" />
+              </span>
             </button>
-          ))}
+          )}
         </div>
       )}
       <button
@@ -1401,13 +1441,17 @@ function MicButton() {
           <line x1="8" y1="23" x2="16" y2="23" />
         </svg>
       </button>
-      {langs.length > 1 && (
+      {showPopoverToggle && (
         <button
           type="button"
           className="gds-assistant__voice-lang"
           onClick={() => setLangOpen((v) => !v)}
           disabled={listening}
-          title="Dictation language"
+          title={
+            langs.length > 1
+              ? 'Voice settings (dictation language + read aloud)'
+              : 'Voice settings'
+          }
           aria-haspopup="menu"
           aria-expanded={langOpen}
         >
@@ -1429,6 +1473,65 @@ function MicButton() {
       )}
     </div>
   );
+}
+
+// ── Read-aloud controller ───────────────────────────────────
+//
+// Side-effect component (renders nothing). Subscribes to the thread runtime
+// and, when the toggle is on, reads each completed assistant message aloud
+// via the Web Speech API. Speech is cancelled when:
+//   - a new run starts (user sent the next message)
+//   - the toggle is flipped off
+//   - the component unmounts (chat panel closes)
+
+function ReadAloudController() {
+  const [enabled] = useTtsEnabled();
+  const threadRuntime = useThreadRuntime();
+
+  useEffect(() => {
+    if (!enabled || !ttsSupported()) return undefined;
+
+    let wasRunning = false;
+    let lastSpokenId = null;
+
+    const tick = () => {
+      const state = threadRuntime.getState?.();
+      if (!state) return;
+      const running = !!state.isRunning;
+
+      // Run started — silence whatever we were saying about the prior turn.
+      if (running && !wasRunning) {
+        cancelTts();
+      }
+
+      // Run completed — speak the latest assistant message exactly once.
+      if (!running && wasRunning) {
+        const messages = state.messages || [];
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const m = messages[i];
+          if (m?.role !== 'assistant') continue;
+          if (m.id && m.id === lastSpokenId) break;
+          const text = extractAssistantText(m);
+          if (text) {
+            lastSpokenId = m.id || `idx:${i}`;
+            speak(text, readVoiceLang());
+          }
+          break;
+        }
+      }
+
+      wasRunning = running;
+    };
+
+    tick(); // seed
+    const unsub = threadRuntime.subscribe(tick);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      cancelTts();
+    };
+  }, [enabled, threadRuntime]);
+
+  return null;
 }
 
 // ── Editor-selection chip ───────────────────────────────────
@@ -1591,6 +1694,7 @@ function Composer() {
 
   return (
     <ComposerPrimitive.Root className="gds-assistant__composer">
+      <ReadAloudController />
       {slashQuery !== null && (
         <SlashAutocomplete
           query={slashQuery}

@@ -1104,6 +1104,60 @@ abbr.gds-tool {
   font-size: 12px;
 }
 
+/* Visual divider between the language list and the read-aloud toggle. */
+.gds-assistant__voice-langs-sep {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 4px 6px;
+}
+
+/*
+ * "Read replies aloud" toggle row. Mirrors the language item layout (label
+ * left, control right) but swaps the check for a small switch so it reads as
+ * a stateful preference rather than a one-shot selection.
+ */
+.gds-assistant__voice-langs-toggle {
+  color: #1e1e1e;
+  font-weight: normal;
+
+  &.is-active {
+    color: #1e1e1e;
+    font-weight: normal;
+  }
+}
+
+.gds-assistant__voice-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #c3c4c7;
+  transition: background-color 120ms ease;
+  flex: 0 0 auto;
+}
+
+/* On-state colors. Standalone selectors instead of nested `&.is-on` /
+   `.is-on &` so they survive native CSS nesting (which can be flaky around
+   ancestor-side combinators in this build). */
+.gds-assistant__voice-switch.is-on {
+  background: #2271b1;
+}
+
+.gds-assistant__voice-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 120ms ease;
+}
+
+.gds-assistant__voice-switch.is-on .gds-assistant__voice-switch-knob {
+  transform: translateX(12px);
+}
+
 /* Active/recording state — solid fill + white icon + pulsing ring. Written as a
    standalone selector (not `&--listening`): this build uses native CSS nesting,
    which can't concatenate text onto `&`, so the SCSS-style form silently drops.
