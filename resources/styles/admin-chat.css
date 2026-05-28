@@ -899,6 +899,47 @@ abbr.gds-tool {
   background: #fff;
 }
 
+/*
+ * Editor-selection chip — surfaced above the input when the user has marked
+ * text inside a block. The chip occupies a full row above the input/buttons
+ * via flex-basis: 100% (the composer is a wrapping flex row).
+ */
+.gds-assistant__selection-chip {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #d6e4f0;
+  border-radius: 999px;
+  background: #f1f7ff;
+  color: #1d4f80;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.gds-assistant__selection-chip svg {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.gds-assistant__selection-chip-label {
+  flex: 0 0 auto;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gds-assistant__selection-chip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2a2a2a;
+}
+
 .gds-assistant__input {
   flex: 1;
   border: 1px solid #ddd;

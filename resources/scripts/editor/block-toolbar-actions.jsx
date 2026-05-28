@@ -15,83 +15,12 @@ import {BlockControls} from '@wordpress/block-editor';
 import {ToolbarGroup, ToolbarDropdownMenu} from '@wordpress/components';
 import {Fragment} from '@wordpress/element';
 
-const TEXT_BLOCKS = new Set([
-  'core/paragraph',
-  'core/heading',
-  'core/list',
-  'core/list-item',
-  'core/quote',
-  'core/pullquote',
-  'core/preformatted',
-  'core/verse',
-]);
-
-// Friendly block label for the user message (e.g. "core/paragraph" → "paragraph").
-function blockLabel(name) {
-  return (name || '').replace(/^core\//, '').replace(/-/g, ' ');
-}
-
-/** Strip HTML + collapse whitespace, for a clean snippet in the chat message. */
-function stripHtml(value) {
-  if (typeof value !== 'string') return '';
-  return value
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Block rich-text attributes can be one of two shapes depending on WP version:
- *  - an HTML string (legacy)
- *  - a RichTextValue object with `.text` + `.formats` (WP 7.0+)
- * Normalise both to plain text.
- */
-function attrToPlainText(attrValue) {
-  if (typeof attrValue === 'string') {
-    const rich = window.wp?.richText?.create?.({html: attrValue});
-    if (typeof rich?.text === 'string') return rich.text;
-    return stripHtml(attrValue);
-  }
-  if (attrValue && typeof attrValue === 'object' && typeof attrValue.text === 'string') {
-    return attrValue.text;
-  }
-  return '';
-}
-
-function getBlockText(clientId) {
-  const block = window.wp?.data?.select?.('core/block-editor')?.getBlock?.(clientId);
-  if (!block) return '';
-  const attrs = block.attributes || {};
-  const value = attrs.content ?? attrs.text ?? attrs.value;
-  return attrToPlainText(value).replace(/\s+/g, ' ').trim();
-}
-
-/**
- * If the user has a non-empty text selection inside this block's rich-text
- * attribute, return just that substring. Otherwise return ''. wp.data keeps
- * the selection across toolbar clicks, so this works after the dropdown opens.
- */
-function getBlockSelectionText(clientId) {
-  const select = window.wp?.data?.select?.('core/block-editor');
-  if (!select) return '';
-  const start = select.getSelectionStart?.();
-  const end = select.getSelectionEnd?.();
-  if (!start || !end) return '';
-  if (start.clientId !== clientId || end.clientId !== clientId) return '';
-  if (start.attributeKey !== end.attributeKey) return '';
-  if (start.offset == null || end.offset == null) return '';
-  if (start.offset === end.offset) return '';
-
-  const block = select.getBlock?.(clientId);
-  const attrValue = block?.attributes?.[start.attributeKey];
-  const text = attrToPlainText(attrValue);
-  if (!text) return '';
-
-  // Rich-text selection offsets index the plain text (not the source HTML).
-  const from = Math.min(start.offset, end.offset);
-  const to = Math.max(start.offset, end.offset);
-  return text.slice(from, to).trim();
-}
+import {
+  TEXT_BLOCKS,
+  blockLabel,
+  getBlockText,
+  getBlockSelectionText,
+} from './selection';
 
 /** Open the chat panel if it's closed, then send the message as the user. */
 function sendToChat(message) {

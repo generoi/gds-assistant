@@ -9,6 +9,7 @@ import {
   useMessage,
 } from '@assistant-ui/react';
 import {useVoiceInput} from '../hooks/use-voice-input';
+import {useEditorSelection} from '../hooks/use-editor-selection';
 import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
 import {
   useState,
@@ -1430,6 +1431,51 @@ function MicButton() {
   );
 }
 
+// ── Editor-selection chip ───────────────────────────────────
+//
+// Shows above the composer input whenever the user has highlighted a span of
+// text inside a block. Gives a visible signal that the next message will go
+// out with that text already attached as context (server-side, prepended to
+// the user's message body), so prompts like "make this punchier" work without
+// the model needing an `editor__read_selection` round-trip.
+
+function truncate(text, max = 64) {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1).trimEnd() + '…';
+}
+
+function SelectionChip() {
+  const selection = useEditorSelection();
+  if (!selection) return null;
+  const snippet = truncate(selection.selectedText);
+  return (
+    <div
+      className="gds-assistant__selection-chip"
+      title={`Selected ${selection.blockLabel}: ${selection.selectedText}`}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 7V4h16v3" />
+        <path d="M9 20h6" />
+        <path d="M12 4v16" />
+      </svg>
+      <span className="gds-assistant__selection-chip-label">
+        Selected {selection.blockLabel}:
+      </span>
+      <span className="gds-assistant__selection-chip-text">“{snippet}”</span>
+    </div>
+  );
+}
+
 // ── Composer with Send/Stop toggle ──────────────────────────
 
 function Composer() {
@@ -1520,6 +1566,7 @@ function Composer() {
           onDismiss={() => setSlashQuery(null)}
         />
       )}
+      <SelectionChip />
       <div className="gds-assistant__attachments">
         <ComposerPrimitive.Attachments
           components={{

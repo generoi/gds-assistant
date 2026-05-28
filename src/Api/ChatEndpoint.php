@@ -245,6 +245,30 @@ class ChatEndpoint
                 'total_messages' => count($messages),
             ]);
 
+            // When the user typed into the chat with a text selection active in
+            // the editor, the client attaches the highlighted substring to the
+            // editor context. Prepend it to the latest user message body so the
+            // model has the snippet inline (avoids an `editor__read_selection`
+            // round-trip on common "rewrite this" prompts). Done here instead
+            // of in the system prompt to keep the prompt cache stable across
+            // selection changes. Skip when resuming a tool / approval flow:
+            // those branches popped the trailing control message above, so
+            // there's no fresh user message to annotate.
+            if (
+                is_array($editorContext)
+                && ! empty($editorContext['has_editor'])
+                && ! empty($editorContext['selected_text'])
+                && ! is_array($clientResults)
+                && ! $approval
+            ) {
+                $messages = $this->prependSelectionToLatestUser(
+                    $messages,
+                    (string) $editorContext['selected_text'],
+                    (string) ($editorContext['selected_block_label'] ?? 'block'),
+                    (string) ($editorContext['selected_block_client_id'] ?? '')
+                );
+            }
+
             // Collapse any consecutive same-role messages (e.g. an undo note
             // appended out-of-band by the Undo button) so the provider sees
             // valid alternating roles. No-op for normal alternating histories.
@@ -367,6 +391,67 @@ class ChatEndpoint
         }
 
         return $out;
+    }
+
+    /**
+     * Prepend a short "[Highlighted text…]" preamble to the latest user
+     * message's content, so the model sees the user's selection inline with
+     * what they typed. The preamble lives inside the user message (not the
+     * system prompt) so it doesn't invalidate the prompt cache as selection
+     * changes from turn to turn.
+     *
+     * Handles both content shapes the client may send:
+     *   - string content → prepend to the string
+     *   - array of content blocks → prepend a leading text block (or merge
+     *     into an existing leading text block)
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private function prependSelectionToLatestUser(
+        array $messages,
+        string $selectedText,
+        string $blockLabel,
+        string $clientId,
+    ): array {
+        // Find the LAST user message (newest one — the one we just received).
+        $idx = -1;
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if (($messages[$i]['role'] ?? null) === 'user') {
+                $idx = $i;
+                break;
+            }
+        }
+        if ($idx < 0) {
+            return $messages;
+        }
+
+        // Keep it terse — the chat UI shows the chip; this is just the bit the
+        // model sees in the message body.
+        $idHint = $clientId !== '' ? " (block {$clientId})" : '';
+        $preamble = "[The user has highlighted text in the {$blockLabel}{$idHint}: \"{$selectedText}\"]\n\n";
+
+        $content = $messages[$idx]['content'] ?? '';
+
+        if (is_string($content)) {
+            $messages[$idx]['content'] = $preamble.$content;
+
+            return $messages;
+        }
+
+        if (is_array($content)) {
+            $blocks = array_values($content);
+            // Merge into a leading text block if there is one so we don't
+            // bloat the content-blocks array unnecessarily.
+            if (! empty($blocks) && ($blocks[0]['type'] ?? null) === 'text') {
+                $blocks[0]['text'] = $preamble.($blocks[0]['text'] ?? '');
+            } else {
+                array_unshift($blocks, ['type' => 'text', 'text' => $preamble]);
+            }
+            $messages[$idx]['content'] = $blocks;
+        }
+
+        return $messages;
     }
 
     /**

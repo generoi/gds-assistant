@@ -8,6 +8,8 @@
  * text-range edits are deferred.
  */
 
+import {getCurrentSelectionContext} from './selection';
+
 const wpData = () => window.wp?.data;
 const wpBlocks = () => window.wp?.blocks;
 
@@ -43,6 +45,13 @@ export function getEditorContext() {
     // selection store not ready — treat as no text selection
   }
 
+  // When the user has highlighted a span of text inside a text block we
+  // attach the substring here so the server can prepend it to the user's
+  // message — saves an `editor__read_selection` round-trip on common
+  // "rewrite this" prompts. Lives outside the system prompt to stay
+  // cache-friendly across messages.
+  const sel = getCurrentSelectionContext();
+
   return {
     has_editor: true,
     post_id: ed.getCurrentPostId?.() || null,
@@ -50,6 +59,9 @@ export function getEditorContext() {
     selected_block_count: ids.length,
     selected_block_types: types.slice(0, 20),
     has_text_selection: hasText,
+    selected_text: sel?.selectedText || null,
+    selected_block_label: sel?.blockLabel || null,
+    selected_block_client_id: sel?.clientId || null,
     // Derived from the theme (theme.json settings.color.custom) so the model
     // knows whether raw hex is allowed without us hardcoding it.
     custom_colors: !be.getSettings?.()?.disableCustomColors,
