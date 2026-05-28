@@ -152,6 +152,12 @@ class ChatEndpoint
                 // tool_result. Inject a synthetic "cancelled" result so the
                 // conversation can continue instead of silently failing.
                 $storedMessages = self::patchOrphanToolUses($storedMessages);
+                // Heal "mixed" user messages saved by the old merge logic
+                // (tool_result blocks combined with plain text in one bag) —
+                // split them back into a tool-result message followed by a
+                // text message so the OpenAI converter doesn't silently drop
+                // the text.
+                $storedMessages = self::splitMixedUserMessages($storedMessages);
                 $messages = array_merge($storedMessages, $messages);
             }
         } else {
@@ -378,6 +384,14 @@ class ChatEndpoint
      * as the Undo button's "↩ Reverted…" user message can otherwise leave two
      * user messages in a row. Semantically equivalent for the provider.
      *
+     * One exception: a user message that carries a `tool_result` is treated
+     * as a different "kind" from a plain-text user message and won't merge
+     * with one. They look identical at the storage layer (both `role: user`)
+     * but the OpenAI converter splits them into `role: tool` vs `role: user`
+     * downstream — merging the two would smuggle plain text into a tool
+     * message and the converter silently drops it, leaving the model with
+     * "here is your tool result" and no actual user question to answer.
+     *
      * @param  array<int, array<string, mixed>>  $messages
      * @return array<int, array<string, mixed>>
      */
@@ -386,13 +400,98 @@ class ChatEndpoint
         $out = [];
         foreach ($messages as $msg) {
             $i = count($out) - 1;
-            if ($i >= 0 && ($out[$i]['role'] ?? null) === ($msg['role'] ?? null)) {
+            $sameRole = $i >= 0 && ($out[$i]['role'] ?? null) === ($msg['role'] ?? null);
+            $compatible = $sameRole && self::userKind($out[$i]) === self::userKind($msg);
+            if ($sameRole && $compatible) {
                 $out[$i]['content'] = array_merge(
                     self::asContentBlocks($out[$i]['content'] ?? ''),
                     self::asContentBlocks($msg['content'] ?? ''),
                 );
             } else {
                 $out[] = $msg;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * For user messages, distinguish "tool-result-bearing" from "plain text"
+     * and from already-mixed (legacy) so they don't merge together. Anything
+     * other than role=user falls through to a single bucket — assistant
+     * messages are merged by role alone like before.
+     */
+    private static function userKind(array $msg): string
+    {
+        if (($msg['role'] ?? null) !== 'user') {
+            return 'other';
+        }
+        $content = $msg['content'] ?? '';
+        if (is_string($content)) {
+            return 'text';
+        }
+        if (! is_array($content)) {
+            return 'text';
+        }
+        $hasToolResult = false;
+        $hasOther = false;
+        foreach ($content as $part) {
+            if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                $hasToolResult = true;
+            } elseif (is_array($part) || is_string($part)) {
+                $hasOther = true;
+            }
+        }
+        if ($hasToolResult && $hasOther) {
+            return 'mixed';
+        }
+        if ($hasToolResult) {
+            return 'tool_result';
+        }
+
+        return 'text';
+    }
+
+    /**
+     * Split any user message that already carries BOTH a tool_result and
+     * plain text/image content into two separate user messages — the tool
+     * result first, then the rest. We only re-emit if there's at least one
+     * tool_result AND at least one non-tool_result part; clean messages pass
+     * through unchanged.
+     *
+     * This heals conversations that were already saved in the mixed shape
+     * by the old `mergeConsecutiveRoles` (which would combine a tool_result
+     * with subsequent text into a single bag, after which the OpenAI
+     * converter silently dropped the text).
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function splitMixedUserMessages(array $messages): array
+    {
+        $out = [];
+        foreach ($messages as $msg) {
+            if (self::userKind($msg) !== 'mixed') {
+                $out[] = $msg;
+
+                continue;
+            }
+            $toolResults = [];
+            $rest = [];
+            foreach ((array) ($msg['content'] ?? []) as $part) {
+                if (is_array($part) && ($part['type'] ?? null) === 'tool_result') {
+                    $toolResults[] = $part;
+                } else {
+                    $rest[] = $part;
+                }
+            }
+            $base = $msg;
+            unset($base['content']);
+            if ($toolResults) {
+                $out[] = $base + ['content' => $toolResults];
+            }
+            if ($rest) {
+                $out[] = $base + ['content' => $rest];
             }
         }
 
