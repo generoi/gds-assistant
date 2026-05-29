@@ -731,12 +731,12 @@ class ChatEndpoint
 
     /**
      * @param  array<int, array<string, mixed>>  $messages
-     * @return array<int, array<string, mixed>>
+     * @return list<array{role: string, content: string|list<array<string, mixed>>}>
      */
     private function normalizeMessages(array $messages): array
     {
-        return array_map(function ($msg) {
-            $role = $msg['role'] ?? 'user';
+        return array_values(array_map(function (array $msg): array {
+            $role = (string) ($msg['role'] ?? 'user');
             $content = $msg['content'] ?? '';
 
             if (is_string($content)) {
@@ -785,8 +785,11 @@ class ChatEndpoint
                 }));
             }
 
-            return ['role' => $role, 'content' => $content];
-        }, $messages);
+            return [
+                'role' => $role,
+                'content' => is_array($content) ? array_values($content) : [],
+            ];
+        }, $messages));
     }
 
     /**
