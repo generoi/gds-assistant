@@ -8,6 +8,8 @@ interface AuthStrategyInterface
      * Return headers to merge into every MCP request. Empty array if the
      * server is reachable but no auth is yet available (caller should skip
      * or surface a connect prompt).
+     *
+     * @return array<string, string>
      */
     public function headers(): array;
 

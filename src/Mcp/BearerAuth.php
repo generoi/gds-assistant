@@ -6,6 +6,7 @@ use GeneroWP\Assistant\Plugin;
 
 class BearerAuth implements AuthStrategyInterface
 {
+    /** @param array<string, mixed> $config */
     public function __construct(
         private readonly array $config,
     ) {}

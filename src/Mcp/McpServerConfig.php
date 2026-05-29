@@ -15,6 +15,7 @@ namespace GeneroWP\Assistant\Mcp;
  */
 final class McpServerConfig
 {
+    /** @param array<string, mixed> $auth */
     public function __construct(
         public readonly string $name,
         public readonly string $url,

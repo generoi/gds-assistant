@@ -58,6 +58,11 @@ class AuditLog
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>|null  $undoState
+     * @return array<string, mixed>
+     */
     public function log(
         string $conversationUuid,
         int $userId,
@@ -161,6 +166,7 @@ class AuditLog
         $wpdb->update(self::tableName(), ['undo_state' => null], ['id' => $id]);
     }
 
+    /** @return array<int, array<string, mixed>> */
     public function getForConversation(string $uuid): array
     {
         global $wpdb;

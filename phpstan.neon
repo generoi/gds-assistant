@@ -1,10 +1,5 @@
 includes:
     - vendor/szepeviktor/phpstan-wordpress/extension.neon
-    # Baseline captures the remaining level-6 violations after the per-directory
-    # burn-down began. New code is held to level 6 in CI; the baseline burns
-    # down file-by-file as we touch each one.
-    # See https://github.com/generoi/gds-assistant/issues/39 for the plan.
-    - phpstan-baseline.neon
 
 parameters:
     level: 6

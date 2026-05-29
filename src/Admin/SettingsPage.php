@@ -103,6 +103,8 @@ class SettingsPage
      * Sanitize the trusted web-fetch hosts list: accepts a newline or
      * comma-separated string from the textarea, normalizes to lowercase
      * hostnames without scheme/path, deduplicates.
+     *
+     * @return array<int, string>
      */
     public static function sanitizeTrustedHosts(mixed $input): array
     {
@@ -275,6 +277,8 @@ class SettingsPage
 
     /**
      * Get all provider configs (not just available ones).
+     *
+     * @return array<string, array<string, mixed>>
      */
     private static function getProviderConfigs(): array
     {

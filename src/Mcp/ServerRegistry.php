@@ -123,7 +123,7 @@ class ServerRegistry
      * name collides with a code/env entry (those are read-only) or if
      * the config fails validation.
      *
-     * @param  array{url: string, label?: string, auth?: array, enabled?: bool}  $entry
+     * @param  array{url: string, label?: string, auth?: array<string, mixed>, enabled?: bool}  $entry
      */
     public static function upsertAdminServer(string $name, array $entry): McpServerConfig|\WP_Error
     {

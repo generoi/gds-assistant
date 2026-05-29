@@ -188,6 +188,8 @@ class OAuthAuth implements AuthStrategyInterface
     /**
      * Load or fetch authorization-server metadata. Cached site-wide in
      * TokenStore so repeat requests are cheap and DCR only runs once per site.
+     *
+     * @return array<string, mixed>|\WP_Error
      */
     private function getAuthorizationServerMetadata(): array|\WP_Error
     {
@@ -272,6 +274,9 @@ class OAuthAuth implements AuthStrategyInterface
     /**
      * Return {client_id, client_secret?} for this server. One registration
      * per site — cached in server meta (wp_options) and shared across users.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>|\WP_Error
      */
     private function ensureClient(array $meta, string $redirectUri): array|\WP_Error
     {
@@ -425,6 +430,10 @@ class OAuthAuth implements AuthStrategyInterface
         return 'gds_assistant_mcp_refresh_'.$this->server->name.'_'.$this->userId;
     }
 
+    /**
+     * @param  array<string, string|int>  $body
+     * @return array<string, mixed>|\WP_Error
+     */
     private function postTokenEndpoint(string $url, array $body): array|\WP_Error
     {
         $response = wp_remote_post($url, [
@@ -452,6 +461,7 @@ class OAuthAuth implements AuthStrategyInterface
         return $data;
     }
 
+    /** @param array<string, mixed> $response */
     private function persistTokenResponse(array $response): void
     {
         $patch = [
