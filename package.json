@@ -6,13 +6,14 @@
     "build:production": "wp-scripts build",
     "start": "wp-scripts start",
     "test": "npm run lint",
-    "lint": "npm run lint:prettier && npm run lint:js",
-    "lint:js": "wp-scripts lint-js resources",
+    "lint": "npm run lint:prettier && npm run lint:js && npm run typecheck",
+    "lint:js": "wp-scripts lint-js resources --ext js,jsx,ts,tsx",
     "lint:prettier": "prettier --check .",
     "lint:fix": "npm run lint:fix:prettier && npm run lint:fix:js",
     "lint:fix:prettier": "prettier --write .",
-    "lint:fix:js": "wp-scripts lint-js resources --fix",
-    "ci:scripts": "wp-scripts lint-js resources/scripts --format checkstyle",
+    "lint:fix:js": "wp-scripts lint-js resources --ext js,jsx,ts,tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "ci:scripts": "wp-scripts lint-js resources/scripts --ext js,jsx,ts,tsx --format checkstyle",
     "translate": "npm run translate:pot && npm run translate:js",
     "translate:pot": "npm run wp -- i18n make-pot . ./resources/lang/gds-assistant.pot --domain=gds-assistant --include=\"src,resources\"",
     "translate:js": "npm run wp -- i18n make-json ./resources/lang --pretty-print",
@@ -36,9 +37,18 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@types/wordpress__api-fetch": "^3.2.4",
+    "@types/wordpress__components": "^23.0.12",
+    "@types/wordpress__core-data": "^2.4.5",
+    "@types/wordpress__data": "^6.0.2",
+    "@types/wordpress__element": "^2.4.1",
+    "@types/wordpress__i18n": "^3.4.0",
     "@wordpress/e2e-test-utils-playwright": "^1.43.0",
     "@wordpress/scripts": "~31.6.0",
     "postcss-prefix-selector": "^2.1.1",
-    "tailwindcss": "^4.0.0"
+    "tailwindcss": "^4.0.0",
+    "typescript": "^6.0.3"
   }
 }
