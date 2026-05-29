@@ -1,16 +1,16 @@
 /**
  * Inherits the @wordpress/scripts defaults (recommended config + bundled
- * babel/prettier wiring) and only opts out of rules that don't fit a JS-first
- * codebase plus the @wordpress/* externals pattern.
+ * babel/prettier/typescript wiring) and only opts out of rules that don't
+ * fit our codebase + the @wordpress/* externals pattern.
  *
  * - env.browser: covers document/window/navigator/localStorage refs (we run
  *   in wp-admin, not in Node).
  * - import/no-extraneous-dependencies: @wordpress/* packages are externalised
  *   by webpack from window.wp.* at runtime, not bundled, so they don't appear
  *   in our package.json. The rule needs to know to allow them.
- * - jsdoc/require-param-type + similar: the existing codebase doesn't use
- *   typed @param tags (we're plain JS with descriptions only). The TS
- *   migration in #14 will pick these up properly.
+ * - jsdoc/require-param-type + similar: most existing JS uses descriptions
+ *   only. TS files express types through annotations; the migration
+ *   in #41 is replacing JSDoc-typed surfaces one module at a time.
  * - no-nested-ternary: not great, but the diff helpers use them legibly;
  *   we'll clean up when those modules move to TS.
  */
@@ -24,7 +24,7 @@ module.exports = {
   settings: {
     "import/resolver": {
       node: {
-        extensions: [".js", ".jsx"],
+        extensions: [".js", ".jsx", ".ts", ".tsx"],
       },
     },
   },

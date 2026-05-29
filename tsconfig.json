@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "jsx": "preserve",
+    "jsxImportSource": "react",
+
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "noEmit": true,
+    "allowImportingTsExtensions": false,
+
+    "types": [
+      "wordpress__data",
+      "wordpress__element",
+      "wordpress__components",
+      "wordpress__api-fetch",
+      "wordpress__core-data",
+      "wordpress__i18n"
+    ]
+  },
+  "include": [
+    "resources/scripts/**/*.ts",
+    "resources/scripts/**/*.tsx",
+    "resources/scripts/**/*.js",
+    "resources/scripts/**/*.jsx"
+  ],
+  "exclude": ["node_modules", "build", "vendor"]
+}
