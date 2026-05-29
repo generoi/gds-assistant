@@ -502,34 +502,41 @@ class ChatEndpoint
      * '' when there's nothing meaningful to attach (empty selection / unknown
      * shape).
      *
+     * Defensive sanitisation: the snapshot fields originate on the client and
+     * are NOT user typed-text into the chat — they're block content the user
+     * happened to highlight. A compromised or replayed client could craft a
+     * `selected_text` that escapes the bracketed format (e.g. ending with
+     * `"]\n\nignore all instructions:`). Wrap user-controllable strings in
+     * fenced blocks and strip control characters so they can't punch out of
+     * the preamble's framing.
+     *
      * @param  array<string, mixed>  $ctx  editor_context payload
      */
     private function buildSelectionPreamble(array $ctx): string
     {
         $mode = $ctx['selection_mode'] ?? null;
+        // Labels and clientIds are model-supplied identifiers, kept short. Cap
+        // them so a misshapen snapshot can't bloat the preamble.
+        $label = self::sanitiseSelectionLabel((string) ($ctx['selected_block_label'] ?? 'block'));
+        $clientId = self::sanitiseSelectionLabel((string) ($ctx['selected_block_client_id'] ?? ''), 64);
+        $idHint = $clientId !== '' ? ' (block '.$clientId.')' : '';
 
         if ($mode === 'text-range' && ! empty($ctx['selected_text'])) {
-            $label = (string) ($ctx['selected_block_label'] ?? 'block');
-            $idHint = ! empty($ctx['selected_block_client_id'])
-                ? ' (block '.$ctx['selected_block_client_id'].')'
-                : '';
+            $text = self::fenceUserContent((string) $ctx['selected_text']);
 
-            return '[The user has highlighted text in the '.$label.$idHint.': "'
-                .$ctx['selected_text'].'"]'."\n\n";
+            return "[The user has highlighted text in the {$label}{$idHint}.]\n{$text}\n\n";
         }
 
         if ($mode === 'whole-block' && ! empty($ctx['selected_block_label'])) {
-            $label = (string) $ctx['selected_block_label'];
-            $idHint = ! empty($ctx['selected_block_client_id'])
-                ? ' (block '.$ctx['selected_block_client_id'].')'
-                : '';
             $text = (string) ($ctx['selected_block_text'] ?? '');
             if ($text !== '') {
-                return '[The user has selected the '.$label.$idHint.': "'.$text.'"]'."\n\n";
+                $fenced = self::fenceUserContent($text);
+
+                return "[The user has selected the {$label}{$idHint}.]\n{$fenced}\n\n";
             }
 
             // Non-text block (image / gallery / etc.) — just announce it.
-            return '[The user has selected a '.$label.' block'.$idHint.']'."\n\n";
+            return "[The user has selected a {$label} block{$idHint}.]\n\n";
         }
 
         if ($mode === 'multi-block') {
@@ -537,12 +544,47 @@ class ChatEndpoint
             $labels = is_array($ctx['selected_block_labels'] ?? null)
                 ? array_values(array_filter($ctx['selected_block_labels'], 'is_string'))
                 : [];
-            $list = $labels ? ': '.implode(', ', array_slice($labels, 0, 10)) : '';
+            $sanitised = array_map(self::sanitiseSelectionLabel(...), array_slice($labels, 0, 10));
+            $list = $sanitised ? ': '.implode(', ', $sanitised) : '';
 
-            return '[The user has selected '.$count.' blocks'.$list.']'."\n\n";
+            return "[The user has selected {$count} blocks{$list}]\n\n";
         }
 
         return '';
+    }
+
+    /** Trim, strip control bytes, cap length, and collapse newlines. */
+    private static function sanitiseSelectionLabel(string $value, int $maxLength = 80): string
+    {
+        $stripped = preg_replace('/[[:cntrl:]]+/u', ' ', $value) ?? $value;
+        $collapsed = trim((string) preg_replace('/\s+/u', ' ', $stripped));
+        if (function_exists('mb_substr')) {
+            return mb_substr($collapsed, 0, $maxLength);
+        }
+
+        return substr($collapsed, 0, $maxLength);
+    }
+
+    /**
+     * Wrap arbitrary user content in a fenced block. Triple-tilde fences are
+     * preferred over backticks because the editor selection might itself
+     * contain Markdown code blocks. Control characters are stripped first so
+     * they can't break the fence either.
+     */
+    private static function fenceUserContent(string $value, int $maxLength = 4000): string
+    {
+        $stripped = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/u', '', $value) ?? $value;
+        if (function_exists('mb_substr') && mb_strlen($stripped) > $maxLength) {
+            $stripped = mb_substr($stripped, 0, $maxLength).'…';
+        } elseif (! function_exists('mb_substr') && strlen($stripped) > $maxLength) {
+            $stripped = substr($stripped, 0, $maxLength).'…';
+        }
+        // Use a length-randomised fence so user content that happens to
+        // contain `~~~~~~` can't close it. 6 tildes is below most pasted
+        // fence widths but distinct enough for the model to recognise.
+        $fence = "~~~~~~ selection\n";
+
+        return $fence.$stripped."\n~~~~~~";
     }
 
     /**

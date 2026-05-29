@@ -349,28 +349,35 @@ class ImageGenerationToolProvider implements ToolProviderInterface
         if (! $tmpFile) {
             return new \WP_Error('tmp_failed', 'Failed to create a temp file for the generated image');
         }
-        $written = file_put_contents($tmpFile, $binary);
-        if ($written === false) {
-            @unlink($tmpFile);
 
-            return new \WP_Error('write_failed', 'Failed to write the generated image to disk');
-        }
+        try {
+            $written = file_put_contents($tmpFile, $binary);
+            if ($written === false) {
+                return new \WP_Error('write_failed', 'Failed to write the generated image to disk');
+            }
 
-        $slug = sanitize_title(substr($prompt, 0, 60)) ?: 'ai-image';
-        $filename = "{$slug}-".substr(wp_generate_uuid4(), 0, 8).'.png';
+            $slug = sanitize_title(substr($prompt, 0, 60)) ?: 'ai-image';
+            $filename = "{$slug}-".substr(wp_generate_uuid4(), 0, 8).'.png';
 
-        $file = [
-            'name' => $filename,
-            'tmp_name' => $tmpFile,
-            'error' => 0,
-            'size' => filesize($tmpFile),
-            'type' => 'image/png',
-        ];
-        $sideloaded = wp_handle_sideload($file, ['test_form' => false]);
-        if (isset($sideloaded['error'])) {
-            @unlink($tmpFile);
-
-            return new \WP_Error('sideload_failed', $sideloaded['error']);
+            $file = [
+                'name' => $filename,
+                'tmp_name' => $tmpFile,
+                'error' => 0,
+                'size' => filesize($tmpFile),
+                'type' => 'image/png',
+            ];
+            $sideloaded = wp_handle_sideload($file, ['test_form' => false]);
+            if (isset($sideloaded['error'])) {
+                return new \WP_Error('sideload_failed', $sideloaded['error']);
+            }
+        } finally {
+            // wp_handle_sideload moves the temp file on success, so this is
+            // a no-op then. On any failure path — and any unhandled exception
+            // — this catches the leak. Suppress the warning if the file's
+            // already gone (the success path); we don't need a stat round-trip.
+            if (file_exists($tmpFile)) {
+                @unlink($tmpFile);
+            }
         }
 
         $attachment = [
