@@ -108,7 +108,7 @@ class UndoEndpointTest extends TestCase
 
         $this->endpoint->handle($this->request($id));
 
-        $messages = $store->get($uuid)['messages'];
+        $messages = $store->get($uuid)->messages;
         $notes = array_filter(
             $messages,
             fn ($m) => is_string($m['content'] ?? null) && str_contains($m['content'], 'Reverted'),

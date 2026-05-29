@@ -2,6 +2,8 @@
 
 namespace GeneroWP\Assistant\Storage;
 
+use GeneroWP\Assistant\Storage\Records\ConversationRecord;
+
 class ConversationStore
 {
     public static function tableName(): string
@@ -62,8 +64,7 @@ class ConversationStore
         return $uuid;
     }
 
-    /** @return array<string, mixed>|null */
-    public function get(string $uuid): ?array
+    public function get(string $uuid): ?ConversationRecord
     {
         global $wpdb;
 
@@ -75,13 +76,7 @@ class ConversationStore
             ARRAY_A,
         );
 
-        if (! $row) {
-            return null;
-        }
-
-        $row['messages'] = json_decode($row['messages'], true) ?: [];
-
-        return $row;
+        return is_array($row) ? ConversationRecord::fromRow($row) : null;
     }
 
     /** @param array<string, mixed> $data */

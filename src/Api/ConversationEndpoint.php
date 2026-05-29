@@ -77,11 +77,11 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
+        if ($conversation->userId !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
-        return new WP_REST_Response($conversation);
+        return new WP_REST_Response($conversation->toArray());
     }
 
     public function update(WP_REST_Request $request): WP_REST_Response
@@ -93,7 +93,7 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
+        if ($conversation->userId !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 
@@ -119,7 +119,7 @@ class ConversationEndpoint
         if (! $conversation) {
             return new WP_REST_Response(['error' => 'Not found'], 404);
         }
-        if ((int) $conversation['user_id'] !== get_current_user_id() && ! current_user_can('manage_options')) {
+        if ($conversation->userId !== get_current_user_id() && ! current_user_can('manage_options')) {
             return new WP_REST_Response(['error' => 'Forbidden'], 403);
         }
 

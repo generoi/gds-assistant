@@ -101,10 +101,10 @@ class UndoEndpoint
         }
         $store = new ConversationStore;
         $conversation = $store->get($uuid);
-        if (! $conversation || (int) $conversation['user_id'] !== $userId) {
+        if (! $conversation || $conversation->userId !== $userId) {
             return;
         }
-        $messages = $conversation['messages'] ?? [];
+        $messages = $conversation->messages;
         $messages[] = ['role' => 'user', 'content' => $note];
         $store->update($uuid, ['messages' => $messages]);
     }
