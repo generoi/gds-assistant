@@ -10,13 +10,218 @@
 
 import { getCurrentSelectionContext } from "./selection";
 
-const wpData = () => window.wp?.data;
-const wpBlocks = () => window.wp?.blocks;
+// ── wp.* globals ────────────────────────────────────────────
+// Narrow shapes for the bits we read off `window.wp.data` and `window.wp.blocks`.
+// We type only what we touch; the editor stores are far larger than this. The
+// editor uses *its* loaded instances of these modules, so we hit `window.wp`
+// rather than importing — that way mutations land in the same stores the UI
+// renders from.
+
+interface SelectionPoint {
+  clientId?: string;
+  offset?: number;
+  attributeKey?: string;
+}
+
+interface Block {
+  clientId: string;
+  name: string;
+  attributes?: Record<string, unknown>;
+  innerBlocks?: Block[];
+  isValid?: boolean;
+}
+
+interface BlockEditorSelect {
+  getSelectedBlockClientIds?: () => string[];
+  getBlockName?: (clientId: string) => string | undefined;
+  getBlock?: (clientId: string) => Block | undefined;
+  getClientIdsWithDescendants?: () => string[];
+  getBlockParents?: (clientId: string) => string[];
+  getBlockRootClientId?: (clientId: string) => string | undefined;
+  getBlockOrder?: (rootClientId: string) => string[];
+  getSelectionStart?: () => SelectionPoint | undefined;
+  getSelectionEnd?: () => SelectionPoint | undefined;
+  getSettings?: () => {
+    colors?: Array<{ slug: string; name?: string; color?: string }>;
+    disableCustomColors?: boolean;
+    __experimentalFeatures?: {
+      color?: {
+        palette?: {
+          theme?: Array<{ slug: string; name?: string; color?: string }>;
+        };
+      };
+    };
+  };
+}
+
+interface EditorSelect {
+  getCurrentPostId?: () => number | undefined;
+  getCurrentPostType?: () => string | undefined;
+  getEditedPostAttribute?: (key: string) => unknown;
+}
+
+interface EditPostSelect {
+  getActiveGeneralSidebarName?: () => string | null;
+}
+
+interface BlockEditorDispatch {
+  replaceBlocks: (clientIds: string[], blocks: Block[]) => void;
+  insertBlocks: (
+    blocks: Block[],
+    index?: number,
+    rootClientId?: string,
+  ) => void;
+  updateBlockAttributes: (
+    clientId: string,
+    attributes: Record<string, unknown>,
+  ) => void;
+  replaceBlock: (clientId: string, block: Block) => void;
+}
+
+interface EditorDispatch {
+  editPost: (data: Record<string, unknown>) => void;
+}
+
+interface EditPostDispatch {
+  openGeneralSidebar?: (name: string) => void;
+}
+
+interface CoreResolveSelect {
+  getMedia?: (id: number) => Promise<MediaItem | undefined>;
+}
+
+interface MediaItem {
+  id?: number;
+  title?: { rendered?: string };
+  slug?: string;
+  source_url?: string;
+  media_details?: { file?: string };
+}
+
+type StoreKey = "core" | "core/editor" | "core/block-editor" | "core/edit-post";
+
+interface WpData {
+  select: ((key: "core/block-editor") => BlockEditorSelect | undefined) &
+    ((key: "core/editor") => EditorSelect | undefined) &
+    ((key: "core/edit-post") => EditPostSelect | undefined) &
+    ((key: StoreKey) => unknown);
+  dispatch: ((key: "core/block-editor") => BlockEditorDispatch) &
+    ((key: "core/editor") => EditorDispatch) &
+    ((key: "core/edit-post") => EditPostDispatch | undefined) &
+    ((key: StoreKey) => unknown);
+  resolveSelect?: (key: "core") => CoreResolveSelect | undefined;
+}
+
+interface WpBlocks {
+  parse: (markup: string) => Block[];
+  serialize: (blocks: Block | Block[]) => string;
+  createBlock: (
+    name: string,
+    attributes?: Record<string, unknown>,
+    innerBlocks?: Block[],
+  ) => Block;
+  getBlockType?: (name: string) => { name: string } | undefined;
+}
+
+declare global {
+  interface Window {
+    wp?: {
+      data?: WpData;
+      blocks?: WpBlocks;
+    };
+  }
+}
+
+const wpData = (): WpData | undefined => window.wp?.data;
+const wpBlocks = (): WpBlocks | undefined => window.wp?.blocks;
+
+// ── Tool I/O ────────────────────────────────────────────────
+
+/** All client-tool names dispatched in {@link executeClientTool}. */
+export type EditorToolName =
+  | "editor__read_selection"
+  | "editor__replace_blocks"
+  | "editor__insert_blocks"
+  | "editor__update_block_attributes"
+  | "editor__update_post"
+  | "editor__recover_block"
+  | "editor__query_dom"
+  | "editor__focus"
+  | "editor__open_sidebar";
+
+/** Input shapes per tool (snake_case matches the server schema). */
+export interface ReplaceBlocksInput {
+  client_ids?: string[];
+  markup?: string;
+}
+export interface InsertBlocksInput {
+  markup?: string;
+  after_client_id?: string;
+}
+export interface UpdateBlockAttributesInput {
+  client_id?: string;
+  attributes?: Record<string, unknown>;
+}
+export interface UpdatePostInput {
+  title?: string;
+  slug?: string;
+  excerpt?: string;
+  template?: string;
+  featured_media?: number;
+  author?: number;
+  meta?: Record<string, unknown>;
+}
+export interface RecoverBlockInput {
+  client_id?: string;
+  client_ids?: string[];
+}
+export interface QueryDomInput {
+  selector?: string;
+  limit?: number;
+}
+export interface FocusInput {
+  selector?: string;
+}
+export interface OpenSidebarInput {
+  name?: string;
+}
+
+/** Generic input bag passed to {@link executeClientTool}. */
+export type EditorToolInput =
+  | ReplaceBlocksInput
+  | InsertBlocksInput
+  | UpdateBlockAttributesInput
+  | UpdatePostInput
+  | RecoverBlockInput
+  | QueryDomInput
+  | FocusInput
+  | OpenSidebarInput
+  | Record<string, never>;
+
+/**
+ * Before/after snapshot the tool-call card uses to render a real diff.
+ * Captured for write tools before the change applies.
+ */
+export interface DiffSnapshot {
+  kind: "replace" | "insert" | "attrs" | "post" | "recover";
+  before: string;
+  after: string;
+  summary: string;
+  clientId?: string;
+}
+
+/** Catch-all result shape — every tool either returns `{ error }` or `{ ok, ... }`. */
+export interface EditorToolResult {
+  error?: string;
+  ok?: boolean;
+  diff?: DiffSnapshot;
+  [key: string]: unknown;
+}
 
 // Editor tools we capture a before-snapshot for, so the chat tool-call card
 // can render a real unified diff after the change is applied. Read-only and
 // DOM probe tools have no "before" to compare against.
-const WRITE_TOOLS = new Set([
+const WRITE_TOOLS = new Set<EditorToolName>([
   "editor__replace_blocks",
   "editor__insert_blocks",
   "editor__update_block_attributes",
@@ -25,30 +230,49 @@ const WRITE_TOOLS = new Set([
 ]);
 
 /** Is the block editor present and ready on this page? */
-export function hasEditor() {
+export function hasEditor(): boolean {
   const d = wpData();
   return !!(d?.select?.("core/block-editor") && d.select("core/editor"));
+}
+
+export interface EditorContext {
+  has_editor: boolean;
+  post_id?: number | null;
+  post_type?: string | null;
+  selected_block_count?: number;
+  selected_block_types?: string[];
+  has_text_selection?: boolean;
+  selection_mode?: string | null;
+  selected_text?: string | null;
+  selected_block_text?: string | null;
+  selected_block_label?: string | null;
+  selected_block_client_id?: string | null;
+  selected_block_labels?: string[] | null;
+  selected_block_client_ids?: string[] | null;
+  custom_colors?: boolean;
 }
 
 /**
  * Lightweight selection summary sent with each chat request so the model knows
  * what's open/selected without a round-trip. No block content — just shape.
  */
-export function getEditorContext() {
+export function getEditorContext(): EditorContext {
   if (!hasEditor()) {
     return { has_editor: false };
   }
   const d = wpData();
-  const ed = d.select("core/editor");
-  const be = d.select("core/block-editor");
+  const ed = d?.select("core/editor");
+  const be = d?.select("core/block-editor");
 
-  const ids = be.getSelectedBlockClientIds?.() || [];
-  const types = ids.map((id) => be.getBlockName?.(id)).filter(Boolean);
+  const ids = be?.getSelectedBlockClientIds?.() || [];
+  const types = ids
+    .map((id) => be?.getBlockName?.(id))
+    .filter((n): n is string => !!n);
 
   let hasText = false;
   try {
-    const s = be.getSelectionStart?.();
-    const e = be.getSelectionEnd?.();
+    const s = be?.getSelectionStart?.();
+    const e = be?.getSelectionEnd?.();
     hasText = !!(
       s?.clientId &&
       s.clientId === e?.clientId &&
@@ -80,15 +304,15 @@ export function getEditorContext() {
 
   return {
     has_editor: true,
-    post_id: ed.getCurrentPostId?.() || null,
-    post_type: ed.getCurrentPostType?.() || null,
+    post_id: ed?.getCurrentPostId?.() || null,
+    post_type: ed?.getCurrentPostType?.() || null,
     selected_block_count: ids.length,
     selected_block_types: types.slice(0, 20),
     has_text_selection: hasText,
     ...selectionPayload,
     // Derived from the theme (theme.json settings.color.custom) so the model
     // knows whether raw hex is allowed without us hardcoding it.
-    custom_colors: !be.getSettings?.()?.disableCustomColors,
+    custom_colors: !be?.getSettings?.()?.disableCustomColors,
   };
 }
 
@@ -100,12 +324,15 @@ export function getEditorContext() {
  * @param toolName
  * @param input
  */
-function snapshotBefore(toolName, input) {
+function snapshotBefore(
+  toolName: EditorToolName,
+  input: EditorToolInput,
+): DiffSnapshot | null {
   const be = wpData()?.select?.("core/block-editor");
   const ed = wpData()?.select?.("core/editor");
   const blocks = wpBlocks();
 
-  const blockText = (clientId) => {
+  const blockText = (clientId: string): string => {
     const b = be?.getBlock?.(clientId);
     if (!b) {
       return "";
@@ -121,16 +348,18 @@ function snapshotBefore(toolName, input) {
   // (client_ids, client_id, markup, after_client_id, attributes, etc.).
   switch (toolName) {
     case "editor__replace_blocks": {
-      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
+      const i = input as ReplaceBlocksInput;
+      const ids = Array.isArray(i.client_ids) ? i.client_ids : [];
       return {
         kind: "replace",
         before: ids.map(blockText).filter(Boolean).join("\n\n"),
-        after: typeof input?.markup === "string" ? input.markup : "",
+        after: typeof i.markup === "string" ? i.markup : "",
         summary: `Replace ${ids.length} block${ids.length === 1 ? "" : "s"}`,
       };
     }
     case "editor__insert_blocks": {
-      const after = typeof input?.markup === "string" ? input.markup : "";
+      const i = input as InsertBlocksInput;
+      const after = typeof i.markup === "string" ? i.markup : "";
       // Rough count by walking top-level block comments in the markup.
       const count = (after.match(/<!--\s*wp:/g) || []).length || 1;
       return {
@@ -141,15 +370,21 @@ function snapshotBefore(toolName, input) {
       };
     }
     case "editor__update_block_attributes": {
-      const clientId = input?.client_id;
+      const i = input as UpdateBlockAttributesInput;
+      const clientId = i.client_id;
       const block = clientId ? be?.getBlock?.(clientId) : null;
       const beforeAttrs = block?.attributes || {};
-      const patch = input?.attributes || {};
+      const patch = i.attributes || {};
       const keys = Object.keys(patch);
       // RichTextValue objects don't stringify cleanly; expose `.text` so the
       // diff isn't a wall of "{}" placeholders.
-      const norm = (v) =>
-        v && typeof v === "object" && typeof v.text === "string" ? v.text : v;
+      const norm = (v: unknown): unknown =>
+        v &&
+        typeof v === "object" &&
+        "text" in v &&
+        typeof (v as { text: unknown }).text === "string"
+          ? (v as { text: string }).text
+          : v;
       return {
         kind: "attrs",
         clientId,
@@ -169,6 +404,7 @@ function snapshotBefore(toolName, input) {
       };
     }
     case "editor__update_post": {
+      const i = input as UpdatePostInput;
       const fields = [
         "title",
         "slug",
@@ -177,22 +413,23 @@ function snapshotBefore(toolName, input) {
         "featured_media",
         "author",
         "meta",
-      ];
-      const current = {};
+      ] as const;
+      const current: Record<string, unknown> = {};
       for (const f of fields) {
-        if (f in (input || {})) {
+        if (f in i) {
           current[f] = ed?.getEditedPostAttribute?.(f) ?? "";
         }
       }
       return {
         kind: "post",
         before: JSON.stringify(current, null, 2),
-        after: JSON.stringify(input || {}, null, 2),
+        after: JSON.stringify(i, null, 2),
         summary: "Update post fields",
       };
     }
     case "editor__recover_block": {
-      const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
+      const i = input as RecoverBlockInput;
+      const ids = Array.isArray(i.client_ids) ? i.client_ids : [];
       return {
         kind: "recover",
         before: ids.map(blockText).filter(Boolean).join("\n\n"),
@@ -210,14 +447,13 @@ function snapshotBefore(toolName, input) {
 /**
  * Run a client editor tool. Always resolves to a plain result object (never
  * throws) so it can be posted straight back to the loop.
- *
- * @param {string} toolName  Editor tool name (editor__*).
- * @param {Object} input     Tool input from the model.
- * @param {string} toolUseId Stable tool_use_id (used to correlate with the
- *                           in-chat approval card).
- * @return {Promise<Object>} Result object (or {error}).
+ * @param toolName
+ * @param input
  */
-export async function executeClientTool(toolName, input = {}) {
+export async function executeClientTool(
+  toolName: string,
+  input: EditorToolInput = {},
+): Promise<EditorToolResult> {
   if (!hasEditor()) {
     return { error: "No block editor is open on this page." };
   }
@@ -225,45 +461,45 @@ export async function executeClientTool(toolName, input = {}) {
   // Capture a before-snapshot for write tools so the tool-call card can show
   // a real diff of what changed (post-apply, no approval gate). Reads + DOM
   // probes have nothing meaningful to diff.
-  const snap = WRITE_TOOLS.has(toolName)
-    ? snapshotBefore(toolName, input)
+  const snap = WRITE_TOOLS.has(toolName as EditorToolName)
+    ? snapshotBefore(toolName as EditorToolName, input)
     : null;
 
-  let result;
+  let result: EditorToolResult;
   try {
     switch (toolName) {
       case "editor__read_selection":
         result = await readSelection();
         break;
       case "editor__replace_blocks":
-        result = replaceBlocks(input);
+        result = replaceBlocks(input as ReplaceBlocksInput);
         break;
       case "editor__insert_blocks":
-        result = insertBlocks(input);
+        result = insertBlocks(input as InsertBlocksInput);
         break;
       case "editor__update_block_attributes":
-        result = updateBlockAttributes(input);
+        result = updateBlockAttributes(input as UpdateBlockAttributesInput);
         break;
       case "editor__update_post":
-        result = updatePost(input);
+        result = updatePost(input as UpdatePostInput);
         break;
       case "editor__recover_block":
-        result = recoverBlock(input);
+        result = recoverBlock(input as RecoverBlockInput);
         break;
       case "editor__query_dom":
-        result = queryDom(input);
+        result = queryDom(input as QueryDomInput);
         break;
       case "editor__focus":
-        result = focusElement(input);
+        result = focusElement(input as FocusInput);
         break;
       case "editor__open_sidebar":
-        result = openSidebar(input);
+        result = openSidebar(input as OpenSidebarInput);
         break;
       default:
         return { error: `Unknown editor tool: ${toolName}` };
     }
   } catch (e) {
-    return { error: String(e?.message || e) };
+    return { error: String((e as Error)?.message || e) };
   }
 
   if (snap && result && typeof result === "object" && !result.error) {
@@ -274,8 +510,8 @@ export async function executeClientTool(toolName, input = {}) {
 
 // ── Ops ─────────────────────────────────────────────────────
 
-function blockSnippet(block) {
-  const a = block?.attributes || {};
+function blockSnippet(block: Block): string {
+  const a = (block?.attributes || {}) as Record<string, unknown>;
   const raw = a.content ?? a.text ?? a.title ?? a.label ?? a.value ?? "";
   const s = String(raw)
     .replace(/<[^>]+>/g, "")
@@ -288,7 +524,7 @@ function blockSnippet(block) {
 // cap arrays, bound depth, drop the noisy srcset blob. Lets the model see what
 // a non-text block holds (image url/alt, embed url, a logos id list, …) without
 // dumping the whole document.
-function compactAttributes(value, depth = 0) {
+function compactAttributes(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined || depth > 4) {
     return undefined;
   }
@@ -301,8 +537,8 @@ function compactAttributes(value, depth = 0) {
   if (Array.isArray(value)) {
     return value.slice(0, 30).map((v) => compactAttributes(v, depth + 1));
   }
-  const out = {};
-  for (const [k, v] of Object.entries(value)) {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (k === "sizes" || k === "srcSet") {
       continue;
     } // huge srcset data
@@ -319,18 +555,27 @@ function compactAttributes(value, depth = 0) {
 const MEDIA_KEY_RE =
   /(^id$|^ids$|image|images|media|logo|logos|gallery|thumbnail|poster|avatar|cover|backgroundimage)/i;
 
-function collectMediaIds(attrs, out = [], depth = 0) {
+function collectMediaIds(
+  attrs: unknown,
+  out: number[] = [],
+  depth = 0,
+): number[] {
   if (!attrs || typeof attrs !== "object" || depth > 4) {
     return out;
   }
-  const pushId = (x) => {
+  const pushId = (x: unknown): void => {
     if (typeof x === "number" && Number.isInteger(x) && x > 0) {
       out.push(x);
-    } else if (x && typeof x === "object" && Number.isInteger(x.id)) {
-      out.push(x.id);
+    } else if (
+      x &&
+      typeof x === "object" &&
+      "id" in x &&
+      Number.isInteger((x as { id: unknown }).id)
+    ) {
+      out.push((x as { id: number }).id);
     }
   };
-  for (const [k, v] of Object.entries(attrs)) {
+  for (const [k, v] of Object.entries(attrs as Record<string, unknown>)) {
     if (MEDIA_KEY_RE.test(k)) {
       if (Array.isArray(v)) {
         v.forEach(pushId);
@@ -344,20 +589,29 @@ function collectMediaIds(attrs, out = [], depth = 0) {
   return out;
 }
 
+interface ResolvedMedia {
+  id: number;
+  title: string;
+  url: string;
+  filename: string;
+}
+
 // Resolve attachment ids to {id, title, url, filename} via the editor's own
 // `core` store (awaiting the resolver so it works even if not pre-fetched).
 // Best-effort: ids that aren't attachments are silently skipped.
-async function resolveMedia(ids) {
-  const core = wpData().resolveSelect?.("core");
+async function resolveMedia(
+  ids: number[],
+): Promise<Record<number, ResolvedMedia>> {
+  const core = wpData()?.resolveSelect?.("core");
   if (!core?.getMedia) {
     return {};
   }
   const uniq = [...new Set(ids)].slice(0, 50);
-  const out = {};
+  const out: Record<number, ResolvedMedia> = {};
   await Promise.all(
     uniq.map(async (id) => {
       try {
-        const m = await core.getMedia(id);
+        const m = await core.getMedia!(id);
         if (!m) {
           return;
         }
@@ -366,7 +620,9 @@ async function resolveMedia(ids) {
           title: m.title?.rendered || m.slug || "",
           url: m.source_url || "",
           filename:
-            m.media_details?.file || (m.source_url || "").split("/").pop(),
+            m.media_details?.file ||
+            (m.source_url || "").split("/").pop() ||
+            "",
         };
       } catch {
         // not an attachment / not fetchable — skip
@@ -376,21 +632,58 @@ async function resolveMedia(ids) {
   return out;
 }
 
-async function readSelection() {
-  const be = wpData().select("core/block-editor");
-  const blocks = wpBlocks();
+interface OutlineEntry {
+  client_id: string;
+  name: string;
+  depth: number;
+  text: string;
+  invalid?: boolean;
+  unrecognized?: boolean;
+  attributes?: unknown;
+}
+
+interface SelectedBlockEntry {
+  client_id: string;
+  name: string;
+  markup: string;
+}
+
+interface TextSelectionInfo {
+  client_id: string;
+  attribute?: string;
+  start?: number;
+  end?: number;
+}
+
+interface ReadSelectionResult extends EditorToolResult {
+  post: ReturnType<typeof postContext>;
+  whole_document: boolean;
+  has_text_selection: boolean;
+  text_selection: TextSelectionInfo | null;
+  selected_blocks: SelectedBlockEntry[];
+  outline: OutlineEntry[];
+  media: Record<number, ResolvedMedia>;
+}
+
+async function readSelection(): Promise<ReadSelectionResult> {
+  const be = wpData()!.select("core/block-editor")!;
+  const blocks = wpBlocks()!;
 
   const selectedIds = be.getSelectedBlockClientIds?.() || [];
 
   // Selected blocks get full markup (the model edits these directly).
-  const selected = selectedIds
+  const selected: SelectedBlockEntry[] = selectedIds
     .map((id) => {
       const block = be.getBlock?.(id);
       return block
-        ? { client_id: id, name: block.name, markup: blocks.serialize(block) }
+        ? {
+            client_id: id,
+            name: block.name,
+            markup: blocks.serialize(block),
+          }
         : null;
     })
-    .filter(Boolean);
+    .filter((b): b is SelectedBlockEntry => b !== null);
 
   // A flat outline of EVERY block (including nested) so the model can target
   // any block by clientId — even nested ones, with nothing selected, or after
@@ -399,15 +692,15 @@ async function readSelection() {
   // embeds, logo lists) carry their attributes so the model can see what's
   // inside instead of asking the user to select.
   const allIds = be.getClientIdsWithDescendants?.() || [];
-  const mediaIds = [];
-  const outline = allIds
-    .map((id) => {
+  const mediaIds: number[] = [];
+  const outline: OutlineEntry[] = allIds
+    .map((id): OutlineEntry | null => {
       const block = be.getBlock?.(id);
       if (!block) {
         return null;
       }
       const text = blockSnippet(block);
-      const entry = {
+      const entry: OutlineEntry = {
         client_id: id,
         name: block.name,
         depth: (be.getBlockParents?.(id) || []).length,
@@ -423,14 +716,14 @@ async function readSelection() {
       }
       if (!text) {
         const attrs = compactAttributes(block.attributes);
-        if (attrs && Object.keys(attrs).length) {
+        if (attrs && typeof attrs === "object" && Object.keys(attrs).length) {
           entry.attributes = attrs;
         }
         collectMediaIds(block.attributes, mediaIds);
       }
       return entry;
     })
-    .filter(Boolean);
+    .filter((e): e is OutlineEntry => e !== null);
 
   // Post-level context (status, slug, featured image, language + translations)
   // so the model can answer "what's the status / is there a Swedish version?".
@@ -443,10 +736,10 @@ async function readSelection() {
   // filename/title (e.g. find the "snellman" logo) without a media tool.
   const media = mediaIds.length ? await resolveMedia(mediaIds) : {};
 
-  let textSelection = null;
+  let textSelection: TextSelectionInfo | null = null;
   try {
-    const s = be.getSelectionStart();
-    const e = be.getSelectionEnd();
+    const s = be.getSelectionStart!();
+    const e = be.getSelectionEnd!();
     if (s?.clientId && s.clientId === e?.clientId && s.offset !== e.offset) {
       textSelection = {
         client_id: s.clientId,
@@ -474,28 +767,39 @@ async function readSelection() {
   };
 }
 
+interface PostContext {
+  id: number | undefined;
+  type: string | undefined;
+  status: unknown;
+  slug: unknown;
+  featured_media: number;
+  template: string;
+  language?: unknown;
+  translations?: unknown;
+}
+
 // Post-level context read straight from core/editor — the unsaved edited
 // values, so it reflects pending changes. language/translations come from
 // Polylang via the standard attribute API (read-only data, no plugin coupling).
-function postContext() {
-  const ed = wpData().select("core/editor");
+function postContext(): PostContext | null {
+  const ed = wpData()?.select("core/editor");
   if (!ed?.getCurrentPostId) {
     return null;
   }
-  const get = (k) => {
+  const get = (k: string): unknown => {
     try {
-      return ed.getEditedPostAttribute(k);
+      return ed.getEditedPostAttribute?.(k);
     } catch {
       return undefined;
     }
   };
-  const ctx = {
+  const ctx: PostContext = {
     id: ed.getCurrentPostId(),
     type: ed.getCurrentPostType?.(),
     status: get("status"),
     slug: get("slug"),
-    featured_media: get("featured_media") || 0,
-    template: get("template") || "",
+    featured_media: (get("featured_media") as number) || 0,
+    template: (get("template") as string) || "",
   };
   const language = get("lang");
   if (language) {
@@ -512,10 +816,18 @@ function postContext() {
   return ctx;
 }
 
+interface ColorSettings {
+  slugs: Set<string>;
+  allowCustom: boolean;
+}
+
 // The editor's color palette + whether custom (hex) colors are allowed.
-function colorSettings() {
+function colorSettings(): ColorSettings | null {
   try {
-    const s = wpData().select("core/block-editor").getSettings();
+    const s = wpData()?.select("core/block-editor")?.getSettings?.();
+    if (!s) {
+      return null;
+    }
     const colors =
       s.colors || s.__experimentalFeatures?.color?.palette?.theme || [];
     return {
@@ -531,37 +843,38 @@ function colorSettings() {
 // bare textColor/backgroundColor slugs that don't exist, and raw hex when the
 // site disallows custom colours. Returns [] when we can't read the palette
 // (don't block edits on uncertainty).
-function colorIssues(attributes) {
+function colorIssues(attributes: unknown): string[] {
   const cfg = colorSettings();
   if (!cfg || !cfg.slugs.size) {
     return [];
   }
 
-  const issues = [];
+  const issues: string[] = [];
   const presetRe = /var:preset\|color\|([\w-]+)/;
   const hexRe = /#[0-9a-fA-F]{3,8}\b/;
 
-  const scan = (v) => {
+  const scan = (v: unknown): void => {
     if (typeof v === "string") {
       const p = v.match(presetRe);
-      if (p && !cfg.slugs.has(p[1])) {
+      if (p && !cfg.slugs.has(p[1]!)) {
         issues.push(`unknown color slug "${p[1]}"`);
       }
       if (!cfg.allowCustom && hexRe.test(v)) {
         issues.push(
-          `custom hex "${v.match(hexRe)[0]}" is disabled on this site`,
+          `custom hex "${v.match(hexRe)![0]}" is disabled on this site`,
         );
       }
     } else if (Array.isArray(v)) {
       v.forEach(scan);
     } else if (v && typeof v === "object") {
-      Object.values(v).forEach(scan);
+      Object.values(v as Record<string, unknown>).forEach(scan);
     }
   };
-  scan(attributes?.style);
+  const attrs = (attributes as Record<string, unknown>) || {};
+  scan(attrs.style);
 
-  for (const key of ["textColor", "backgroundColor", "overlayColor"]) {
-    const val = attributes?.[key];
+  for (const key of ["textColor", "backgroundColor", "overlayColor"] as const) {
+    const val = attrs[key];
     if (typeof val === "string" && val && !cfg.slugs.has(val)) {
       issues.push(`unknown color slug "${val}" for ${key}`);
     }
@@ -570,7 +883,7 @@ function colorIssues(attributes) {
   return [...new Set(issues)];
 }
 
-function colorErrorHint() {
+function colorErrorHint(): string {
   const cfg = colorSettings();
   const examples = cfg ? [...cfg.slugs].slice(0, 8).join(", ") : "";
   const hex =
@@ -578,12 +891,17 @@ function colorErrorHint() {
   return `Use a palette slug from gds/design-theme-json (the "slug", not the display name) — e.g. ${examples}. Reference it as the textColor/backgroundColor attribute, or "var:preset|color|{slug}" in style.${hex}`;
 }
 
+interface ParseResult {
+  parsed: Block[];
+  issues: string[];
+}
+
 // Parse block markup and surface validation problems instead of silently
 // applying a broken/unrecognized block (so the model can retry).
-function parseValidated(markup) {
-  const parsed = wpBlocks().parse(markup || "");
-  const issues = [];
-  const visit = (b) => {
+function parseValidated(markup: string | undefined): ParseResult {
+  const parsed = wpBlocks()?.parse(markup || "") || [];
+  const issues: string[] = [];
+  const visit = (b: Block | undefined): void => {
     if (!b) {
       return;
     }
@@ -599,7 +917,7 @@ function parseValidated(markup) {
   return { parsed, issues: [...new Set(issues)] };
 }
 
-function replaceBlocks(input = {}) {
+function replaceBlocks(input: ReplaceBlocksInput = {}): EditorToolResult {
   const ids = Array.isArray(input.client_ids) ? input.client_ids : [];
   const markup = input.markup;
   if (!ids.length) {
@@ -608,7 +926,7 @@ function replaceBlocks(input = {}) {
 
   // clientIds change after any edit. If the targets are gone, the dispatch is
   // a silent no-op — so fail loudly and tell the model to re-read.
-  const be = wpData().select("core/block-editor");
+  const be = wpData()!.select("core/block-editor")!;
   const missing = ids.filter((id) => !be.getBlock?.(id));
   if (missing.length) {
     return {
@@ -630,18 +948,18 @@ function replaceBlocks(input = {}) {
   // so these are the live ids of the new blocks. Return them so the model can
   // target follow-up edits without re-reading (old ids are now dead).
   const newIds = parsed.map((b) => b.clientId);
-  wpData().dispatch("core/block-editor").replaceBlocks(ids, parsed);
+  wpData()!.dispatch("core/block-editor").replaceBlocks(ids, parsed);
   highlightChangedBlocks(newIds);
   return { ok: true, replaced: ids.length, new_client_ids: newIds };
 }
 
-function updatePost(input = {}) {
-  const ed = wpData().select("core/editor");
+function updatePost(input: UpdatePostInput = {}): EditorToolResult {
+  const ed = wpData()!.select("core/editor")!;
   // Whitelist the core post fields we apply live (all unsaved + undoable via
   // the editor's history). Status/publish are intentionally excluded — those
   // are a save, not an editor-state edit.
-  const allowed = {};
-  for (const key of ["title", "slug", "excerpt", "template"]) {
+  const allowed: Record<string, unknown> = {};
+  for (const key of ["title", "slug", "excerpt", "template"] as const) {
     if (typeof input[key] === "string") {
       allowed[key] = input[key];
     }
@@ -669,7 +987,7 @@ function updatePost(input = {}) {
         "Nothing to update (supported: title, slug, excerpt, template, featured_media, author, meta).",
     };
   }
-  wpData().dispatch("core/editor").editPost(allowed);
+  wpData()!.dispatch("core/editor").editPost(allowed);
   return {
     ok: true,
     updated: Object.keys(allowed),
@@ -677,7 +995,7 @@ function updatePost(input = {}) {
   };
 }
 
-function insertBlocks(input = {}) {
+function insertBlocks(input: InsertBlocksInput = {}): EditorToolResult {
   const { parsed, issues } = parseValidated(input.markup);
   if (issues.length) {
     return { error: "Invalid block markup", issues };
@@ -686,8 +1004,8 @@ function insertBlocks(input = {}) {
     return { error: "Markup produced no blocks." };
   }
 
-  const be = wpData().select("core/block-editor");
-  const dispatch = wpData().dispatch("core/block-editor");
+  const be = wpData()!.select("core/block-editor")!;
+  const dispatch = wpData()!.dispatch("core/block-editor");
   const newIds = parsed.map((b) => b.clientId);
   const afterId = input.after_client_id;
 
@@ -703,9 +1021,11 @@ function insertBlocks(input = {}) {
   return { ok: true, inserted: parsed.length, new_client_ids: newIds };
 }
 
-function updateBlockAttributes(input = {}) {
+function updateBlockAttributes(
+  input: UpdateBlockAttributesInput = {},
+): EditorToolResult {
   const clientId = input.client_id;
-  const be = wpData().select("core/block-editor");
+  const be = wpData()!.select("core/block-editor")!;
   if (!clientId || !be.getBlock?.(clientId)) {
     return { error: `Block ${clientId} not found.` };
   }
@@ -720,11 +1040,22 @@ function updateBlockAttributes(input = {}) {
     };
   }
 
-  wpData()
+  wpData()!
     .dispatch("core/block-editor")
     .updateBlockAttributes(clientId, input.attributes || {});
   highlightChangedBlocks([clientId]);
   return { ok: true, client_id: clientId };
+}
+
+interface RecoveredEntry {
+  client_id: string;
+  new_client_id: string;
+  name: string;
+}
+
+interface FailedEntry {
+  client_id: string;
+  reason: string;
 }
 
 // Recover invalid blocks the editor flags as "unexpected or invalid content":
@@ -732,7 +1063,7 @@ function updateBlockAttributes(input = {}) {
 // regenerates valid markup — like the editor's "Attempt Block Recovery", but
 // recursive so an invalid CHILD is fixed too. Undoable via the editor history.
 // Unregistered blocks (core/missing) can't be recreated and are kept as-is.
-function recoverBlock(input = {}) {
+function recoverBlock(input: RecoverBlockInput = {}): EditorToolResult {
   const ids = Array.isArray(input.client_ids)
     ? input.client_ids
     : input.client_id
@@ -742,15 +1073,15 @@ function recoverBlock(input = {}) {
     return { error: "No client_ids provided to recover." };
   }
 
-  const be = wpData().select("core/block-editor");
-  const blocks = wpBlocks();
-  const dispatch = wpData().dispatch("core/block-editor");
+  const be = wpData()!.select("core/block-editor")!;
+  const blocks = wpBlocks()!;
+  const dispatch = wpData()!.dispatch("core/block-editor");
 
-  const canRecreate = (b) =>
+  const canRecreate = (b: Block | undefined | null): boolean =>
     !!b && b.name !== "core/missing" && !!blocks.getBlockType?.(b.name);
   // Rebuild a block from its attributes, recursing so invalid descendants are
   // fixed too; unregistered blocks are passed through untouched.
-  const recreate = (b) =>
+  const recreate = (b: Block): Block =>
     canRecreate(b)
       ? blocks.createBlock(
           b.name,
@@ -758,7 +1089,7 @@ function recoverBlock(input = {}) {
           (b.innerBlocks || []).map(recreate),
         )
       : b;
-  const descendantIds = (b, acc = []) => {
+  const descendantIds = (b: Block, acc: string[] = []): string[] => {
     for (const c of b.innerBlocks || []) {
       acc.push(c.clientId);
       descendantIds(c, acc);
@@ -773,9 +1104,9 @@ function recoverBlock(input = {}) {
     .map((id) => ({ id, depth: (be.getBlockParents?.(id) || []).length }))
     .sort((a, b) => a.depth - b.depth);
 
-  const recovered = [];
-  const failed = [];
-  const covered = new Set();
+  const recovered: RecoveredEntry[] = [];
+  const failed: FailedEntry[] = [];
+  const covered = new Set<string>();
 
   for (const { id } of ordered) {
     if (covered.has(id)) {
@@ -790,7 +1121,8 @@ function recoverBlock(input = {}) {
       continue;
     }
     if (!canRecreate(block)) {
-      const name = block.attributes?.originalName || block.name;
+      const attrs = block.attributes as { originalName?: string } | undefined;
+      const name = attrs?.originalName || block.name;
       failed.push({
         client_id: id,
         reason: `block type "${name}" is not registered — can't auto-recover; convert it to a Custom HTML block (editor__replace_blocks) instead`,
@@ -824,9 +1156,11 @@ function recoverBlock(input = {}) {
 // finding a setting, revealing a pane — without per-plugin code that breaks on
 // updates. Mutations always go through the typed tools above.
 
-function editorDocs() {
-  const docs = [document];
-  const cvs = document.querySelector('iframe[name="editor-canvas"]');
+function editorDocs(): Document[] {
+  const docs: Document[] = [document];
+  const cvs = document.querySelector<HTMLIFrameElement>(
+    'iframe[name="editor-canvas"]',
+  );
   if (cvs?.contentDocument) {
     docs.push(cvs.contentDocument);
   }
@@ -857,7 +1191,7 @@ const HIGHLIGHT_CSS = `
 
 // Inject the flash CSS into every editor doc that needs it (top doc + canvas
 // iframe). Cheap to call repeatedly — it skips docs that already have it.
-function ensureHighlightStyles() {
+function ensureHighlightStyles(): void {
   for (const doc of editorDocs()) {
     if (!doc.head || doc.head.querySelector("style[data-gds-highlight]")) {
       continue;
@@ -872,10 +1206,9 @@ function ensureHighlightStyles() {
 /**
  * Briefly highlight the blocks with these clientIds and scroll the first one
  * into view. Silently no-ops if the block element isn't in the DOM yet.
- *
- * @param {string[]} clientIds Block clientIds to highlight.
+ * @param clientIds
  */
-function highlightChangedBlocks(clientIds) {
+function highlightChangedBlocks(clientIds: string[]): void {
   if (!Array.isArray(clientIds) || clientIds.length === 0) {
     return;
   }
@@ -883,10 +1216,10 @@ function highlightChangedBlocks(clientIds) {
   // Defer one frame so React has a chance to mount any newly-inserted blocks
   // before we look them up by clientId.
   requestAnimationFrame(() => {
-    let first = null;
+    let first: HTMLElement | null = null;
     for (const id of clientIds) {
       for (const doc of editorDocs()) {
-        const el = doc.querySelector(`[data-block="${id}"]`);
+        const el = doc.querySelector<HTMLElement>(`[data-block="${id}"]`);
         if (!el) {
           continue;
         }
@@ -908,34 +1241,49 @@ function highlightChangedBlocks(clientIds) {
   });
 }
 
-const capText = (v, n = 160) =>
+const capText = (v: unknown, n = 160): string | undefined =>
   v
     ? String(v).replace(/\s+/g, " ").trim().slice(0, n) || undefined
     : undefined;
 
+interface DomElementSummary {
+  tag: string;
+  id?: string;
+  class?: string;
+  name?: string;
+  type?: string;
+  placeholder?: string;
+  aria_label?: string;
+  role?: string;
+  text?: string;
+  value?: string;
+  visible: boolean;
+}
+
 // Read-only: find elements by CSS selector so the model can locate settings,
 // fields or panels (e.g. "where is this setting?"). Searches the editor canvas
 // iframe too. Never writes.
-function queryDom(input = {}) {
+function queryDom(input: QueryDomInput = {}): EditorToolResult {
   const selector = input.selector;
   if (!selector) {
     return { error: "Provide a CSS selector." };
   }
   const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
 
-  const out = [];
+  const out: DomElementSummary[] = [];
   for (const doc of editorDocs()) {
-    let nodes;
+    let nodes: NodeListOf<Element>;
     try {
       nodes = doc.querySelectorAll(selector);
     } catch (e) {
-      return { error: `Invalid selector: ${e.message}` };
+      return { error: `Invalid selector: ${(e as Error).message}` };
     }
-    for (const el of nodes) {
+    for (const el of Array.from(nodes)) {
       if (out.length >= limit) {
         break;
       }
       const r = el.getBoundingClientRect();
+      const inputEl = el as HTMLInputElement;
       out.push({
         tag: el.tagName.toLowerCase(),
         id: el.id || undefined,
@@ -949,7 +1297,7 @@ function queryDom(input = {}) {
         aria_label: el.getAttribute?.("aria-label") || undefined,
         role: el.getAttribute?.("role") || undefined,
         text: capText(el.textContent),
-        value: "value" in el ? capText(el.value) : undefined,
+        value: "value" in el ? capText(inputEl.value) : undefined,
         visible: !!(r.width || r.height),
       });
     }
@@ -959,17 +1307,17 @@ function queryDom(input = {}) {
 
 // Scroll the first matching element into view and focus it — e.g. to show the
 // user where a setting lives. No click, no value change.
-function focusElement(input = {}) {
+function focusElement(input: FocusInput = {}): EditorToolResult {
   const selector = input.selector;
   if (!selector) {
     return { error: "Provide a CSS selector." };
   }
-  let el = null;
+  let el: HTMLElement | null = null;
   for (const doc of editorDocs()) {
     try {
-      el = doc.querySelector(selector);
+      el = doc.querySelector<HTMLElement>(selector);
     } catch (e) {
-      return { error: `Invalid selector: ${e.message}` };
+      return { error: `Invalid selector: ${(e as Error).message}` };
     }
     if (el) {
       break;
@@ -991,14 +1339,22 @@ function focusElement(input = {}) {
   };
 }
 
+interface SidebarEntry {
+  name: string;
+  label: string;
+  active: boolean;
+}
+
 // Enumerate the side panels actually registered on THIS site. The pane toggle
 // buttons expose their openable id as aria-controls in "scope:name" form
 // (e.g. "yoast-seo:seo-sidebar"); openGeneralSidebar wants "scope/name". Read
 // them from the DOM rather than guessing names that may not exist.
-function listSidebars() {
-  const seen = new Map();
+function listSidebars(): SidebarEntry[] {
+  const seen = new Map<string, SidebarEntry>();
   for (const doc of editorDocs()) {
-    for (const btn of doc.querySelectorAll("button[aria-controls]")) {
+    for (const btn of Array.from(
+      doc.querySelectorAll("button[aria-controls]"),
+    )) {
       const ctrl = btn.getAttribute("aria-controls") || "";
       if (!/^[\w-]+:[\w-]+$/.test(ctrl)) {
         continue;
@@ -1022,7 +1378,7 @@ function listSidebars() {
 // registered on this site (name + label + active) so the model picks a real
 // one. With a name, validates it against that list before opening — so we never
 // "open" a phantom panel. No click, no content change.
-function openSidebar(input = {}) {
+function openSidebar(input: OpenSidebarInput = {}): EditorToolResult {
   const available = listSidebars();
   const name = String(input.name || "").trim();
   if (!name) {
@@ -1034,10 +1390,10 @@ function openSidebar(input = {}) {
     return { error: `No sidebar "${name}" is registered here.`, available };
   }
   const d =
-    wpData().dispatch("core/edit-post") || wpData().dispatch("core/editor");
+    wpData()?.dispatch("core/edit-post") || wpData()?.dispatch("core/editor");
   const sel =
-    wpData().select("core/edit-post") || wpData().select("core/editor");
-  if (!d?.openGeneralSidebar) {
+    wpData()?.select("core/edit-post") || wpData()?.select("core/editor");
+  if (!d || !("openGeneralSidebar" in d) || !d.openGeneralSidebar) {
     return { error: "Sidebar control is unavailable in this editor." };
   }
   d.openGeneralSidebar(name);
@@ -1045,6 +1401,9 @@ function openSidebar(input = {}) {
     ok: true,
     opened: name,
     label: match.label,
-    active: sel?.getActiveGeneralSidebarName?.() ?? null,
+    active:
+      sel && "getActiveGeneralSidebarName" in sel
+        ? sel.getActiveGeneralSidebarName?.() ?? null
+        : null,
   };
 }
