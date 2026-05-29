@@ -1,8 +1,13 @@
 includes:
     - vendor/szepeviktor/phpstan-wordpress/extension.neon
+    # Baseline captures the 198 existing level-6 violations at the time of the
+    # level bump. New code is held to level 6 in CI; the baseline burns down
+    # file-by-file as we touch each one.
+    # See https://github.com/generoi/gds-assistant/issues/39 for the plan.
+    - phpstan-baseline.neon
 
 parameters:
-    level: 5
+    level: 6
     paths:
         - src
 

@@ -1,0 +1,1189 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Method GeneroWP\\Assistant\\Admin\\SettingsPage\:\:getProviderConfigs\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Admin/SettingsPage.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Admin\\SettingsPage\:\:sanitizeTrustedHosts\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Admin/SettingsPage.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:addEditorTools\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:addEditorTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:detectToolApproval\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:detectToolApproval\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:dropEmptyContentMessages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:dropEmptyContentMessages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:editorContextPrompt\(\) has parameter \$ctx with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:generateTitle\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:handleToolApproval\(\) has parameter \$storedMessages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:handleToolApproval\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:log\(\) has parameter \$context with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:normalizeMessages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:normalizeMessages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:patchDanglingToolUses\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:patchDanglingToolUses\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:resurfacePendingApprovals\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:sanitizeMessages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:sanitizeMessages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:sendSSE\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:stripEmptyTextBlocks\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:stripEmptyTextBlocks\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:stripServerToolBlocks\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:stripServerToolBlocks\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Api\\ChatEndpoint\:\:userKind\(\) has parameter \$msg with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Api/ChatEndpoint.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\AbilitiesToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/AbilitiesToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\DefaultSkills\:\:installSkill\(\) has parameter \$skill with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/DefaultSkills.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\DestructiveGuard\:\:injectConfirmation\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/DestructiveGuard.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\DestructiveGuard\:\:injectConfirmation\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/DestructiveGuard.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\DestructiveGuard\:\:requiresApproval\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/DestructiveGuard.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\EditorToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/EditorToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ImageGenerationToolProvider\:\:callEditEndpoint\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ImageGenerationToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ImageGenerationToolProvider\:\:callGenerateEndpoint\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ImageGenerationToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ImageGenerationToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ImageGenerationToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ImageGenerationToolProvider\:\:generateImage\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ImageGenerationToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ImageGenerationToolProvider\:\:generateImage\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ImageGenerationToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\McpToolProvider\:\:decorateDescription\(\) has parameter \$tool with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/McpToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\McpToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/McpToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\McpToolProvider\:\:loadServerTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/McpToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\McpToolProvider\:\:normalizeSchema\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/McpToolProvider.php
+
+		-
+			message: '#^Property GeneroWP\\Assistant\\Bridge\\McpToolProvider\:\:\$toolMap type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/McpToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:forgetMemory\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:forgetMemory\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:listMemories\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:saveMemory\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\MemoryToolProvider\:\:saveMemory\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/MemoryToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:createSkill\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:createSkill\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:listSkills\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:updateSkill\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\SkillsToolProvider\:\:updateSkill\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/SkillsToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolProviderInterface\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolProviderInterface.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolRegistry\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolRegistry\:\:getAllTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolRestrictor\:\:classifyRisk\(\) has parameter \$tool with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolRestrictor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolRestrictor\:\:filter\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolRestrictor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\ToolRestrictor\:\:filter\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/ToolRestrictor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\UndoToolProvider\:\:executeTool\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/UndoToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\UndoToolProvider\:\:listUndoable\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/UndoToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\UndoToolProvider\:\:undo\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/UndoToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Bridge\\UndoToolProvider\:\:undo\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Bridge/UndoToolProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:conversations\(\) has parameter \$args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:conversations\(\) has parameter \$assoc_args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:export\(\) has parameter \$args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:export\(\) has parameter \$assoc_args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:list_entries\(\) has parameter \$args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:list_entries\(\) has parameter \$assoc_args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:show\(\) has parameter \$args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cli\\AuditCommand\:\:show\(\) has parameter \$assoc_args with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Cli/AuditCommand.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Cron\\SkillScheduler\:\:pendingApprovalTools\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Cron/SkillScheduler.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:cacheControlLastMessage\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:cacheControlLastMessage\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:convertUrlImages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:convertUrlImages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:processEvent\(\) has parameter \$contentBlocks with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:processEvent\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\AnthropicProvider\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/AnthropicProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:buildConversationText\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:buildMechanicalSummary\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:buildTurnSummary\(\) has parameter \$newMessages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:compress\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:compress\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:estimateTokens\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:extractTitle\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:generateLlmSummary\(\) has parameter \$oldMessages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:stripOldImages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:stripOldImages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:stripOldToolResults\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:stripOldToolResults\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeAudit\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeContentList\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeForm\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeOldMessages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeOldMessages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeSingleItem\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:summarizeSiteMap\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:truncateLargeToolResults\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ContextCompressor\:\:truncateLargeToolResults\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ContextCompressor.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:agentPrompt\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:agentPrompt\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:generateAssistantTurn\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:generateAssistantTurn\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:generateAssistantTurn\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:generateText\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:messagesToPrompt\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:toolExists\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CoreAiProvider\:\:toolsToPrompt\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CoreAiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CredentialResolver\:\:connectorSources\(\) has parameter \$connector with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CredentialResolver.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CredentialResolver\:\:getConnector\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CredentialResolver.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\CredentialResolver\:\:resolve\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/CredentialResolver.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:convertMessages\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:convertMessages\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:convertTools\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:convertTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:processChunk\(\) has parameter \$contentBlocks with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:processChunk\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:sanitizeSchema\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:sanitizeSchema\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\GeminiProvider\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/GeminiProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\LlmProviderInterface\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/LlmProviderInterface.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\LlmProviderInterface\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/LlmProviderInterface.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\LlmProviderInterface\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/LlmProviderInterface.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\MessageLoop\:\:run\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/MessageLoop.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\MessageLoop\:\:run\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/MessageLoop.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:convertMessage\(\) has parameter \$msg with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:convertMessage\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:convertTools\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:convertTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:processChunk\(\) has parameter \$contentBlocks with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:processChunk\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:processChunk\(\) has parameter \$toolCallBuffers with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:sanitizeSchema\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:sanitizeSchema\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\OpenAiCompatibleProvider\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/OpenAiCompatibleProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ProviderRegistry\:\:getAvailable\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ProviderRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ProviderRegistry\:\:getCredentialInfo\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ProviderRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\ProviderRegistry\:\:register\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/ProviderRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\SmartProvider\:\:isToolRoutingTurn\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/SmartProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\SmartProvider\:\:selectProvider\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/SmartProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\SmartProvider\:\:stream\(\) has parameter \$messages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/SmartProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\SmartProvider\:\:stream\(\) has parameter \$tools with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/SmartProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Llm\\SmartProvider\:\:stream\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Llm/SmartProvider.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\AuthStrategyInterface\:\:headers\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/AuthStrategyInterface.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\BearerAuth\:\:__construct\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/BearerAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\BearerAuth\:\:headers\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/BearerAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:decryptKeys\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:decryptKeys\(\) has parameter \$keys with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:decryptKeys\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:encryptKeys\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:encryptKeys\(\) has parameter \$keys with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\Encrypt\:\:encryptKeys\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/Encrypt.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:callTool\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:extractText\(\) has parameter \$content with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:firstSseMessage\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:listTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:parseJsonRpcResponse\(\) has parameter \$response with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:parseJsonRpcResponse\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:post\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:post\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpClient\:\:request\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpClient.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\McpServerConfig\:\:__construct\(\) has parameter \$auth with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/McpServerConfig.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\NoneAuth\:\:headers\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/NoneAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:ensureClient\(\) has parameter \$meta with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:ensureClient\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:getAuthorizationServerMetadata\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:headers\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:persistTokenResponse\(\) has parameter \$response with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:postTokenEndpoint\(\) has parameter \$body with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\OAuthAuth\:\:postTokenEndpoint\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/OAuthAuth.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\ServerRegistry\:\:upsertAdminServer\(\) has parameter \$entry with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/ServerRegistry.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:getServerMeta\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:getUserTokens\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:mergeServerMeta\(\) has parameter \$patch with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:mergeServerMeta\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:mergeUserTokens\(\) has parameter \$patch with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Mcp\\TokenStore\:\:mergeUserTokens\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Mcp/TokenStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Plugin\:\:getPublishedSkills\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Plugin.php
+
+		-
+			message: '#^Property GeneroWP\\Assistant\\Plugin\:\:\$instance has no type specified\.$#'
+			identifier: missingType.property
+			count: 1
+			path: src/Plugin.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\AuditLog\:\:getForConversation\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/AuditLog.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\AuditLog\:\:log\(\) has parameter \$input with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/AuditLog.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\AuditLog\:\:log\(\) has parameter \$undoState with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/AuditLog.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\AuditLog\:\:log\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/AuditLog.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\ConversationStore\:\:get\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/ConversationStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\ConversationStore\:\:listAll\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/ConversationStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\ConversationStore\:\:listForUser\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/ConversationStore.php
+
+		-
+			message: '#^Method GeneroWP\\Assistant\\Storage\\ConversationStore\:\:update\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Storage/ConversationStore.php
