@@ -408,4 +408,135 @@ class MessageLoopTest extends TestCase
         // …but the returned/persisted transcript keeps the original ts.
         $this->assertSame(1700000000000, $transcript[0]['ts']);
     }
+
+    // ── Token accumulator edge cases ───────────────────────────
+
+    /**
+     * Provider that emits a hand-rolled sequence of (type, data) events. The
+     * existing mockProvider helper only emits text_delta / tool_use_start /
+     * message_stop, which is too coarse for token-accumulator tests.
+     *
+     * @param  list<array{0: string, 1: array<string, mixed>}>  $events
+     */
+    private function eventEmittingProvider(array $events): LlmProviderInterface
+    {
+        return new class($events) implements LlmProviderInterface
+        {
+            /** @param list<array{0: string, 1: array<string, mixed>}> $events */
+            public function __construct(private array $events) {}
+
+            public function name(): string
+            {
+                return 'fake';
+            }
+
+            public function stream(array $messages, array $tools, callable $onEvent, ?string $systemPrompt = null): array
+            {
+                foreach ($this->events as [$type, $data]) {
+                    $onEvent($type, $data);
+                }
+
+                // Return one text block so MessageLoop sees content and stops
+                // after one iteration.
+                return [['type' => 'text', 'text' => 'ok']];
+            }
+        };
+    }
+
+    public function test_token_tracking_accumulates_across_events(): void
+    {
+        // Multiple usage events in one turn (Anthropic emits an interim
+        // message_delta usage AND a final usage). They must sum, not overwrite.
+        $provider = $this->eventEmittingProvider([
+            ['usage', ['input_tokens' => 1000, 'output_tokens' => 200, 'cache_read_tokens' => 100, 'cache_write_tokens' => 50]],
+            ['usage', ['input_tokens' => 200, 'output_tokens' => 50]],
+            ['message_stop', ['stop_reason' => 'end_turn']],
+        ]);
+
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $loop->run([['role' => 'user', 'content' => 'hi']], fn () => null);
+
+        $this->assertSame(1200, $loop->getInputTokens());
+        $this->assertSame(250, $loop->getOutputTokens());
+        $this->assertSame(100, $loop->getCacheReadTokens());
+        $this->assertSame(50, $loop->getCacheCreationTokens());
+    }
+
+    public function test_token_tracking_casts_string_numerics_to_int(): void
+    {
+        // A provider that JSON-decoded numbers as strings would otherwise
+        // silently accumulate to 0 (with `+= ($data[...] ?? 0)` and PHP's
+        // surprising arithmetic). The explicit (int) cast pins the
+        // behaviour either way — verify it.
+        $provider = $this->eventEmittingProvider([
+            ['usage', ['input_tokens' => '500', 'output_tokens' => '120']],
+            ['message_stop', []],
+        ]);
+
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $loop->run([['role' => 'user', 'content' => 'hi']], fn () => null);
+
+        $this->assertSame(500, $loop->getInputTokens());
+        $this->assertSame(120, $loop->getOutputTokens());
+    }
+
+    public function test_token_tracking_handles_missing_fields(): void
+    {
+        // Mid-stream usage events carry partial deltas. Missing fields must
+        // default to 0 (via `?? 0`) without throwing or zeroing the running
+        // total.
+        $provider = $this->eventEmittingProvider([
+            ['usage', ['input_tokens' => 50]], // no output yet
+            ['usage', ['output_tokens' => 30]], // no input update
+            ['message_stop', []],
+        ]);
+
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $loop->run([['role' => 'user', 'content' => 'hi']], fn () => null);
+
+        $this->assertSame(50, $loop->getInputTokens());
+        $this->assertSame(30, $loop->getOutputTokens());
+        $this->assertSame(0, $loop->getCacheReadTokens());
+        $this->assertSame(0, $loop->getCacheCreationTokens());
+    }
+
+    public function test_token_tracking_initial_counters_are_zero(): void
+    {
+        $provider = $this->eventEmittingProvider([
+            ['message_stop', []],
+        ]);
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $loop->run([['role' => 'user', 'content' => 'hi']], fn () => null);
+
+        $this->assertSame(0, $loop->getInputTokens());
+        $this->assertSame(0, $loop->getOutputTokens());
+        $this->assertSame(0, $loop->getCacheReadTokens());
+        $this->assertSame(0, $loop->getCacheCreationTokens());
+    }
+
+    public function test_user_callback_still_receives_usage_events(): void
+    {
+        // The accumulator wraps the user-supplied callback. It must NOT
+        // swallow events — only intercept usage payloads. The downstream
+        // budget reporter consumes the usage events directly.
+        $provider = $this->eventEmittingProvider([
+            ['text_delta', ['text' => 'hi']],
+            ['usage', ['input_tokens' => 10]],
+            ['text_delta', ['text' => ' there']],
+            ['message_stop', []],
+        ]);
+
+        $loop = new MessageLoop($provider, new ToolRegistry);
+        $seen = [];
+        $loop->run([['role' => 'user', 'content' => 'hi']], function (string $type, array $data) use (&$seen) {
+            $seen[] = [$type, $data];
+        });
+
+        $types = array_column($seen, 0);
+        $this->assertContains('text_delta', $types);
+        $this->assertContains('usage', $types);
+        $this->assertContains('message_stop', $types);
+        // Usage events get accumulated AND forwarded — nothing is dropped.
+        $this->assertSame(10, $loop->getInputTokens());
+    }
 }

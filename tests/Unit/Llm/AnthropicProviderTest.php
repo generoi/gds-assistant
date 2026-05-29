@@ -12,12 +12,19 @@ class AnthropicProviderTest extends TestCase
 
     private ReflectionMethod $processEvent;
 
+    private ReflectionMethod $cacheControlLastMessage;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->provider = new AnthropicProvider('test-key', 'claude-sonnet-4-6');
         $this->processEvent = new ReflectionMethod(AnthropicProvider::class, 'processEvent');
         $this->processEvent->setAccessible(true);
+        $this->cacheControlLastMessage = new ReflectionMethod(
+            AnthropicProvider::class,
+            'cacheControlLastMessage',
+        );
+        $this->cacheControlLastMessage->setAccessible(true);
     }
 
     public function test_name(): void
@@ -181,6 +188,91 @@ class AnthropicProviderTest extends TestCase
         // Ping events should not produce any callbacks or blocks
         $pings = array_filter($events['callbacks'], fn ($e) => $e[0] === 'ping');
         $this->assertEmpty($pings);
+    }
+
+    // ── cacheControlLastMessage ─────────────────────────────────
+
+    public function test_cache_control_is_a_noop_on_short_conversations(): void
+    {
+        // Below 3 messages the 5-minute TTL overhead isn't worth the cached
+        // prefix; the helper just returns the messages unchanged.
+        $messages = [
+            ['role' => 'user', 'content' => 'first'],
+            ['role' => 'assistant', 'content' => 'second'],
+        ];
+
+        $result = $this->cacheControlLastMessage->invoke(null, $messages);
+
+        $this->assertSame($messages, $result);
+    }
+
+    public function test_cache_control_wraps_string_content_into_text_block(): void
+    {
+        // When the last message is `content: "string"`, the helper has to
+        // upgrade it to `content: [{type:'text', text:'string', cache_control:…}]`
+        // so cache_control has somewhere to live (the API rejects a string
+        // with a sidecar).
+        $messages = [
+            ['role' => 'user', 'content' => 'one'],
+            ['role' => 'assistant', 'content' => 'two'],
+            ['role' => 'user', 'content' => 'three'],
+        ];
+
+        $result = $this->cacheControlLastMessage->invoke(null, $messages);
+
+        $this->assertCount(3, $result);
+        $this->assertSame([
+            ['type' => 'text', 'text' => 'three', 'cache_control' => ['type' => 'ephemeral']],
+        ], $result[2]['content']);
+        // Earlier messages unchanged.
+        $this->assertSame('one', $result[0]['content']);
+    }
+
+    public function test_cache_control_marks_last_block_of_array_content(): void
+    {
+        // When the last message already has `content: [...]`, the helper sets
+        // cache_control on the LAST block (so caching extends through it).
+        $messages = [
+            ['role' => 'user', 'content' => 'one'],
+            ['role' => 'assistant', 'content' => 'two'],
+            ['role' => 'user', 'content' => [
+                ['type' => 'text', 'text' => 'three'],
+                ['type' => 'text', 'text' => 'four'],
+            ]],
+        ];
+
+        $result = $this->cacheControlLastMessage->invoke(null, $messages);
+
+        $this->assertArrayNotHasKey('cache_control', $result[2]['content'][0]);
+        $this->assertSame(
+            ['type' => 'ephemeral'],
+            $result[2]['content'][1]['cache_control'],
+        );
+    }
+
+    public function test_cache_control_walks_back_past_empty_messages(): void
+    {
+        // The helper walks back from the tail looking for the most recent
+        // message with non-empty content. If the very last message is empty
+        // (which can happen with placeholder turns), it should mark the
+        // previous viable one — not crash.
+        $messages = [
+            ['role' => 'user', 'content' => 'one'],
+            ['role' => 'assistant', 'content' => [
+                ['type' => 'text', 'text' => 'two'],
+            ]],
+            ['role' => 'user', 'content' => []],
+        ];
+
+        $result = $this->cacheControlLastMessage->invoke(null, $messages);
+
+        // The empty-content message stays empty; the previous one gets
+        // the cache_control marker.
+        $this->assertSame(
+            ['type' => 'ephemeral'],
+            $result[1]['content'][0]['cache_control'],
+        );
+        $this->assertSame([], $result[2]['content']);
     }
 
     /**

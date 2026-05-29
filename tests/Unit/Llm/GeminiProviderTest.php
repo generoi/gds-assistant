@@ -186,6 +186,64 @@ class GeminiProviderTest extends TestCase
         $this->assertNotEmpty($textParts);
     }
 
+    public function test_convert_messages_url_image_derives_mime_from_extension(): void
+    {
+        // Real file with a .png extension. The mime type should be
+        // `image/png` (pathinfo picks up the extension).
+        $tmp = tempnam(sys_get_temp_dir(), 'gemini-test-').'.png';
+        // 1×1 transparent PNG (smallest valid PNG body).
+        file_put_contents($tmp, base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=',
+        ));
+
+        try {
+            $messages = [[
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'url', 'url' => 'file://'.$tmp]],
+                ],
+            ]];
+
+            $result = $this->convertMessages->invoke(null, $messages);
+
+            $parts = $result[0]['parts'];
+            $this->assertSame('image/png', $parts[0]['inlineData']['mimeType']);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    public function test_convert_messages_url_image_defaults_mime_when_extension_missing(): void
+    {
+        // No extension on the path. Regression test for an older bug where
+        // `'image/' . pathinfo(...) ?: 'jpeg'` was parsed as
+        // `'image/' . (pathinfo(...) ?: 'jpeg')` — except `pathinfo()` returns
+        // `''` (empty string, falsy) when there's no extension, so the
+        // fallback worked. The bug version's actual issue is now pinned: an
+        // empty pathinfo must collapse to `jpeg`, not bare `'image/'`.
+        $tmp = tempnam(sys_get_temp_dir(), 'gemini-test-noext-');
+        // 1×1 JPEG body — smallest plausible content.
+        file_put_contents($tmp, base64_decode(
+            '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/wAALCAABAAEBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAA/AKpgD/9k=',
+        ));
+
+        try {
+            $messages = [[
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'image', 'source' => ['type' => 'url', 'url' => 'file://'.$tmp]],
+                ],
+            ]];
+
+            $result = $this->convertMessages->invoke(null, $messages);
+
+            $parts = $result[0]['parts'];
+            $this->assertSame('image/jpeg', $parts[0]['inlineData']['mimeType']);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
     public function test_convert_messages_tool_result(): void
     {
         $messages = [
