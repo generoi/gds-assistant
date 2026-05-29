@@ -8,7 +8,7 @@ final class CredentialResolver
 {
     /**
      * @param  string[]  $legacyEnvVars
-     * @return array{key: string|null, source: string, connector: array|null, setting: string|null}
+     * @return array{key: string|null, source: string, connector: array<string, mixed>|null, setting: string|null}
      */
     public static function resolve(string $providerName, array $legacyEnvVars = [], ?string $connectorId = null): array
     {
@@ -58,6 +58,7 @@ final class CredentialResolver
         ];
     }
 
+    /** @return array<string, mixed>|null */
     private static function getConnector(string $connectorId): ?array
     {
         if (! function_exists('wp_get_connectors')) {
@@ -78,6 +79,7 @@ final class CredentialResolver
     }
 
     /**
+     * @param  array<string, mixed>|null  $connector
      * @return array<int, array{type: string, name: string}>
      */
     private static function connectorSources(string $connectorId, ?array $connector): array

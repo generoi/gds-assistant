@@ -52,6 +52,7 @@ class SmartProvider implements LlmProviderInterface
         }
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     private function selectProvider(array $messages): LlmProviderInterface
     {
         return self::isToolRoutingTurn($messages)
@@ -66,6 +67,8 @@ class SmartProvider implements LlmProviderInterface
      * Heuristic: if the last user message contains tool_result blocks, the
      * LLM is processing tool output. It will either call more tools or write
      * a summary — both are fine on a cheaper model.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
      */
     public static function isToolRoutingTurn(array $messages): bool
     {

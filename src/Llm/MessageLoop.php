@@ -58,10 +58,10 @@ class MessageLoop
     /**
      * Run the agentic loop: stream LLM response, execute tool calls, repeat.
      *
-     * @param  array  $messages  Conversation messages
-     * @param  callable  $onEvent  SSE event callback: fn(string $type, array $data)
+     * @param  array<int, array<string, mixed>>  $messages  Conversation messages
+     * @param  callable(string, array<string, mixed>): void  $onEvent  SSE event callback
      * @param  string|null  $systemPrompt  System prompt
-     * @return array Updated messages array (including assistant + tool results)
+     * @return array<int, array<string, mixed>> Updated messages array (including assistant + tool results)
      */
     public function run(
         array $messages,

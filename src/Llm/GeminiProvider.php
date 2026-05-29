@@ -90,6 +90,11 @@ class GeminiProvider implements LlmProviderInterface
         return $contentBlocks;
     }
 
+    /**
+     * @param  array<string, mixed>  $event
+     * @param  array<array<string, mixed>>  $contentBlocks
+     * @param  callable(string, array<string, mixed>): void  $onEvent
+     */
     private function processChunk(
         array $event,
         array &$contentBlocks,
@@ -160,6 +165,9 @@ class GeminiProvider implements LlmProviderInterface
 
     /**
      * Convert messages to Gemini format.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function convertMessages(array $messages): array
     {
@@ -269,6 +277,9 @@ class GeminiProvider implements LlmProviderInterface
 
     /**
      * Convert tools to Gemini's functionDeclarations format.
+     *
+     * @param  array<int, array<string, mixed>>  $tools
+     * @return array<int, array<string, mixed>>
      */
     private static function convertTools(array $tools): array
     {
@@ -282,6 +293,9 @@ class GeminiProvider implements LlmProviderInterface
     /**
      * Gemini's schema is stricter — only supports a subset of JSON Schema.
      * Remove unsupported keys and ensure compatibility.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
      */
     private static function sanitizeSchema(array $schema): array
     {
