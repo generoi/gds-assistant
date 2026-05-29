@@ -2,6 +2,8 @@
 
 namespace GeneroWP\Assistant\Storage;
 
+use GeneroWP\Assistant\Storage\Records\AuditEntry;
+
 class AuditLog
 {
     public static function tableName(): string
@@ -118,10 +120,8 @@ class AuditLog
 
     /**
      * Fetch a single audit entry by id.
-     *
-     * @return array<string, mixed>|null
      */
-    public function getById(int $id): ?array
+    public function getById(int $id): ?AuditEntry
     {
         global $wpdb;
 
@@ -130,20 +130,20 @@ class AuditLog
             ARRAY_A,
         );
 
-        return $row ?: null;
+        return is_array($row) ? AuditEntry::fromRow($row) : null;
     }
 
     /**
      * Recent undoable actions for a user (most recent first), newest writes
      * that still carry an undo snapshot.
      *
-     * @return array<int, array<string, mixed>>
+     * @return list<AuditEntry>
      */
     public function getReversible(int $userId, int $limit = 10): array
     {
         global $wpdb;
 
-        return $wpdb->get_results(
+        $rows = $wpdb->get_results(
             $wpdb->prepare(
                 'SELECT id, tool_name, undo_state, created_at FROM '.self::tableName().
                 ' WHERE user_id = %d AND undo_state IS NOT NULL AND is_error = 0'.
@@ -153,6 +153,11 @@ class AuditLog
             ),
             ARRAY_A,
         ) ?: [];
+
+        return array_values(array_map(
+            static fn (array $row) => AuditEntry::fromRow($row),
+            $rows,
+        ));
     }
 
     /**
@@ -166,18 +171,23 @@ class AuditLog
         $wpdb->update(self::tableName(), ['undo_state' => null], ['id' => $id]);
     }
 
-    /** @return array<int, array<string, mixed>> */
+    /** @return list<AuditEntry> */
     public function getForConversation(string $uuid): array
     {
         global $wpdb;
 
-        return $wpdb->get_results(
+        $rows = $wpdb->get_results(
             $wpdb->prepare(
                 'SELECT * FROM '.self::tableName().' WHERE conversation_uuid = %s ORDER BY created_at ASC',
                 $uuid,
             ),
             ARRAY_A,
         ) ?: [];
+
+        return array_values(array_map(
+            static fn (array $row) => AuditEntry::fromRow($row),
+            $rows,
+        ));
     }
 
     /**

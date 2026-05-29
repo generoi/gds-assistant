@@ -2,6 +2,8 @@
 
 namespace GeneroWP\Assistant\Llm;
 
+use GeneroWP\Assistant\Llm\Records\CompressionResult;
+
 /**
  * Progressive context compression for long conversations.
  *
@@ -50,9 +52,8 @@ class ContextCompressor
      *
      * @param  array<int, array<string, mixed>>  $messages  Full conversation messages
      * @param  string  $existingSummary  Rolling summary from previous compressions
-     * @return array{messages: array<int, array<string, mixed>>, summary: string} Compressed messages + updated summary
      */
-    public static function compress(array $messages, string $existingSummary = ''): array
+    public static function compress(array $messages, string $existingSummary = ''): CompressionResult
     {
         $thresholdL2 = apply_filters('gds-assistant/compression_threshold', self::LEVEL2_THRESHOLD);
         $thresholdL3 = apply_filters('gds-assistant/summary_threshold', self::LEVEL3_THRESHOLD);
@@ -62,7 +63,7 @@ class ContextCompressor
 
         // Under threshold — no compression needed
         if ($tokens < $thresholdL2) {
-            return ['messages' => $messages, 'summary' => $existingSummary];
+            return new CompressionResult($messages, $existingSummary);
         }
 
         // Level 1: Truncate large tool results with smart summaries
@@ -70,7 +71,7 @@ class ContextCompressor
         $tokens = self::estimateTokens($messages);
 
         if ($tokens < $thresholdL2) {
-            return ['messages' => $messages, 'summary' => $existingSummary];
+            return new CompressionResult($messages, $existingSummary);
         }
 
         // Strip old images before further compression
@@ -81,13 +82,11 @@ class ContextCompressor
         $tokens = self::estimateTokens($messages);
 
         if ($tokens < $thresholdL3) {
-            return ['messages' => $messages, 'summary' => $existingSummary];
+            return new CompressionResult($messages, $existingSummary);
         }
 
         // Level 3: Summarize old messages
-        $result = self::summarizeOldMessages($messages, $keepRecent, $existingSummary);
-
-        return $result;
+        return self::summarizeOldMessages($messages, $keepRecent, $existingSummary);
     }
 
     /**
@@ -153,7 +152,7 @@ class ContextCompressor
             return null;
         }
 
-        $provider = $resolved['provider'];
+        $provider = $resolved->provider;
 
         // Make a non-streaming summary call
         $summaryMessages = [
@@ -269,15 +268,14 @@ class ContextCompressor
 
     /**
      * @param  array<int, array<string, mixed>>  $messages
-     * @return array{messages: array<int, array<string, mixed>>, summary: string}
      */
-    private static function summarizeOldMessages(array $messages, int $keepRecent, string $existingSummary): array
+    private static function summarizeOldMessages(array $messages, int $keepRecent, string $existingSummary): CompressionResult
     {
         $total = count($messages);
         $cutoff = max(0, $total - $keepRecent);
 
         if ($cutoff <= 1) {
-            return ['messages' => $messages, 'summary' => $existingSummary];
+            return new CompressionResult($messages, $existingSummary);
         }
 
         $oldMessages = array_slice($messages, 0, $cutoff);
@@ -304,10 +302,10 @@ class ContextCompressor
             'content' => [['type' => 'text', 'text' => 'Understood, I have the conversation context.']],
         ];
 
-        return [
-            'messages' => array_merge($compressed, $recentMessages),
-            'summary' => $summary,
-        ];
+        return new CompressionResult(
+            messages: array_merge($compressed, $recentMessages),
+            summary: $summary,
+        );
     }
 
     // ── Smart tool result summaries ─────────────────────────────

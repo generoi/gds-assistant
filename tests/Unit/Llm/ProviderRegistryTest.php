@@ -37,8 +37,8 @@ class ProviderRegistryTest extends WP_UnitTestCase
         $result = ProviderRegistry::resolve('anthropic:sonnet');
 
         $this->assertNotNull($result);
-        $this->assertInstanceOf(AnthropicProvider::class, $result['provider']);
-        $this->assertEquals('claude-sonnet-4-6', $result['modelId']);
+        $this->assertInstanceOf(AnthropicProvider::class, $result->provider);
+        $this->assertEquals('claude-sonnet-4-6', $result->modelId);
     }
 
     public function test_resolve_openai_model(): void
@@ -50,7 +50,7 @@ class ProviderRegistryTest extends WP_UnitTestCase
         $result = ProviderRegistry::resolve('openai:gpt-mini');
 
         $this->assertNotNull($result);
-        $this->assertInstanceOf(OpenAiCompatibleProvider::class, $result['provider']);
+        $this->assertInstanceOf(OpenAiCompatibleProvider::class, $result->provider);
     }
 
     public function test_resolve_gemini_model(): void
@@ -62,7 +62,7 @@ class ProviderRegistryTest extends WP_UnitTestCase
         $result = ProviderRegistry::resolve('gemini:gemini-flash');
 
         $this->assertNotNull($result);
-        $this->assertInstanceOf(GeminiProvider::class, $result['provider']);
+        $this->assertInstanceOf(GeminiProvider::class, $result->provider);
     }
 
     public function test_default_model_key_prefers_vertex_then_gemini(): void

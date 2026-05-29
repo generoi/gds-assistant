@@ -122,9 +122,9 @@ class ChatEndpoint
             ], 400);
         }
 
-        $provider = $resolved['provider'];
-        $modelId = $resolved['modelId'];
-        $modelTier = $resolved['tier'];
+        $provider = $resolved->provider;
+        $modelId = $resolved->modelId;
+        $modelTier = $resolved->tier;
 
         // Filter tools based on model tier
         add_filter('gds-assistant/tools', fn (array $tools) => ToolRestrictor::filter($tools, $modelTier));
@@ -132,14 +132,15 @@ class ChatEndpoint
         // Resolve or create conversation
         $store = new ConversationStore;
         $model = $modelId;
+        $conversation = null;
 
         if ($conversationId) {
             $conversation = $store->get($conversationId);
-            if (! $conversation || (int) $conversation['user_id'] !== $userId) {
+            if (! $conversation || $conversation->userId !== $userId) {
                 return new WP_REST_Response(['error' => 'Conversation not found'], 404);
             }
             // Prepend stored messages so the LLM has full context
-            $storedMessages = $conversation['messages'] ?? [];
+            $storedMessages = $conversation->messages;
             if (! empty($storedMessages)) {
                 $storedMessages = self::sanitizeMessages($storedMessages);
                 // Recover from stranded client tool calls: if a previous turn
@@ -214,7 +215,7 @@ class ChatEndpoint
 
         // Run the agentic loop with audit logging
         $auditLog = new AuditLog;
-        $existingSummary = $conversation['summary'] ?? '';
+        $existingSummary = $conversation ? $conversation->summary : '';
         $loop = new MessageLoop(
             $provider,
             $toolRegistry,
@@ -338,7 +339,7 @@ class ChatEndpoint
                 'total_output_tokens' => $loop->getOutputTokens(),
             ];
 
-            $currentTitle = $conversation['title'] ?? '';
+            $currentTitle = $conversation ? $conversation->title : '';
             if (! $currentTitle) {
                 $updateData['title'] = $this->generateTitle($messages);
             }

@@ -95,10 +95,10 @@ class MessageLoop
             $compressed = ContextCompressor::compress($messages, $this->existingSummary);
             // Providers only accept {role, content}; drop display metadata we
             // carry on stored messages (e.g. per-message `ts` timestamps).
-            $messagesForLlm = self::stripMessageMeta($compressed['messages']);
+            $messagesForLlm = self::stripMessageMeta($compressed->messages);
             $tokensAfter = ContextCompressor::estimateTokens($messagesForLlm);
-            if (! empty($compressed['summary'])) {
-                $this->updatedSummary = $compressed['summary'];
+            if ($compressed->summary !== '') {
+                $this->updatedSummary = $compressed->summary;
             }
             // Log compression for debugging but don't show to user — once
             // a conversation is long enough, compression fires every turn

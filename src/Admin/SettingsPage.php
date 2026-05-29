@@ -220,14 +220,13 @@ class SettingsPage
                     <?php foreach (self::getProviderConfigs() as $name => $config) { ?>
                         <?php
                         $credential = ProviderRegistry::getCredentialInfo($name);
-                        $hasKey = ! empty($credential['key']);
                         ?>
                         <tr>
                             <th scope="row"><?php echo esc_html($config['label']); ?></th>
                             <td>
-                                <?php if ($hasKey) { ?>
+                                <?php if ($credential->hasKey()) { ?>
                                     <span class="dashicons dashicons-yes-alt" style="color: green;"></span>
-                                    <?php echo esc_html(self::credentialLabel($credential['source'])); ?>
+                                    <?php echo esc_html(self::credentialLabel($credential->source)); ?>
                                 <?php } else { ?>
                                     <span class="dashicons dashicons-minus" style="color: #999;"></span>
                                     <?php if (! empty($config['core'])) { ?>

@@ -63,14 +63,14 @@ class UndoToolProvider implements ToolProviderInterface
     {
         $rows = (new AuditLog)->getReversible(get_current_user_id(), 10);
 
-        return array_map(function ($row) {
-            $undo = json_decode((string) $row['undo_state'], true) ?: [];
+        return array_map(static function ($row) {
+            $undo = $row->undoState ?? [];
 
             return [
-                'id' => (int) $row['id'],
-                'action' => $row['tool_name'],
+                'id' => $row->id,
+                'action' => $row->toolName,
                 'undo' => $undo['label'] ?? 'Restore previous state',
-                'when' => $row['created_at'],
+                'when' => $row->createdAt,
             ];
         }, $rows);
     }
@@ -87,7 +87,7 @@ class UndoToolProvider implements ToolProviderInterface
         $id = (int) ($input['id'] ?? 0);
         if ($id) {
             $row = $log->getById($id);
-            if (! $row || (int) $row['user_id'] !== $userId) {
+            if (! $row || $row->userId !== $userId) {
                 return new \WP_Error('not_found', 'No undoable action with that id (or it is not yours).');
             }
         } else {
@@ -97,8 +97,8 @@ class UndoToolProvider implements ToolProviderInterface
             }
         }
 
-        $snapshot = json_decode((string) $row['undo_state'], true);
-        if (! is_array($snapshot) || empty($snapshot['kind'])) {
+        $snapshot = $row->undoState;
+        if (! $snapshot || empty($snapshot['kind'])) {
             return new \WP_Error('not_undoable', 'That action can no longer be undone.');
         }
 
@@ -111,11 +111,11 @@ class UndoToolProvider implements ToolProviderInterface
         }
 
         // Prevent double-undo: clear the snapshot now it's been applied.
-        $log->markUndone((int) $row['id']);
+        $log->markUndone($row->id);
 
         return [
             'undone' => true,
-            'action' => $row['tool_name'],
+            'action' => $row->toolName,
             'detail' => $snapshot['label'] ?? '',
             'caveats' => $result['caveats'] ?? [],
             'result' => $result,

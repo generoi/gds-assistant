@@ -32,9 +32,9 @@ class ConversationStoreTest extends TestCase
         $conversation = $this->store->get($uuid);
 
         $this->assertNotNull($conversation);
-        $this->assertEquals($uuid, $conversation['uuid']);
-        $this->assertEquals($this->userId, $conversation['user_id']);
-        $this->assertEquals([], $conversation['messages']);
+        $this->assertSame($uuid, $conversation->uuid);
+        $this->assertSame($this->userId, $conversation->userId);
+        $this->assertSame([], $conversation->messages);
     }
 
     public function test_get_returns_null_for_unknown_uuid(): void
@@ -58,8 +58,9 @@ class ConversationStoreTest extends TestCase
         ]);
 
         $conversation = $this->store->get($uuid);
-        $this->assertEquals('Hello conversation', $conversation['title']);
-        $this->assertCount(2, $conversation['messages']);
+        $this->assertNotNull($conversation);
+        $this->assertSame('Hello conversation', $conversation->title);
+        $this->assertCount(2, $conversation->messages);
     }
 
     public function test_list_for_user(): void
