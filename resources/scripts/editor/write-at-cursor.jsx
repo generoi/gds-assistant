@@ -11,16 +11,16 @@
  * Gutenberg).
  */
 
-const SHORTCUT_KEY = 'j';
+const SHORTCUT_KEY = "j";
 
 function isInsideEditorCanvas(target) {
   if (!target) return false;
   // Don't intercept inside our own chat — we have our own shortcuts there.
-  if (target.closest && target.closest('.gds-assistant')) return false;
+  if (target.closest && target.closest(".gds-assistant")) return false;
   if (
     target.closest &&
     target.closest(
-      '[data-block], .block-editor-rich-text__editable, .editor-styles-wrapper, .interface-interface-skeleton__content',
+      "[data-block], .block-editor-rich-text__editable, .editor-styles-wrapper, .interface-interface-skeleton__content",
     )
   ) {
     return true;
@@ -31,10 +31,10 @@ function isInsideEditorCanvas(target) {
 function focusComposer() {
   // Tiny delay so the panel transition can mount the composer first.
   setTimeout(() => {
-    const input = document.querySelector('.gds-assistant__input');
+    const input = document.querySelector(".gds-assistant__input");
     if (input) {
       input.focus();
-      const len = (input.value || '').length;
+      const len = (input.value || "").length;
       try {
         input.setSelectionRange(len, len);
       } catch {
@@ -47,7 +47,7 @@ function focusComposer() {
 function handleKeydown(e) {
   const isMeta = e.metaKey || e.ctrlKey;
   if (!isMeta || e.shiftKey || e.altKey) return;
-  if ((e.key || '').toLowerCase() !== SHORTCUT_KEY) return;
+  if ((e.key || "").toLowerCase() !== SHORTCUT_KEY) return;
   if (!isInsideEditorCanvas(e.target)) return;
 
   e.preventDefault();
@@ -57,25 +57,28 @@ function handleKeydown(e) {
   focusComposer();
 }
 
-window.addEventListener('keydown', handleKeydown, {capture: false});
+window.addEventListener("keydown", handleKeydown, { capture: false });
 
-// Editor canvas iframe (WP 7.0 sometimes mounts the editor there) — keydowns
-// inside don't always bubble out, so wire a listener inside it too.
+// Editor canvas iframe (WP 6.3+ mounts the canvas there on most editor
+// surfaces; absent on legacy non-iframed editors) — keydowns inside don't
+// always bubble out, so wire a listener inside it too when it's present.
 function attachIframeListener() {
   const iframe = document.querySelector('iframe[name="editor-canvas"]');
   if (!iframe || iframe._gdsWriteCursorAttached) return;
   iframe._gdsWriteCursorAttached = true;
   const wire = () => {
     try {
-      iframe.contentDocument?.addEventListener('keydown', handleKeydown, {capture: false});
+      iframe.contentDocument?.addEventListener("keydown", handleKeydown, {
+        capture: false,
+      });
     } catch {
       // Cross-origin iframes can't be reached; safe to ignore.
     }
   };
-  if (iframe.contentDocument?.readyState === 'complete') {
+  if (iframe.contentDocument?.readyState === "complete") {
     wire();
   } else {
-    iframe.addEventListener('load', wire);
+    iframe.addEventListener("load", wire);
   }
 }
 const pollAttach = setInterval(() => {

@@ -2,34 +2,35 @@
  * Shared selection helpers for the live block editor.
  *
  * Used by both the block-toolbar dropdown and the chat composer chip. Keeps a
- * single source of truth for how we read text + selection out of `wp.data` so
- * the two features stay in lock-step (and we only fix things like the WP 7.0
- * RichTextValue object shape in one place).
+ * single source of truth for how we read text + selection out of `wp.data`,
+ * and runtime-branches on the block-attribute shape (HTML string in
+ * WP 6.5–6.x, RichTextValue object in WP 7.0+) so both versions work without
+ * a hard `Requires at least` floor higher than 6.5.
  */
 
 /** Blocks where text-range selection is meaningful. */
 export const TEXT_BLOCKS = new Set([
-  'core/paragraph',
-  'core/heading',
-  'core/list',
-  'core/list-item',
-  'core/quote',
-  'core/pullquote',
-  'core/preformatted',
-  'core/verse',
+  "core/paragraph",
+  "core/heading",
+  "core/list",
+  "core/list-item",
+  "core/quote",
+  "core/pullquote",
+  "core/preformatted",
+  "core/verse",
 ]);
 
 /** Friendly block label for human-facing strings ("core/paragraph" → "paragraph"). */
 export function blockLabel(name) {
-  return (name || '').replace(/^core\//, '').replace(/-/g, ' ');
+  return (name || "").replace(/^core\//, "").replace(/-/g, " ");
 }
 
 /** Strip HTML + collapse whitespace from a string. */
 export function stripHtml(value) {
-  if (typeof value !== 'string') return '';
+  if (typeof value !== "string") return "";
   return value
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -40,30 +41,30 @@ export function stripHtml(value) {
  * Normalise both to plain text.
  */
 export function attrToPlainText(attrValue) {
-  if (typeof attrValue === 'string') {
-    const rich = window.wp?.richText?.create?.({html: attrValue});
-    if (typeof rich?.text === 'string') return rich.text;
+  if (typeof attrValue === "string") {
+    const rich = window.wp?.richText?.create?.({ html: attrValue });
+    if (typeof rich?.text === "string") return rich.text;
     return stripHtml(attrValue);
   }
   if (
     attrValue &&
-    typeof attrValue === 'object' &&
-    typeof attrValue.text === 'string'
+    typeof attrValue === "object" &&
+    typeof attrValue.text === "string"
   ) {
     return attrValue.text;
   }
-  return '';
+  return "";
 }
 
 /** Plain text of a block's primary content attribute, collapsed + trimmed. */
 export function getBlockText(clientId) {
   const block = window.wp?.data
-    ?.select?.('core/block-editor')
+    ?.select?.("core/block-editor")
     ?.getBlock?.(clientId);
-  if (!block) return '';
+  if (!block) return "";
   const attrs = block.attributes || {};
   const value = attrs.content ?? attrs.text ?? attrs.value;
-  return attrToPlainText(value).replace(/\s+/g, ' ').trim();
+  return attrToPlainText(value).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -73,20 +74,20 @@ export function getBlockText(clientId) {
  * after focus has left the editor surface.
  */
 export function getBlockSelectionText(clientId) {
-  const select = window.wp?.data?.select?.('core/block-editor');
-  if (!select) return '';
+  const select = window.wp?.data?.select?.("core/block-editor");
+  if (!select) return "";
   const start = select.getSelectionStart?.();
   const end = select.getSelectionEnd?.();
-  if (!start || !end) return '';
-  if (start.clientId !== clientId || end.clientId !== clientId) return '';
-  if (start.attributeKey !== end.attributeKey) return '';
-  if (start.offset == null || end.offset == null) return '';
-  if (start.offset === end.offset) return '';
+  if (!start || !end) return "";
+  if (start.clientId !== clientId || end.clientId !== clientId) return "";
+  if (start.attributeKey !== end.attributeKey) return "";
+  if (start.offset == null || end.offset == null) return "";
+  if (start.offset === end.offset) return "";
 
   const block = select.getBlock?.(clientId);
   const attrValue = block?.attributes?.[start.attributeKey];
   const text = attrToPlainText(attrValue);
-  if (!text) return '';
+  if (!text) return "";
 
   // Rich-text selection offsets index the plain text, not the source HTML.
   const from = Math.min(start.offset, end.offset);
@@ -110,7 +111,7 @@ export function getBlockSelectionText(clientId) {
  *     Multiple blocks selected at once.
  */
 export function getCurrentSelectionContext() {
-  const select = window.wp?.data?.select?.('core/block-editor');
+  const select = window.wp?.data?.select?.("core/block-editor");
   if (!select) return null;
   const ids = select.getSelectedBlockClientIds?.() || [];
   if (!ids.length) return null;
@@ -119,7 +120,7 @@ export function getCurrentSelectionContext() {
     const names = ids.map((id) => select.getBlockName?.(id)).filter(Boolean);
     if (!names.length) return null;
     return {
-      mode: 'multi-block',
+      mode: "multi-block",
       count: ids.length,
       clientIds: ids,
       blockNames: names,
@@ -138,7 +139,7 @@ export function getCurrentSelectionContext() {
     const selectedText = getBlockSelectionText(clientId);
     if (selectedText) {
       return {
-        mode: 'text-range',
+        mode: "text-range",
         clientId,
         blockName: name,
         blockLabel: label,
@@ -150,10 +151,10 @@ export function getCurrentSelectionContext() {
 
   // Whole-block (text-bearing without a range, or any non-text block).
   return {
-    mode: 'whole-block',
+    mode: "whole-block",
     clientId,
     blockName: name,
     blockLabel: label,
-    blockText: TEXT_BLOCKS.has(name) ? getBlockText(clientId) : '',
+    blockText: TEXT_BLOCKS.has(name) ? getBlockText(clientId) : "",
   };
 }
