@@ -63,6 +63,7 @@ class MemoryToolProvider implements ToolProviderInterface
         return str_starts_with($name, self::PREFIX);
     }
 
+    /** @return array<int, array<string, mixed>> */
     private function listMemories(): array
     {
         $posts = get_posts([
@@ -82,6 +83,10 @@ class MemoryToolProvider implements ToolProviderInterface
         ], $posts);
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function saveMemory(array $input): array|\WP_Error
     {
         $title = sanitize_text_field($input['title'] ?? '');
@@ -126,6 +131,10 @@ class MemoryToolProvider implements ToolProviderInterface
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function forgetMemory(array $input): array|\WP_Error
     {
         $id = $input['id'] ?? 0;

@@ -25,7 +25,7 @@ class McpToolProvider implements ToolProviderInterface
     /** Cache TTL for tools/list results, in seconds. Short — server catalogs can change. */
     private const TOOLS_CACHE_TTL = 300;
 
-    /** @var array<string, array>|null In-request cache: tool name → tool def (with _server key) */
+    /** @var array<string, array<string, mixed>>|null In-request cache: tool name → tool def (with _server key) */
     private ?array $toolMap = null;
 
     private ?int $userId = null;
@@ -116,7 +116,7 @@ class McpToolProvider implements ToolProviderInterface
         }
     }
 
-    /** @return array<int, array> */
+    /** @return array<int, array<string, mixed>> */
     private function loadServerTools(McpServerConfig $server): array
     {
         $userId = $this->currentUserId();
@@ -171,6 +171,7 @@ class McpToolProvider implements ToolProviderInterface
         return [substr($rest, 0, $pos), substr($rest, $pos + strlen(self::SEPARATOR))];
     }
 
+    /** @param array<string, mixed> $tool */
     private static function decorateDescription(McpServerConfig $server, array $tool): string
     {
         $desc = (string) ($tool['description'] ?? '');
@@ -180,7 +181,11 @@ class McpToolProvider implements ToolProviderInterface
         return "[{$label}] ".$desc;
     }
 
-    /** Ensure we always send a valid JSON Schema object to the LLM. */
+    /**
+     * Ensure we always send a valid JSON Schema object to the LLM.
+     *
+     * @return array<string, mixed>
+     */
     private static function normalizeSchema(mixed $schema): array
     {
         if (! is_array($schema) || ! isset($schema['type'])) {

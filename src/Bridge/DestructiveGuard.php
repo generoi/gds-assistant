@@ -29,7 +29,7 @@ class DestructiveGuard
      *
      * @param  bool  $needsApproval  Decision so far (risk + destructive annotation).
      * @param  string  $abilityName  Resolved ability name, e.g. `gds/forms-update`.
-     * @param  array  $input  Parsed tool input.
+     * @param  array<string, mixed>  $input  Parsed tool input.
      */
     public static function requiresApproval(bool $needsApproval, string $abilityName, array $input): bool
     {
@@ -103,8 +103,8 @@ class DestructiveGuard
      * ability opts in. Called right before an approved tool re-executes.
      *
      * @param  string  $toolName  LLM tool name (e.g. `gds__forms-update`).
-     * @param  array  $input  Original tool input.
-     * @return array Input, possibly with `confirm_destructive` set.
+     * @param  array<string, mixed>  $input  Original tool input.
+     * @return array<string, mixed> Input, possibly with `confirm_destructive` set.
      */
     public static function injectConfirmation(string $toolName, array $input): array
     {

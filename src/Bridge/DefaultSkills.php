@@ -40,6 +40,7 @@ class DefaultSkills
      */
     private const BUNDLED_HASH_META = '_assistant_bundled_hash';
 
+    /** @param array<string, mixed> $skill */
     private static function installSkill(array $skill): void
     {
         $newHash = md5($skill['prompt']);

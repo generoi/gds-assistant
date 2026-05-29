@@ -85,6 +85,10 @@ class ImageGenerationToolProvider implements ToolProviderInterface
         return $name === 'assistant__generate_image';
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function generateImage(array $input): array|\WP_Error
     {
         $prompt = trim((string) ($input['prompt'] ?? ''));
@@ -191,7 +195,7 @@ class ImageGenerationToolProvider implements ToolProviderInterface
     /**
      * POST to /v1/images/generations — text-only generation.
      *
-     * @return array|\WP_Error raw wp_remote_post result
+     * @return array<string, mixed>|\WP_Error raw wp_remote_post result
      */
     private function callGenerateEndpoint(string $apiKey, string $prompt, string $size, string $quality)
     {
@@ -218,7 +222,7 @@ class ImageGenerationToolProvider implements ToolProviderInterface
      * doesn't have first-class multipart support, so we build the body and
      * boundary by hand.
      *
-     * @return array|\WP_Error raw wp_remote_post result
+     * @return array<string, mixed>|\WP_Error raw wp_remote_post result
      */
     private function callEditEndpoint(
         string $apiKey,

@@ -15,7 +15,7 @@ class ToolRegistry
     /**
      * Get all tool definitions from all providers.
      *
-     * @return array<int, array{name: string, description: string, input_schema: array}>
+     * @return array<int, array{name: string, description: string, input_schema: array<string, mixed>}>
      */
     public function getAllTools(): array
     {
@@ -32,6 +32,7 @@ class ToolRegistry
     /**
      * Execute a tool, routing to the correct provider.
      *
+     * @param  array<string, mixed>  $input
      * @return mixed|\WP_Error
      */
     public function executeTool(string $name, array $input): mixed
