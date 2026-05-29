@@ -21,7 +21,11 @@ import { useCallback, useState } from "@wordpress/element";
 import { formatMessageTime } from "../hooks/use-runtime-adapter";
 import { ToolCallFallback } from "./ToolCallFallback";
 
-function MessageImage({ image }) {
+interface MessageImageProps {
+  image?: string;
+}
+
+function MessageImage({ image }: MessageImageProps): JSX.Element | null {
   if (!image) {
     return null;
   }
@@ -35,9 +39,20 @@ function MessageImage({ image }) {
 // than a user bubble. The leading ↩ is our marker.
 const SYSTEM_NOTE_MARKER = "↩";
 
-export function UserMessage() {
+/** Minimal shape for the content parts a message carries (matches Ui*Part). */
+interface AnyMessagePart {
+  type: string;
+  text?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  image?: string;
+}
+
+export function UserMessage(): JSX.Element {
   const systemNote = useMessage((s) => {
-    const text = (s.content || [])
+    const parts = (s.content || []) as readonly AnyMessagePart[];
+    const text = parts
       .filter((p) => p.type === "text")
       .map((p) => p.text || "")
       .join("")
@@ -70,7 +85,7 @@ export function UserMessage() {
  * so the empty/partial assistant bubble doesn't display a misleading
  * timestamp before the content has arrived.
  */
-function MessageTimestamp() {
+function MessageTimestamp(): JSX.Element | null {
   const createdAt = useMessage((s) => s.createdAt);
   const isRunning = useMessage((s) => s.status?.type === "running");
   const isLast = useMessage((s) => s.isLast);
@@ -108,14 +123,42 @@ function MessageTimestamp() {
 const BLOCK_REF_RE =
   /\((?:block|clientId)[:\s]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s+[—–-]\s+([^)]+))?\)/gi;
 
-function BlockChip({ clientId, cachedLabel }) {
+interface BlockChipProps {
+  clientId: string;
+  cachedLabel: string | null;
+}
+
+function BlockChip({ clientId, cachedLabel }: BlockChipProps): JSX.Element {
+  // window.wp here matches the surface declared by editor-bridge.ts; we read
+  // the same `core/block-editor` store the editor renders from.
+  const wpData = (
+    window as unknown as {
+      wp?: {
+        data?: {
+          select?: (
+            store: string,
+          ) =>
+            | {
+                getBlockName?: (clientId: string) => string | undefined;
+              }
+            | undefined;
+          dispatch?: (
+            store: string,
+          ) =>
+            | {
+                selectBlock?: (clientId: string) => void;
+              }
+            | undefined;
+        };
+      };
+    }
+  ).wp?.data;
   const liveName =
-    window.wp?.data?.select?.("core/block-editor")?.getBlockName?.(clientId) ||
-    "";
+    wpData?.select?.("core/block-editor")?.getBlockName?.(clientId) || "";
   // Prefer the live block name (reflects renames + lookups by id), fall
   // back to the cached label captured when the chip was first inserted,
   // then a generic "block" so the chip never reads as empty.
-  let label;
+  let label: string;
   if (liveName) {
     label = liveName.replace(/^core\//, "").replace(/-/g, " ");
   } else if (cachedLabel) {
@@ -123,7 +166,7 @@ function BlockChip({ clientId, cachedLabel }) {
   } else {
     label = "block";
   }
-  const onClick = (e) => {
+  const onClick = (e: React.MouseEvent): void => {
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -132,12 +175,14 @@ function BlockChip({ clientId, cachedLabel }) {
       if (inMain) {
         inMain.scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
-        const iframe = document.querySelector('iframe[name="editor-canvas"]');
+        const iframe = document.querySelector<HTMLIFrameElement>(
+          'iframe[name="editor-canvas"]',
+        );
         iframe?.contentDocument
           ?.querySelector(sel)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      window.wp?.data?.dispatch?.("core/block-editor")?.selectBlock?.(clientId);
+      wpData?.dispatch?.("core/block-editor")?.selectBlock?.(clientId);
     } catch {
       // Ignore — block may be gone after later edits.
     }
@@ -169,16 +214,24 @@ function BlockChip({ clientId, cachedLabel }) {
   );
 }
 
-function renderTextWithBlockChips(text) {
-  const out = [];
+interface ChipPart {
+  chip: string;
+  cached: string | null;
+  key: string;
+}
+
+function renderTextWithBlockChips(
+  text: string,
+): Array<string | ChipPart> | null {
+  const out: Array<string | ChipPart> = [];
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   BLOCK_REF_RE.lastIndex = 0;
   while ((m = BLOCK_REF_RE.exec(text)) !== null) {
     if (m.index > last) {
       out.push(text.slice(last, m.index));
     }
-    out.push({ chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}` });
+    out.push({ chip: m[1]!, cached: m[2] || null, key: `${m.index}-${m[1]}` });
     last = m.index + m[0].length;
   }
   if (last < text.length) {
@@ -190,12 +243,16 @@ function renderTextWithBlockChips(text) {
   return out;
 }
 
-function UserMessageText({ text }) {
+interface UserMessageTextProps {
+  text: string;
+}
+
+function UserMessageText({ text }: UserMessageTextProps): JSX.Element {
   // Long skill prompts: show collapsed with expand toggle
   const isLong = text.length > 200;
   const [expanded, setExpanded] = useState(!isLong);
 
-  const renderText = (raw) => {
+  const renderText = (raw: string): React.ReactNode => {
     const parts = renderTextWithBlockChips(raw);
     if (!parts) {
       return raw;
@@ -233,13 +290,13 @@ function UserMessageText({ text }) {
   );
 }
 
-export function AssistantMessage() {
+export function AssistantMessage(): JSX.Element | null {
   // assistant-ui injects an empty assistant message while a stream warms up.
   // Don't render an empty bubble (with its copy button) for it — the
   // thread-level TypingIndicator covers that gap. We render once there's any
   // real content (text, a tool call, or an image).
   const isEmpty = useMessage((s) => {
-    const parts = s.content || [];
+    const parts = (s.content || []) as readonly AnyMessagePart[];
     return !parts.some(
       (p) =>
         (p.type === "text" && p.text && p.text.trim()) ||
@@ -259,8 +316,11 @@ export function AssistantMessage() {
           Text: AssistantMessageText,
           // assistant-ui routes tool-call parts through `tools.Fallback`
           // (not `ToolCallUI` — that key was a no-op, which is why tool calls
-          // previously only appeared as the adapter's inline text).
-          tools: { Fallback: ToolCallFallback },
+          // previously only appeared as the adapter's inline text). The
+          // library's Fallback prop type carries extra runtime bookkeeping
+          // (status, addResult, resume) we don't read; cast at the boundary
+          // rather than restating the full library type.
+          tools: { Fallback: ToolCallFallback as unknown as never },
         }}
       />
       <MessageTimestamp />
@@ -276,13 +336,20 @@ const STREAMDOWN_ALLOWED_TAGS = {
   abbr: ["class", "title"],
 };
 
-function AssistantMessageText({ text }) {
-  return (
-    <StreamdownTextPrimitive
-      text={text}
-      allowedTags={STREAMDOWN_ALLOWED_TAGS}
-    />
-  );
+interface AssistantMessageTextProps {
+  text: string;
+}
+
+function AssistantMessageText({ text }: AssistantMessageTextProps): JSX.Element {
+  // StreamdownTextPrimitive's published types omit our actual props (text,
+  // allowedTags) but the runtime accepts them — these are how assistant-ui
+  // intends the primitive to be used inside a MessagePrimitive.Content
+  // `Text` slot.
+  const Primitive = StreamdownTextPrimitive as unknown as React.ComponentType<{
+    text: string;
+    allowedTags: Record<string, string[]>;
+  }>;
+  return <Primitive text={text} allowedTags={STREAMDOWN_ALLOWED_TAGS} />;
 }
 
 /**
@@ -290,10 +357,8 @@ function AssistantMessageText({ text }) {
  * message DATA (not the rendered DOM) so it captures each tool call's full
  * request + response even while the card is collapsed — handy for pasting a
  * tool exchange into a bug report.
- *
- * @param parts
  */
-function messageToCopyText(parts) {
+function messageToCopyText(parts: AnyMessagePart[] | undefined): string {
   return (parts || [])
     .map((p) => {
       if (p.type === "text") {
@@ -327,11 +392,8 @@ function messageToCopyText(parts) {
  * "Copied!" confirmation stays reliable.
  *
  * Exported because the modal's "Copy transcript" button reuses it.
- *
- * @param {string} text Text to copy.
- * @return {Promise<boolean>} Whether the copy succeeded.
  */
-export function copyToClipboard(text) {
+export function copyToClipboard(text: string): Promise<boolean> {
   // execCommand first: it's synchronous, so it stays inside the click's
   // user-gesture window. The async Clipboard API loses that gesture after its
   // first await, so using it as the *fallback* (after a rejection) no-ops in
@@ -361,9 +423,13 @@ export function copyToClipboard(text) {
   return Promise.resolve(false);
 }
 
-function CopyMessageButton() {
+function CopyMessageButton(): JSX.Element {
   const [copied, setCopied] = useState(false);
-  const content = useMessage((s) => s.content);
+  // assistant-ui types content as a readonly tuple union; we read it as a
+  // plain mutable array for serialisation, which is safe (we don't mutate).
+  const content = useMessage(
+    (s) => s.content as unknown as AnyMessagePart[] | undefined,
+  );
 
   const handleCopy = useCallback(() => {
     const text = messageToCopyText(content);
