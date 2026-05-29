@@ -88,7 +88,7 @@ class UndoToolProviderTest extends TestCase
         // Find the id of the other user's entry.
         $row = $this->log->getReversible($other, 1)[0];
 
-        $result = $this->provider->executeTool('assistant__undo', ['id' => (int) $row['id']]);
+        $result = $this->provider->executeTool('assistant__undo', ['id' => $row->id]);
         $this->assertWPError($result);
         $this->assertSame('not_found', $result->get_error_code());
     }

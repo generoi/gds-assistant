@@ -2,6 +2,8 @@
 
 namespace GeneroWP\Assistant\Llm;
 
+use GeneroWP\Assistant\Llm\Records\CredentialInfo;
+use GeneroWP\Assistant\Llm\Records\ResolvedProvider;
 use GeneroWP\Assistant\Plugin;
 
 /**
@@ -215,24 +217,16 @@ class ProviderRegistry
      */
     public static function getApiKey(string $providerName): ?string
     {
-        return self::getCredentialInfo($providerName)['key'];
+        return self::getCredentialInfo($providerName)->key;
     }
 
-    /**
-     * @return array{key: string|null, source: string, connector: array<string, mixed>|null, setting: string|null}
-     */
-    public static function getCredentialInfo(string $providerName): array
+    public static function getCredentialInfo(string $providerName): CredentialInfo
     {
         self::registerDefaults();
 
         $config = self::$providers[$providerName] ?? null;
         if (! $config) {
-            return [
-                'key' => null,
-                'source' => 'missing',
-                'connector' => null,
-                'setting' => null,
-            ];
+            return new CredentialInfo(key: null, source: 'missing', connector: null, setting: null);
         }
 
         return CredentialResolver::resolve(
@@ -283,10 +277,8 @@ class ProviderRegistry
 
     /**
      * Resolve a model key (e.g. "anthropic:sonnet") to a provider instance.
-     *
-     * @return array{provider: LlmProviderInterface, modelId: string, label: string, tier: string}|null
      */
-    public static function resolve(string $modelKey, int $maxTokens = 4096): ?array
+    public static function resolve(string $modelKey, int $maxTokens = 4096): ?ResolvedProvider
     {
         self::registerDefaults();
 
@@ -367,16 +359,16 @@ class ProviderRegistry
                 $full = self::resolve("{$providerName}:{$fullKey}", $maxTokens);
 
                 if ($cheap && $full) {
-                    return [
-                        'provider' => new SmartProvider(
-                            $cheap['provider'],
-                            $full['provider'],
+                    return new ResolvedProvider(
+                        provider: new SmartProvider(
+                            $cheap->provider,
+                            $full->provider,
                             $providerName,
                         ),
-                        'modelId' => 'auto',
-                        'label' => $modelDef['label'],
-                        'tier' => 'full',
-                    ];
+                        modelId: 'auto',
+                        label: $modelDef['label'],
+                        tier: 'full',
+                    );
                 }
             }
 
@@ -385,12 +377,12 @@ class ProviderRegistry
             return null;
         }
 
-        return [
-            'provider' => $provider,
-            'modelId' => $modelId,
-            'label' => $modelDef['label'],
-            'tier' => $modelDef['tier'] ?? 'standard',
-        ];
+        return new ResolvedProvider(
+            provider: $provider,
+            modelId: $modelId,
+            label: $modelDef['label'],
+            tier: $modelDef['tier'] ?? 'standard',
+        );
     }
 
     /**

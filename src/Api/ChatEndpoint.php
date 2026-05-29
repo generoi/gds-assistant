@@ -122,9 +122,9 @@ class ChatEndpoint
             ], 400);
         }
 
-        $provider = $resolved['provider'];
-        $modelId = $resolved['modelId'];
-        $modelTier = $resolved['tier'];
+        $provider = $resolved->provider;
+        $modelId = $resolved->modelId;
+        $modelTier = $resolved->tier;
 
         // Filter tools based on model tier
         add_filter('gds-assistant/tools', fn (array $tools) => ToolRestrictor::filter($tools, $modelTier));

@@ -18,8 +18,7 @@ class ToolRestrictionTest extends TestCase
         $resolved = ProviderRegistry::resolve($default);
 
         $this->assertNotNull($resolved);
-        $this->assertArrayHasKey('tier', $resolved);
-        $this->assertContains($resolved['tier'], ['read', 'standard', 'full']);
+        $this->assertContains($resolved->tier, ['read', 'standard', 'full']);
     }
 
     public function test_all_models_have_tier(): void
@@ -36,8 +35,7 @@ class ToolRestrictionTest extends TestCase
                 $key = $model['value'];
                 $resolved = ProviderRegistry::resolve($key);
                 if ($resolved) {
-                    $this->assertArrayHasKey('tier', $resolved, "Model {$key} missing tier");
-                    $this->assertContains($resolved['tier'], ['read', 'standard', 'full'], "Model {$key} has invalid tier");
+                    $this->assertContains($resolved->tier, ['read', 'standard', 'full'], "Model {$key} has invalid tier");
                     $checked++;
                 }
             }

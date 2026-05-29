@@ -69,8 +69,8 @@ class SkillScheduler
             return;
         }
 
-        $provider = $resolved['provider'];
-        $modelId = $resolved['modelId'];
+        $provider = $resolved->provider;
+        $modelId = $resolved->modelId;
 
         // Scheduled skills run unattended with the author's identity. Only
         // administrators may schedule (enforced on the _assistant_schedule

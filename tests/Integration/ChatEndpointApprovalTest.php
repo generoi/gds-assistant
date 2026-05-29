@@ -154,10 +154,11 @@ class ChatEndpointApprovalTest extends TestCase
 
         $entries = (new AuditLog)->getForConversation($uuid);
         $this->assertCount(1, $entries, 'A denied action must leave an audit entry.');
-        $this->assertSame('gds/terms-delete', $entries[0]['tool_name']);
-        $this->assertSame(1, (int) $entries[0]['is_destructive']);
-        $decoded = json_decode($entries[0]['tool_result'], true);
-        $this->assertSame('denied', $decoded['decision'] ?? null);
+        $this->assertSame('gds/terms-delete', $entries[0]->toolName);
+        $this->assertTrue($entries[0]->isDestructive);
+        $result = $entries[0]->toolResult;
+        $this->assertIsArray($result);
+        $this->assertSame('denied', $result['decision'] ?? null);
     }
 
     public function test_approval_with_unknown_tool_id(): void

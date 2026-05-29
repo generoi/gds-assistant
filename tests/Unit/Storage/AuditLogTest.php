@@ -31,8 +31,8 @@ class AuditLogTest extends TestCase
 
         $entries = $this->log->getForConversation('conv-uuid-123');
         $this->assertCount(1, $entries);
-        $this->assertEquals('gds/posts-list', $entries[0]['tool_name']);
-        $this->assertEquals(0, $entries[0]['is_error']);
+        $this->assertEquals('gds/posts-list', $entries[0]->toolName);
+        $this->assertFalse($entries[0]->isError);
     }
 
     public function test_log_records_errors(): void
@@ -49,8 +49,8 @@ class AuditLogTest extends TestCase
 
         $entries = $this->log->getForConversation('conv-uuid-123');
         $this->assertCount(1, $entries);
-        $this->assertEquals(1, $entries[0]['is_error']);
-        $this->assertEquals(1, $entries[0]['is_destructive']);
+        $this->assertTrue($entries[0]->isError);
+        $this->assertTrue($entries[0]->isDestructive);
     }
 
     public function test_log_fires_action(): void

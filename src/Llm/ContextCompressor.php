@@ -153,7 +153,7 @@ class ContextCompressor
             return null;
         }
 
-        $provider = $resolved['provider'];
+        $provider = $resolved->provider;
 
         // Make a non-streaming summary call
         $summaryMessages = [

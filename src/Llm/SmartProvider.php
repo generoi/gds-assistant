@@ -110,7 +110,7 @@ class SmartProvider implements LlmProviderInterface
             $modelKey = $name.':'.$available[$name]['default'];
             $resolved = ProviderRegistry::resolve($modelKey);
             if ($resolved) {
-                return $resolved['provider'];
+                return $resolved->provider;
             }
         }
 

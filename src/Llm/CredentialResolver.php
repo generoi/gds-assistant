@@ -2,15 +2,15 @@
 
 namespace GeneroWP\Assistant\Llm;
 
+use GeneroWP\Assistant\Llm\Records\CredentialInfo;
 use GeneroWP\Assistant\Plugin;
 
 final class CredentialResolver
 {
     /**
      * @param  string[]  $legacyEnvVars
-     * @return array{key: string|null, source: string, connector: array<string, mixed>|null, setting: string|null}
      */
-    public static function resolve(string $providerName, array $legacyEnvVars = [], ?string $connectorId = null): array
+    public static function resolve(string $providerName, array $legacyEnvVars = [], ?string $connectorId = null): CredentialInfo
     {
         $connectorId ??= $providerName;
         $connector = self::getConnector($connectorId);
@@ -19,43 +19,43 @@ final class CredentialResolver
         foreach ($connectorSources as $source) {
             $key = self::readSource($source['type'], $source['name']);
             if ($key) {
-                return [
-                    'key' => $key,
-                    'source' => "connector:{$source['type']}:{$source['name']}",
-                    'connector' => $connector,
-                    'setting' => $source['type'] === 'option' ? $source['name'] : null,
-                ];
+                return new CredentialInfo(
+                    key: $key,
+                    source: "connector:{$source['type']}:{$source['name']}",
+                    connector: $connector,
+                    setting: $source['type'] === 'option' ? $source['name'] : null,
+                );
             }
         }
 
         foreach ($legacyEnvVars as $envVar) {
             $key = self::readSource('env', $envVar) ?: self::readSource('constant', $envVar);
             if ($key) {
-                return [
-                    'key' => $key,
-                    'source' => "legacy:env:{$envVar}",
-                    'connector' => $connector,
-                    'setting' => null,
-                ];
+                return new CredentialInfo(
+                    key: $key,
+                    source: "legacy:env:{$envVar}",
+                    connector: $connector,
+                    setting: null,
+                );
             }
 
             $value = Plugin::env($envVar);
             if ($value) {
-                return [
-                    'key' => (string) $value,
-                    'source' => "legacy:env:{$envVar}",
-                    'connector' => $connector,
-                    'setting' => null,
-                ];
+                return new CredentialInfo(
+                    key: (string) $value,
+                    source: "legacy:env:{$envVar}",
+                    connector: $connector,
+                    setting: null,
+                );
             }
         }
 
-        return [
-            'key' => null,
-            'source' => $connector ? 'missing:connector' : 'missing',
-            'connector' => $connector,
-            'setting' => null,
-        ];
+        return new CredentialInfo(
+            key: null,
+            source: $connector ? 'missing:connector' : 'missing',
+            connector: $connector,
+            setting: null,
+        );
     }
 
     /** @return array<string, mixed>|null */
