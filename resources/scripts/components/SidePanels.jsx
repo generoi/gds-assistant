@@ -90,6 +90,9 @@ export function EmptyState() {
  * each one carries its own title and an unambiguous close (×) — the panels
  * are opened from the "⋯" menu, so without this there's no visible way to
  * dismiss them.
+ * @param root0
+ * @param root0.title
+ * @param root0.onClose
  */
 export function PanelHeader({ title, onClose }) {
   return (
@@ -145,7 +148,9 @@ export function SystemContextInput({ value, onChange, onClose }) {
  * @return {string} Formatted cost string.
  */
 function formatCost(dollars) {
-  if (dollars < 0.001) return "<$0.001";
+  if (dollars < 0.001) {
+    return "<$0.001";
+  }
   return `~$${dollars.toFixed(3)}`;
 }
 
@@ -162,13 +167,21 @@ function relativeTime(dateStr) {
   const diffMin = Math.floor(diffMs / 60000);
   const diffHr = Math.floor(diffMs / 3600000);
 
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffMin < 1) {
+    return "just now";
+  }
+  if (diffMin < 60) {
+    return `${diffMin}m ago`;
+  }
+  if (diffHr < 24) {
+    return `${diffHr}h ago`;
+  }
 
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
 
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -258,7 +271,9 @@ export function TypingIndicator() {
 
   useEffect(() => onRunStatus(setStatus), []);
 
-  if (!isRunning) return null;
+  if (!isRunning) {
+    return null;
+  }
 
   return (
     <div className="gds-assistant__typing">
@@ -420,7 +435,9 @@ export function UsageBar() {
 
   useEffect(() => onUsageUpdate(setUsage), []);
 
-  if (usage.inputTokens === 0 && usage.outputTokens === 0) return null;
+  if (usage.inputTokens === 0 && usage.outputTokens === 0) {
+    return null;
+  }
 
   const total = usage.inputTokens + usage.outputTokens;
   const overBudget = usage.cost >= COST_WARNING_THRESHOLD;

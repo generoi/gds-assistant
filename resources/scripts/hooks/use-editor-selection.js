@@ -9,42 +9,52 @@
  * meaningfully changed.
  */
 
-import {useEffect, useState} from '@wordpress/element';
-import {getCurrentSelectionContext} from '../editor/selection';
+import { useEffect, useState } from "@wordpress/element";
+import { getCurrentSelectionContext } from "../editor/selection";
 
 function sameSelection(a, b) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.mode !== b.mode) return false;
-  if (a.mode === 'text-range') {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  if (a.mode !== b.mode) {
+    return false;
+  }
+  if (a.mode === "text-range") {
     return (
       a.clientId === b.clientId &&
       a.selectedText === b.selectedText &&
       a.blockText === b.blockText
     );
   }
-  if (a.mode === 'whole-block') {
+  if (a.mode === "whole-block") {
     return (
       a.clientId === b.clientId &&
       a.blockName === b.blockName &&
       a.blockText === b.blockText
     );
   }
-  if (a.mode === 'multi-block') {
+  if (a.mode === "multi-block") {
     return (
       a.count === b.count &&
-      (a.clientIds || []).join('|') === (b.clientIds || []).join('|')
+      (a.clientIds || []).join("|") === (b.clientIds || []).join("|")
     );
   }
   return false;
 }
 
 export function useEditorSelection() {
-  const [selection, setSelection] = useState(() => getCurrentSelectionContext());
+  const [selection, setSelection] = useState(() =>
+    getCurrentSelectionContext(),
+  );
 
   useEffect(() => {
     const data = window.wp?.data;
-    if (!data?.subscribe) return undefined;
+    if (!data?.subscribe) {
+      return undefined;
+    }
 
     let prev = getCurrentSelectionContext();
     setSelection(prev);

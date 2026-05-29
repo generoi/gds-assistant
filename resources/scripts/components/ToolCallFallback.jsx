@@ -30,9 +30,13 @@ import { UndoContext } from "./UndoContext";
  * @param args
  */
 function summarizeArgs(args) {
-  if (!args || typeof args !== "object" || Array.isArray(args)) return "";
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return "";
+  }
   const entries = Object.entries(args);
-  if (entries.length === 0) return "";
+  if (entries.length === 0) {
+    return "";
+  }
 
   // Prioritize fields that identify what the call targets.
   const preferred = [
@@ -55,9 +59,15 @@ function summarizeArgs(args) {
   const sorted = entries.slice().sort(([a], [b]) => {
     const ai = preferred.indexOf(a);
     const bi = preferred.indexOf(b);
-    if (ai === -1 && bi === -1) return 0;
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
+    if (ai === -1 && bi === -1) {
+      return 0;
+    }
+    if (ai === -1) {
+      return 1;
+    }
+    if (bi === -1) {
+      return -1;
+    }
     return ai - bi;
   });
 
@@ -86,17 +96,23 @@ function summarizeArgs(args) {
  * the tool result (set by editor-bridge after the mutation applied) — shows
  * line-level +/- with surrounding context collapsed to "…" stubs. Pure
  * presentation; no buttons, no state.
+ * @param root0
+ * @param root0.diff
  */
 function DiffViewer({ diff }) {
   const rows = useMemo(() => {
-    if (!diff) return [];
+    if (!diff) {
+      return [];
+    }
     const lines = collapseUnchanged(
       diffLines(diff.before || "", diff.after || ""),
       2,
     );
     return pairModifiedLines(lines);
   }, [diff]);
-  if (!diff) return null;
+  if (!diff) {
+    return null;
+  }
   return (
     <div className="gds-assistant__edit-diff">
       {diff.summary && (

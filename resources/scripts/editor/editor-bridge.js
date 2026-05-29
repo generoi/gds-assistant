@@ -8,7 +8,7 @@
  * text-range edits are deferred.
  */
 
-import {getCurrentSelectionContext} from './selection';
+import { getCurrentSelectionContext } from "./selection";
 
 const wpData = () => window.wp?.data;
 const wpBlocks = () => window.wp?.blocks;
@@ -17,17 +17,17 @@ const wpBlocks = () => window.wp?.blocks;
 // can render a real unified diff after the change is applied. Read-only and
 // DOM probe tools have no "before" to compare against.
 const WRITE_TOOLS = new Set([
-  'editor__replace_blocks',
-  'editor__insert_blocks',
-  'editor__update_block_attributes',
-  'editor__update_post',
-  'editor__recover_block',
+  "editor__replace_blocks",
+  "editor__insert_blocks",
+  "editor__update_block_attributes",
+  "editor__update_post",
+  "editor__recover_block",
 ]);
 
 /** Is the block editor present and ready on this page? */
 export function hasEditor() {
   const d = wpData();
-  return !!(d?.select?.('core/block-editor') && d.select('core/editor'));
+  return !!(d?.select?.("core/block-editor") && d.select("core/editor"));
 }
 
 /**
@@ -35,10 +35,12 @@ export function hasEditor() {
  * what's open/selected without a round-trip. No block content — just shape.
  */
 export function getEditorContext() {
-  if (!hasEditor()) return {has_editor: false};
+  if (!hasEditor()) {
+    return { has_editor: false };
+  }
   const d = wpData();
-  const ed = d.select('core/editor');
-  const be = d.select('core/block-editor');
+  const ed = d.select("core/editor");
+  const be = d.select("core/block-editor");
 
   const ids = be.getSelectedBlockClientIds?.() || [];
   const types = ids.map((id) => be.getBlockName?.(id)).filter(Boolean);
@@ -65,13 +67,15 @@ export function getEditorContext() {
   const sel = getCurrentSelectionContext();
   const selectionPayload = {
     selection_mode: sel?.mode || null,
-    selected_text: sel?.mode === 'text-range' ? sel.selectedText : null,
-    selected_block_text: sel?.mode === 'whole-block' ? sel.blockText : null,
-    selected_block_label: sel?.mode !== 'multi-block' ? sel?.blockLabel || null : null,
+    selected_text: sel?.mode === "text-range" ? sel.selectedText : null,
+    selected_block_text: sel?.mode === "whole-block" ? sel.blockText : null,
+    selected_block_label:
+      sel?.mode !== "multi-block" ? sel?.blockLabel || null : null,
     selected_block_client_id:
-      sel?.mode !== 'multi-block' ? sel?.clientId || null : null,
-    selected_block_labels: sel?.mode === 'multi-block' ? sel.blockLabels : null,
-    selected_block_client_ids: sel?.mode === 'multi-block' ? sel.clientIds : null,
+      sel?.mode !== "multi-block" ? sel?.clientId || null : null,
+    selected_block_labels: sel?.mode === "multi-block" ? sel.blockLabels : null,
+    selected_block_client_ids:
+      sel?.mode === "multi-block" ? sel.clientIds : null,
   };
 
   return {
@@ -93,46 +97,50 @@ export function getEditorContext() {
  * tool-call card can show a real diff after it applies. We pull just enough
  * to make the diff meaningful — serialised markup for block writes, current
  * attribute values for attribute writes — not the full document.
+ * @param toolName
+ * @param input
  */
 function snapshotBefore(toolName, input) {
-  const be = wpData()?.select?.('core/block-editor');
-  const ed = wpData()?.select?.('core/editor');
+  const be = wpData()?.select?.("core/block-editor");
+  const ed = wpData()?.select?.("core/editor");
   const blocks = wpBlocks();
 
   const blockText = (clientId) => {
     const b = be?.getBlock?.(clientId);
-    if (!b) return '';
+    if (!b) {
+      return "";
+    }
     try {
-      return blocks?.serialize?.([b]) || '';
+      return blocks?.serialize?.([b]) || "";
     } catch {
-      return '';
+      return "";
     }
   };
 
   // Schema-aligned field names: write tools take snake_case input
   // (client_ids, client_id, markup, after_client_id, attributes, etc.).
   switch (toolName) {
-    case 'editor__replace_blocks': {
+    case "editor__replace_blocks": {
       const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
       return {
-        kind: 'replace',
-        before: ids.map(blockText).filter(Boolean).join('\n\n'),
-        after: typeof input?.markup === 'string' ? input.markup : '',
-        summary: `Replace ${ids.length} block${ids.length === 1 ? '' : 's'}`,
+        kind: "replace",
+        before: ids.map(blockText).filter(Boolean).join("\n\n"),
+        after: typeof input?.markup === "string" ? input.markup : "",
+        summary: `Replace ${ids.length} block${ids.length === 1 ? "" : "s"}`,
       };
     }
-    case 'editor__insert_blocks': {
-      const after = typeof input?.markup === 'string' ? input.markup : '';
+    case "editor__insert_blocks": {
+      const after = typeof input?.markup === "string" ? input.markup : "";
       // Rough count by walking top-level block comments in the markup.
       const count = (after.match(/<!--\s*wp:/g) || []).length || 1;
       return {
-        kind: 'insert',
-        before: '',
+        kind: "insert",
+        before: "",
         after,
-        summary: `Insert ${count} block${count === 1 ? '' : 's'}`,
+        summary: `Insert ${count} block${count === 1 ? "" : "s"}`,
       };
     }
-    case 'editor__update_block_attributes': {
+    case "editor__update_block_attributes": {
       const clientId = input?.client_id;
       const block = clientId ? be?.getBlock?.(clientId) : null;
       const beforeAttrs = block?.attributes || {};
@@ -141,9 +149,9 @@ function snapshotBefore(toolName, input) {
       // RichTextValue objects don't stringify cleanly; expose `.text` so the
       // diff isn't a wall of "{}" placeholders.
       const norm = (v) =>
-        v && typeof v === 'object' && typeof v.text === 'string' ? v.text : v;
+        v && typeof v === "object" && typeof v.text === "string" ? v.text : v;
       return {
-        kind: 'attrs',
+        kind: "attrs",
         clientId,
         before: JSON.stringify(
           Object.fromEntries(keys.map((k) => [k, norm(beforeAttrs[k])])),
@@ -155,29 +163,43 @@ function snapshotBefore(toolName, input) {
           null,
           2,
         ),
-        summary: `Update ${keys.length} attribute${keys.length === 1 ? '' : 's'} on ${block?.name || 'block'}`,
+        summary: `Update ${keys.length} attribute${
+          keys.length === 1 ? "" : "s"
+        } on ${block?.name || "block"}`,
       };
     }
-    case 'editor__update_post': {
-      const fields = ['title', 'slug', 'excerpt', 'template', 'featured_media', 'author', 'meta'];
+    case "editor__update_post": {
+      const fields = [
+        "title",
+        "slug",
+        "excerpt",
+        "template",
+        "featured_media",
+        "author",
+        "meta",
+      ];
       const current = {};
       for (const f of fields) {
-        if (f in (input || {})) current[f] = ed?.getEditedPostAttribute?.(f) ?? '';
+        if (f in (input || {})) {
+          current[f] = ed?.getEditedPostAttribute?.(f) ?? "";
+        }
       }
       return {
-        kind: 'post',
+        kind: "post",
         before: JSON.stringify(current, null, 2),
         after: JSON.stringify(input || {}, null, 2),
-        summary: 'Update post fields',
+        summary: "Update post fields",
       };
     }
-    case 'editor__recover_block': {
+    case "editor__recover_block": {
       const ids = Array.isArray(input?.client_ids) ? input.client_ids : [];
       return {
-        kind: 'recover',
-        before: ids.map(blockText).filter(Boolean).join('\n\n'),
-        after: '(re-parsed from existing attributes)',
-        summary: `Recover ${ids.length} invalid block${ids.length === 1 ? '' : 's'}`,
+        kind: "recover",
+        before: ids.map(blockText).filter(Boolean).join("\n\n"),
+        after: "(re-parsed from existing attributes)",
+        summary: `Recover ${ids.length} invalid block${
+          ids.length === 1 ? "" : "s"
+        }`,
       };
     }
     default:
@@ -197,52 +219,54 @@ function snapshotBefore(toolName, input) {
  */
 export async function executeClientTool(toolName, input = {}) {
   if (!hasEditor()) {
-    return {error: 'No block editor is open on this page.'};
+    return { error: "No block editor is open on this page." };
   }
 
   // Capture a before-snapshot for write tools so the tool-call card can show
   // a real diff of what changed (post-apply, no approval gate). Reads + DOM
   // probes have nothing meaningful to diff.
-  const snap = WRITE_TOOLS.has(toolName) ? snapshotBefore(toolName, input) : null;
+  const snap = WRITE_TOOLS.has(toolName)
+    ? snapshotBefore(toolName, input)
+    : null;
 
   let result;
   try {
     switch (toolName) {
-      case 'editor__read_selection':
+      case "editor__read_selection":
         result = await readSelection();
         break;
-      case 'editor__replace_blocks':
+      case "editor__replace_blocks":
         result = replaceBlocks(input);
         break;
-      case 'editor__insert_blocks':
+      case "editor__insert_blocks":
         result = insertBlocks(input);
         break;
-      case 'editor__update_block_attributes':
+      case "editor__update_block_attributes":
         result = updateBlockAttributes(input);
         break;
-      case 'editor__update_post':
+      case "editor__update_post":
         result = updatePost(input);
         break;
-      case 'editor__recover_block':
+      case "editor__recover_block":
         result = recoverBlock(input);
         break;
-      case 'editor__query_dom':
+      case "editor__query_dom":
         result = queryDom(input);
         break;
-      case 'editor__focus':
+      case "editor__focus":
         result = focusElement(input);
         break;
-      case 'editor__open_sidebar':
+      case "editor__open_sidebar":
         result = openSidebar(input);
         break;
       default:
-        return {error: `Unknown editor tool: ${toolName}`};
+        return { error: `Unknown editor tool: ${toolName}` };
     }
   } catch (e) {
-    return {error: String(e?.message || e)};
+    return { error: String(e?.message || e) };
   }
 
-  if (snap && result && typeof result === 'object' && !result.error) {
+  if (snap && result && typeof result === "object" && !result.error) {
     result.diff = snap;
   }
   return result;
@@ -252,10 +276,10 @@ export async function executeClientTool(toolName, input = {}) {
 
 function blockSnippet(block) {
   const a = block?.attributes || {};
-  const raw = a.content ?? a.text ?? a.title ?? a.label ?? a.value ?? '';
+  const raw = a.content ?? a.text ?? a.title ?? a.label ?? a.value ?? "";
   const s = String(raw)
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
     .trim();
   return s.length > 80 ? `${s.slice(0, 77)}…` : s;
 }
@@ -265,19 +289,27 @@ function blockSnippet(block) {
 // a non-text block holds (image url/alt, embed url, a logos id list, …) without
 // dumping the whole document.
 function compactAttributes(value, depth = 0) {
-  if (value === null || value === undefined || depth > 4) return undefined;
-  if (typeof value === 'string') {
+  if (value === null || value === undefined || depth > 4) {
+    return undefined;
+  }
+  if (typeof value === "string") {
     return value.length > 200 ? `${value.slice(0, 197)}…` : value;
   }
-  if (typeof value !== 'object') return value;
+  if (typeof value !== "object") {
+    return value;
+  }
   if (Array.isArray(value)) {
     return value.slice(0, 30).map((v) => compactAttributes(v, depth + 1));
   }
   const out = {};
   for (const [k, v] of Object.entries(value)) {
-    if (k === 'sizes' || k === 'srcSet') continue; // huge srcset data
+    if (k === "sizes" || k === "srcSet") {
+      continue;
+    } // huge srcset data
     const c = compactAttributes(v, depth + 1);
-    if (c !== undefined && c !== '') out[k] = c;
+    if (c !== undefined && c !== "") {
+      out[k] = c;
+    }
   }
   return out;
 }
@@ -288,17 +320,24 @@ const MEDIA_KEY_RE =
   /(^id$|^ids$|image|images|media|logo|logos|gallery|thumbnail|poster|avatar|cover|backgroundimage)/i;
 
 function collectMediaIds(attrs, out = [], depth = 0) {
-  if (!attrs || typeof attrs !== 'object' || depth > 4) return out;
+  if (!attrs || typeof attrs !== "object" || depth > 4) {
+    return out;
+  }
   const pushId = (x) => {
-    if (typeof x === 'number' && Number.isInteger(x) && x > 0) out.push(x);
-    else if (x && typeof x === 'object' && Number.isInteger(x.id))
+    if (typeof x === "number" && Number.isInteger(x) && x > 0) {
+      out.push(x);
+    } else if (x && typeof x === "object" && Number.isInteger(x.id)) {
       out.push(x.id);
+    }
   };
   for (const [k, v] of Object.entries(attrs)) {
     if (MEDIA_KEY_RE.test(k)) {
-      if (Array.isArray(v)) v.forEach(pushId);
-      else pushId(v);
-    } else if (v && typeof v === 'object') {
+      if (Array.isArray(v)) {
+        v.forEach(pushId);
+      } else {
+        pushId(v);
+      }
+    } else if (v && typeof v === "object") {
       collectMediaIds(v, out, depth + 1);
     }
   }
@@ -309,21 +348,25 @@ function collectMediaIds(attrs, out = [], depth = 0) {
 // `core` store (awaiting the resolver so it works even if not pre-fetched).
 // Best-effort: ids that aren't attachments are silently skipped.
 async function resolveMedia(ids) {
-  const core = wpData().resolveSelect?.('core');
-  if (!core?.getMedia) return {};
+  const core = wpData().resolveSelect?.("core");
+  if (!core?.getMedia) {
+    return {};
+  }
   const uniq = [...new Set(ids)].slice(0, 50);
   const out = {};
   await Promise.all(
     uniq.map(async (id) => {
       try {
         const m = await core.getMedia(id);
-        if (!m) return;
+        if (!m) {
+          return;
+        }
         out[id] = {
           id,
-          title: m.title?.rendered || m.slug || '',
-          url: m.source_url || '',
+          title: m.title?.rendered || m.slug || "",
+          url: m.source_url || "",
           filename:
-            m.media_details?.file || (m.source_url || '').split('/').pop(),
+            m.media_details?.file || (m.source_url || "").split("/").pop(),
         };
       } catch {
         // not an attachment / not fetchable — skip
@@ -334,7 +377,7 @@ async function resolveMedia(ids) {
 }
 
 async function readSelection() {
-  const be = wpData().select('core/block-editor');
+  const be = wpData().select("core/block-editor");
   const blocks = wpBlocks();
 
   const selectedIds = be.getSelectedBlockClientIds?.() || [];
@@ -343,8 +386,8 @@ async function readSelection() {
   const selected = selectedIds
     .map((id) => {
       const block = be.getBlock?.(id);
-      return block ?
-          {client_id: id, name: block.name, markup: blocks.serialize(block)}
+      return block
+        ? { client_id: id, name: block.name, markup: blocks.serialize(block) }
         : null;
     })
     .filter(Boolean);
@@ -360,7 +403,9 @@ async function readSelection() {
   const outline = allIds
     .map((id) => {
       const block = be.getBlock?.(id);
-      if (!block) return null;
+      if (!block) {
+        return null;
+      }
       const text = blockSnippet(block);
       const entry = {
         client_id: id,
@@ -370,11 +415,17 @@ async function readSelection() {
       };
       // Surface validation state so the model can find blocks the editor flags
       // as "unexpected or invalid content" and offer to recover them.
-      if (block.isValid === false) entry.invalid = true;
-      if (block.name === 'core/missing') entry.unrecognized = true;
+      if (block.isValid === false) {
+        entry.invalid = true;
+      }
+      if (block.name === "core/missing") {
+        entry.unrecognized = true;
+      }
       if (!text) {
         const attrs = compactAttributes(block.attributes);
-        if (attrs && Object.keys(attrs).length) entry.attributes = attrs;
+        if (attrs && Object.keys(attrs).length) {
+          entry.attributes = attrs;
+        }
         collectMediaIds(block.attributes, mediaIds);
       }
       return entry;
@@ -384,7 +435,9 @@ async function readSelection() {
   // Post-level context (status, slug, featured image, language + translations)
   // so the model can answer "what's the status / is there a Swedish version?".
   const post = postContext();
-  if (post?.featured_media) mediaIds.push(post.featured_media);
+  if (post?.featured_media) {
+    mediaIds.push(post.featured_media);
+  }
 
   // Resolve referenced attachment ids so the model can match an image by its
   // filename/title (e.g. find the "snellman" logo) without a media tool.
@@ -425,8 +478,10 @@ async function readSelection() {
 // values, so it reflects pending changes. language/translations come from
 // Polylang via the standard attribute API (read-only data, no plugin coupling).
 function postContext() {
-  const ed = wpData().select('core/editor');
-  if (!ed?.getCurrentPostId) return null;
+  const ed = wpData().select("core/editor");
+  if (!ed?.getCurrentPostId) {
+    return null;
+  }
   const get = (k) => {
     try {
       return ed.getEditedPostAttribute(k);
@@ -437,17 +492,19 @@ function postContext() {
   const ctx = {
     id: ed.getCurrentPostId(),
     type: ed.getCurrentPostType?.(),
-    status: get('status'),
-    slug: get('slug'),
-    featured_media: get('featured_media') || 0,
-    template: get('template') || '',
+    status: get("status"),
+    slug: get("slug"),
+    featured_media: get("featured_media") || 0,
+    template: get("template") || "",
   };
-  const language = get('lang');
-  if (language) ctx.language = language;
-  const translations = get('translations');
+  const language = get("lang");
+  if (language) {
+    ctx.language = language;
+  }
+  const translations = get("translations");
   if (
     translations &&
-    typeof translations === 'object' &&
+    typeof translations === "object" &&
     Object.keys(translations).length
   ) {
     ctx.translations = translations;
@@ -458,7 +515,7 @@ function postContext() {
 // The editor's color palette + whether custom (hex) colors are allowed.
 function colorSettings() {
   try {
-    const s = wpData().select('core/block-editor').getSettings();
+    const s = wpData().select("core/block-editor").getSettings();
     const colors =
       s.colors || s.__experimentalFeatures?.color?.palette?.theme || [];
     return {
@@ -476,14 +533,16 @@ function colorSettings() {
 // (don't block edits on uncertainty).
 function colorIssues(attributes) {
   const cfg = colorSettings();
-  if (!cfg || !cfg.slugs.size) return [];
+  if (!cfg || !cfg.slugs.size) {
+    return [];
+  }
 
   const issues = [];
   const presetRe = /var:preset\|color\|([\w-]+)/;
   const hexRe = /#[0-9a-fA-F]{3,8}\b/;
 
   const scan = (v) => {
-    if (typeof v === 'string') {
+    if (typeof v === "string") {
       const p = v.match(presetRe);
       if (p && !cfg.slugs.has(p[1])) {
         issues.push(`unknown color slug "${p[1]}"`);
@@ -495,15 +554,15 @@ function colorIssues(attributes) {
       }
     } else if (Array.isArray(v)) {
       v.forEach(scan);
-    } else if (v && typeof v === 'object') {
+    } else if (v && typeof v === "object") {
       Object.values(v).forEach(scan);
     }
   };
   scan(attributes?.style);
 
-  for (const key of ['textColor', 'backgroundColor', 'overlayColor']) {
+  for (const key of ["textColor", "backgroundColor", "overlayColor"]) {
     const val = attributes?.[key];
-    if (typeof val === 'string' && val && !cfg.slugs.has(val)) {
+    if (typeof val === "string" && val && !cfg.slugs.has(val)) {
       issues.push(`unknown color slug "${val}" for ${key}`);
     }
   }
@@ -513,21 +572,23 @@ function colorIssues(attributes) {
 
 function colorErrorHint() {
   const cfg = colorSettings();
-  const examples = cfg ? [...cfg.slugs].slice(0, 8).join(', ') : '';
+  const examples = cfg ? [...cfg.slugs].slice(0, 8).join(", ") : "";
   const hex =
-    cfg && !cfg.allowCustom ? ' Custom hex is disabled on this site.' : '';
+    cfg && !cfg.allowCustom ? " Custom hex is disabled on this site." : "";
   return `Use a palette slug from gds/design-theme-json (the "slug", not the display name) — e.g. ${examples}. Reference it as the textColor/backgroundColor attribute, or "var:preset|color|{slug}" in style.${hex}`;
 }
 
 // Parse block markup and surface validation problems instead of silently
 // applying a broken/unrecognized block (so the model can retry).
 function parseValidated(markup) {
-  const parsed = wpBlocks().parse(markup || '');
+  const parsed = wpBlocks().parse(markup || "");
   const issues = [];
   const visit = (b) => {
-    if (!b) return;
-    if (b.name === 'core/missing') {
-      issues.push('unrecognized block in markup');
+    if (!b) {
+      return;
+    }
+    if (b.name === "core/missing") {
+      issues.push("unrecognized block in markup");
     } else if (b.isValid === false) {
       issues.push(`invalid content for ${b.name}`);
     }
@@ -535,58 +596,68 @@ function parseValidated(markup) {
     (b.innerBlocks || []).forEach(visit);
   };
   parsed.forEach(visit);
-  return {parsed, issues: [...new Set(issues)]};
+  return { parsed, issues: [...new Set(issues)] };
 }
 
 function replaceBlocks(input = {}) {
   const ids = Array.isArray(input.client_ids) ? input.client_ids : [];
   const markup = input.markup;
-  if (!ids.length) return {error: 'No client_ids provided to replace.'};
+  if (!ids.length) {
+    return { error: "No client_ids provided to replace." };
+  }
 
   // clientIds change after any edit. If the targets are gone, the dispatch is
   // a silent no-op — so fail loudly and tell the model to re-read.
-  const be = wpData().select('core/block-editor');
+  const be = wpData().select("core/block-editor");
   const missing = ids.filter((id) => !be.getBlock?.(id));
   if (missing.length) {
     return {
       error:
-        'Target block(s) no longer exist — clientIds change after an edit. Call editor__read_selection again for current clientIds, then retry.',
+        "Target block(s) no longer exist — clientIds change after an edit. Call editor__read_selection again for current clientIds, then retry.",
       missing,
     };
   }
 
-  const {parsed, issues} = parseValidated(markup);
-  if (issues.length) return {error: 'Invalid block markup', issues};
-  if (!parsed.length) return {error: 'Markup produced no blocks.'};
+  const { parsed, issues } = parseValidated(markup);
+  if (issues.length) {
+    return { error: "Invalid block markup", issues };
+  }
+  if (!parsed.length) {
+    return { error: "Markup produced no blocks." };
+  }
 
   // parse() assigns clientIds and replaceBlocks inserts the blocks with them,
   // so these are the live ids of the new blocks. Return them so the model can
   // target follow-up edits without re-reading (old ids are now dead).
   const newIds = parsed.map((b) => b.clientId);
-  wpData().dispatch('core/block-editor').replaceBlocks(ids, parsed);
+  wpData().dispatch("core/block-editor").replaceBlocks(ids, parsed);
   highlightChangedBlocks(newIds);
-  return {ok: true, replaced: ids.length, new_client_ids: newIds};
+  return { ok: true, replaced: ids.length, new_client_ids: newIds };
 }
 
 function updatePost(input = {}) {
-  const ed = wpData().select('core/editor');
+  const ed = wpData().select("core/editor");
   // Whitelist the core post fields we apply live (all unsaved + undoable via
   // the editor's history). Status/publish are intentionally excluded — those
   // are a save, not an editor-state edit.
   const allowed = {};
-  for (const key of ['title', 'slug', 'excerpt', 'template']) {
-    if (typeof input[key] === 'string') allowed[key] = input[key];
+  for (const key of ["title", "slug", "excerpt", "template"]) {
+    if (typeof input[key] === "string") {
+      allowed[key] = input[key];
+    }
   }
   // featured_media accepts 0 to clear; author is a user id.
   if (Number.isInteger(input.featured_media)) {
     allowed.featured_media = input.featured_media;
   }
-  if (Number.isInteger(input.author)) allowed.author = input.author;
+  if (Number.isInteger(input.author)) {
+    allowed.author = input.author;
+  }
   // meta only reaches keys registered with show_in_rest (e.g. core post_color);
   // plugin data that isn't registered meta (Yoast, etc.) won't persist here.
   if (
     input.meta &&
-    typeof input.meta === 'object' &&
+    typeof input.meta === "object" &&
     !Array.isArray(input.meta)
   ) {
     allowed.meta = input.meta;
@@ -595,10 +666,10 @@ function updatePost(input = {}) {
   if (Object.keys(allowed).length === 0) {
     return {
       error:
-        'Nothing to update (supported: title, slug, excerpt, template, featured_media, author, meta).',
+        "Nothing to update (supported: title, slug, excerpt, template, featured_media, author, meta).",
     };
   }
-  wpData().dispatch('core/editor').editPost(allowed);
+  wpData().dispatch("core/editor").editPost(allowed);
   return {
     ok: true,
     updated: Object.keys(allowed),
@@ -607,17 +678,21 @@ function updatePost(input = {}) {
 }
 
 function insertBlocks(input = {}) {
-  const {parsed, issues} = parseValidated(input.markup);
-  if (issues.length) return {error: 'Invalid block markup', issues};
-  if (!parsed.length) return {error: 'Markup produced no blocks.'};
+  const { parsed, issues } = parseValidated(input.markup);
+  if (issues.length) {
+    return { error: "Invalid block markup", issues };
+  }
+  if (!parsed.length) {
+    return { error: "Markup produced no blocks." };
+  }
 
-  const be = wpData().select('core/block-editor');
-  const dispatch = wpData().dispatch('core/block-editor');
+  const be = wpData().select("core/block-editor");
+  const dispatch = wpData().dispatch("core/block-editor");
   const newIds = parsed.map((b) => b.clientId);
   const afterId = input.after_client_id;
 
   if (afterId) {
-    const rootId = be.getBlockRootClientId?.(afterId) ?? '';
+    const rootId = be.getBlockRootClientId?.(afterId) ?? "";
     const order = be.getBlockOrder?.(rootId) || [];
     const index = order.indexOf(afterId);
     dispatch.insertBlocks(parsed, index >= 0 ? index + 1 : undefined, rootId);
@@ -625,14 +700,14 @@ function insertBlocks(input = {}) {
     dispatch.insertBlocks(parsed);
   }
   highlightChangedBlocks(newIds);
-  return {ok: true, inserted: parsed.length, new_client_ids: newIds};
+  return { ok: true, inserted: parsed.length, new_client_ids: newIds };
 }
 
 function updateBlockAttributes(input = {}) {
   const clientId = input.client_id;
-  const be = wpData().select('core/block-editor');
+  const be = wpData().select("core/block-editor");
   if (!clientId || !be.getBlock?.(clientId)) {
-    return {error: `Block ${clientId} not found.`};
+    return { error: `Block ${clientId} not found.` };
   }
 
   // Catch unknown color slugs / disallowed hex before applying — otherwise the
@@ -640,14 +715,16 @@ function updateBlockAttributes(input = {}) {
   // doesn't appear.
   const ci = colorIssues(input.attributes || {});
   if (ci.length) {
-    return {error: `Color not applied: ${ci.join('; ')}. ${colorErrorHint()}`};
+    return {
+      error: `Color not applied: ${ci.join("; ")}. ${colorErrorHint()}`,
+    };
   }
 
   wpData()
-    .dispatch('core/block-editor')
+    .dispatch("core/block-editor")
     .updateBlockAttributes(clientId, input.attributes || {});
   highlightChangedBlocks([clientId]);
-  return {ok: true, client_id: clientId};
+  return { ok: true, client_id: clientId };
 }
 
 // Recover invalid blocks the editor flags as "unexpected or invalid content":
@@ -656,28 +733,31 @@ function updateBlockAttributes(input = {}) {
 // recursive so an invalid CHILD is fixed too. Undoable via the editor history.
 // Unregistered blocks (core/missing) can't be recreated and are kept as-is.
 function recoverBlock(input = {}) {
-  const ids =
-    Array.isArray(input.client_ids) ? input.client_ids
-    : input.client_id ? [input.client_id]
+  const ids = Array.isArray(input.client_ids)
+    ? input.client_ids
+    : input.client_id
+    ? [input.client_id]
     : [];
-  if (!ids.length) return {error: 'No client_ids provided to recover.'};
+  if (!ids.length) {
+    return { error: "No client_ids provided to recover." };
+  }
 
-  const be = wpData().select('core/block-editor');
+  const be = wpData().select("core/block-editor");
   const blocks = wpBlocks();
-  const dispatch = wpData().dispatch('core/block-editor');
+  const dispatch = wpData().dispatch("core/block-editor");
 
   const canRecreate = (b) =>
-    !!b && b.name !== 'core/missing' && !!blocks.getBlockType?.(b.name);
+    !!b && b.name !== "core/missing" && !!blocks.getBlockType?.(b.name);
   // Rebuild a block from its attributes, recursing so invalid descendants are
   // fixed too; unregistered blocks are passed through untouched.
   const recreate = (b) =>
-    canRecreate(b) ?
-      blocks.createBlock(
-        b.name,
-        b.attributes,
-        (b.innerBlocks || []).map(recreate),
-      )
-    : b;
+    canRecreate(b)
+      ? blocks.createBlock(
+          b.name,
+          b.attributes,
+          (b.innerBlocks || []).map(recreate),
+        )
+      : b;
   const descendantIds = (b, acc = []) => {
     for (const c of b.innerBlocks || []) {
       acc.push(c.clientId);
@@ -690,20 +770,22 @@ function recoverBlock(input = {}) {
   // clientIds), so a separately-requested descendant would no longer exist.
   // Track what each recovery covers and skip those.
   const ordered = [...new Set(ids)]
-    .map((id) => ({id, depth: (be.getBlockParents?.(id) || []).length}))
+    .map((id) => ({ id, depth: (be.getBlockParents?.(id) || []).length }))
     .sort((a, b) => a.depth - b.depth);
 
   const recovered = [];
   const failed = [];
   const covered = new Set();
 
-  for (const {id} of ordered) {
-    if (covered.has(id)) continue; // rebuilt as part of a recovered ancestor
+  for (const { id } of ordered) {
+    if (covered.has(id)) {
+      continue;
+    } // rebuilt as part of a recovered ancestor
     const block = be.getBlock?.(id);
     if (!block) {
       failed.push({
         client_id: id,
-        reason: 'no longer exists — re-read for current clientIds',
+        reason: "no longer exists — re-read for current clientIds",
       });
       continue;
     }
@@ -728,13 +810,13 @@ function recoverBlock(input = {}) {
     } else {
       failed.push({
         client_id: id,
-        reason: 'recovery did not apply — re-read and retry',
+        reason: "recovery did not apply — re-read and retry",
       });
     }
   }
 
   highlightChangedBlocks(recovered.map((r) => r.new_client_id));
-  return {ok: failed.length === 0, recovered, failed};
+  return { ok: failed.length === 0, recovered, failed };
 }
 
 // ── Generic DOM escape hatch (read + navigate only; never writes) ──
@@ -745,7 +827,9 @@ function recoverBlock(input = {}) {
 function editorDocs() {
   const docs = [document];
   const cvs = document.querySelector('iframe[name="editor-canvas"]');
-  if (cvs?.contentDocument) docs.push(cvs.contentDocument);
+  if (cvs?.contentDocument) {
+    docs.push(cvs.contentDocument);
+  }
   return docs;
 }
 
@@ -775,9 +859,11 @@ const HIGHLIGHT_CSS = `
 // iframe). Cheap to call repeatedly — it skips docs that already have it.
 function ensureHighlightStyles() {
   for (const doc of editorDocs()) {
-    if (!doc.head || doc.head.querySelector('style[data-gds-highlight]')) continue;
-    const style = doc.createElement('style');
-    style.setAttribute('data-gds-highlight', '');
+    if (!doc.head || doc.head.querySelector("style[data-gds-highlight]")) {
+      continue;
+    }
+    const style = doc.createElement("style");
+    style.setAttribute("data-gds-highlight", "");
     style.textContent = HIGHLIGHT_CSS;
     doc.head.appendChild(style);
   }
@@ -790,7 +876,9 @@ function ensureHighlightStyles() {
  * @param {string[]} clientIds Block clientIds to highlight.
  */
 function highlightChangedBlocks(clientIds) {
-  if (!Array.isArray(clientIds) || clientIds.length === 0) return;
+  if (!Array.isArray(clientIds) || clientIds.length === 0) {
+    return;
+  }
   ensureHighlightStyles();
   // Defer one frame so React has a chance to mount any newly-inserted blocks
   // before we look them up by clientId.
@@ -799,34 +887,40 @@ function highlightChangedBlocks(clientIds) {
     for (const id of clientIds) {
       for (const doc of editorDocs()) {
         const el = doc.querySelector(`[data-block="${id}"]`);
-        if (!el) continue;
-        if (!first) first = el;
+        if (!el) {
+          continue;
+        }
+        if (!first) {
+          first = el;
+        }
         // Restart the animation if the same block flashes back-to-back.
-        el.classList.remove('gds-assistant-changed-block');
+        el.classList.remove("gds-assistant-changed-block");
         // Force reflow so re-adding the class restarts the animation.
         void el.offsetWidth;
-        el.classList.add('gds-assistant-changed-block');
+        el.classList.add("gds-assistant-changed-block");
         setTimeout(
-          () => el.classList.remove('gds-assistant-changed-block'),
+          () => el.classList.remove("gds-assistant-changed-block"),
           1700,
         );
       }
     }
-    first?.scrollIntoView({behavior: 'smooth', block: 'center'});
+    first?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 }
 
 const capText = (v, n = 160) =>
-  v ?
-    String(v).replace(/\s+/g, ' ').trim().slice(0, n) || undefined
-  : undefined;
+  v
+    ? String(v).replace(/\s+/g, " ").trim().slice(0, n) || undefined
+    : undefined;
 
 // Read-only: find elements by CSS selector so the model can locate settings,
 // fields or panels (e.g. "where is this setting?"). Searches the editor canvas
 // iframe too. Never writes.
 function queryDom(input = {}) {
   const selector = input.selector;
-  if (!selector) return {error: 'Provide a CSS selector.'};
+  if (!selector) {
+    return { error: "Provide a CSS selector." };
+  }
   const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
 
   const out = [];
@@ -835,50 +929,58 @@ function queryDom(input = {}) {
     try {
       nodes = doc.querySelectorAll(selector);
     } catch (e) {
-      return {error: `Invalid selector: ${e.message}`};
+      return { error: `Invalid selector: ${e.message}` };
     }
     for (const el of nodes) {
-      if (out.length >= limit) break;
+      if (out.length >= limit) {
+        break;
+      }
       const r = el.getBoundingClientRect();
       out.push({
         tag: el.tagName.toLowerCase(),
         id: el.id || undefined,
         class:
-          typeof el.className === 'string' ?
-            capText(el.className, 120)
-          : undefined,
-        name: el.getAttribute?.('name') || undefined,
-        type: el.getAttribute?.('type') || undefined,
-        placeholder: el.getAttribute?.('placeholder') || undefined,
-        aria_label: el.getAttribute?.('aria-label') || undefined,
-        role: el.getAttribute?.('role') || undefined,
+          typeof el.className === "string"
+            ? capText(el.className, 120)
+            : undefined,
+        name: el.getAttribute?.("name") || undefined,
+        type: el.getAttribute?.("type") || undefined,
+        placeholder: el.getAttribute?.("placeholder") || undefined,
+        aria_label: el.getAttribute?.("aria-label") || undefined,
+        role: el.getAttribute?.("role") || undefined,
         text: capText(el.textContent),
-        value: 'value' in el ? capText(el.value) : undefined,
+        value: "value" in el ? capText(el.value) : undefined,
         visible: !!(r.width || r.height),
       });
     }
   }
-  return {selector, count: out.length, elements: out};
+  return { selector, count: out.length, elements: out };
 }
 
 // Scroll the first matching element into view and focus it — e.g. to show the
 // user where a setting lives. No click, no value change.
 function focusElement(input = {}) {
   const selector = input.selector;
-  if (!selector) return {error: 'Provide a CSS selector.'};
+  if (!selector) {
+    return { error: "Provide a CSS selector." };
+  }
   let el = null;
   for (const doc of editorDocs()) {
     try {
       el = doc.querySelector(selector);
     } catch (e) {
-      return {error: `Invalid selector: ${e.message}`};
+      return { error: `Invalid selector: ${e.message}` };
     }
-    if (el) break;
+    if (el) {
+      break;
+    }
   }
-  if (!el) return {error: `No element matches ${selector}.`};
-  el.scrollIntoView?.({behavior: 'smooth', block: 'center'});
+  if (!el) {
+    return { error: `No element matches ${selector}.` };
+  }
+  el.scrollIntoView?.({ behavior: "smooth", block: "center" });
   try {
-    el.focus?.({preventScroll: true});
+    el.focus?.({ preventScroll: true });
   } catch {
     // not focusable — scrolling into view is enough
   }
@@ -896,16 +998,20 @@ function focusElement(input = {}) {
 function listSidebars() {
   const seen = new Map();
   for (const doc of editorDocs()) {
-    for (const btn of doc.querySelectorAll('button[aria-controls]')) {
-      const ctrl = btn.getAttribute('aria-controls') || '';
-      if (!/^[\w-]+:[\w-]+$/.test(ctrl)) continue; // not a sidebar id
-      const name = ctrl.replace(':', '/');
-      if (seen.has(name)) continue;
+    for (const btn of doc.querySelectorAll("button[aria-controls]")) {
+      const ctrl = btn.getAttribute("aria-controls") || "";
+      if (!/^[\w-]+:[\w-]+$/.test(ctrl)) {
+        continue;
+      } // not a sidebar id
+      const name = ctrl.replace(":", "/");
+      if (seen.has(name)) {
+        continue;
+      }
       seen.set(name, {
         name,
         label:
-          btn.getAttribute('aria-label') || capText(btn.textContent) || name,
-        active: btn.getAttribute('aria-pressed') === 'true',
+          btn.getAttribute("aria-label") || capText(btn.textContent) || name,
+        active: btn.getAttribute("aria-pressed") === "true",
       });
     }
   }
@@ -918,19 +1024,21 @@ function listSidebars() {
 // "open" a phantom panel. No click, no content change.
 function openSidebar(input = {}) {
   const available = listSidebars();
-  const name = String(input.name || '').trim();
-  if (!name) return {available};
+  const name = String(input.name || "").trim();
+  if (!name) {
+    return { available };
+  }
 
   const match = available.find((s) => s.name === name);
   if (!match) {
-    return {error: `No sidebar "${name}" is registered here.`, available};
+    return { error: `No sidebar "${name}" is registered here.`, available };
   }
   const d =
-    wpData().dispatch('core/edit-post') || wpData().dispatch('core/editor');
+    wpData().dispatch("core/edit-post") || wpData().dispatch("core/editor");
   const sel =
-    wpData().select('core/edit-post') || wpData().select('core/editor');
+    wpData().select("core/edit-post") || wpData().select("core/editor");
   if (!d?.openGeneralSidebar) {
-    return {error: 'Sidebar control is unavailable in this editor.'};
+    return { error: "Sidebar control is unavailable in this editor." };
   }
   d.openGeneralSidebar(name);
   return {

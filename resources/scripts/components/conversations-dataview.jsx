@@ -32,10 +32,16 @@ function timeAgo(dateStr) {
   const date = new Date(dateStr + "Z");
   const now = new Date();
   const diffMin = Math.floor((now - date) / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1) {
+    return "just now";
+  }
+  if (diffMin < 60) {
+    return `${diffMin}m ago`;
+  }
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) {
+    return `${diffHr}h ago`;
+  }
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -56,7 +62,9 @@ function timeAgo(dateStr) {
 function estimateCost(input, output, model) {
   const pricing = window.gdsAssistant?.modelPricing?.[model] || [3, 15];
   const cost = (input / 1e6) * pricing[0] + (output / 1e6) * pricing[1];
-  if (cost < 0.001) return "<$0.001";
+  if (cost < 0.001) {
+    return "<$0.001";
+  }
   return `~$${cost.toFixed(3)}`;
 }
 
@@ -103,7 +111,9 @@ const FIELDS = [
     render: ({ item }) => {
       const input = Number(item.total_input_tokens) || 0;
       const output = Number(item.total_output_tokens) || 0;
-      if (!input && !output) return "—";
+      if (!input && !output) {
+        return "—";
+      }
       return `${(input + output).toLocaleString()}`;
     },
   },
@@ -113,7 +123,9 @@ const FIELDS = [
     render: ({ item }) => {
       const input = Number(item.total_input_tokens) || 0;
       const output = Number(item.total_output_tokens) || 0;
-      if (!input && !output) return "—";
+      if (!input && !output) {
+        return "—";
+      }
       return estimateCost(input, output, item.model);
     },
   },
@@ -192,7 +204,9 @@ export function ConversationsDataView() {
         // Skip a conversation that fails to load rather than aborting.
       }
     }
-    if (!full.length) return;
+    if (!full.length) {
+      return;
+    }
     const filename =
       full.length === 1
         ? `conversation-${full[0].uuid}.json`

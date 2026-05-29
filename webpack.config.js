@@ -1,5 +1,4 @@
 import path from 'path';
-import webpack from 'webpack';
 import defaultConfig from '@wordpress/scripts/config/webpack.config.js';
 
 const __dirname = import.meta.dirname;
@@ -88,20 +87,22 @@ export default {
     ...defaultConfig.output,
     uniqueName: 'gds-assistant',
     path: path.resolve(__dirname, 'build'),
+    // `auto` reads the loading script's URL at runtime and infers the
+    // publicPath from it — works for WP admin where the absolute URL is
+    // server-rendered (wp_enqueue_script). Without this, async chunks try
+    // to fetch from `/` and 404.
+    publicPath: 'auto',
   },
-  // Disable ALL code splitting — bundle everything into one file.
-  // Dynamic imports from react-streamdown create async chunks that fail to
-  // load in WP admin due to CSP nonce requirements and unknown publicPath.
+  // Code-splitting is back on. Dynamic imports (React.lazy on the modal
+  // subtree, anything else that wants its own chunk) now produce real async
+  // bundles. The async chunks load via the publicPath: 'auto' inferred URL.
+  // If a hardened CSP ever blocks them, set __webpack_nonce__ from the
+  // localized config — for now WP admin doesn't enforce script-src.
   optimization: {
     ...defaultConfig.optimization,
-    splitChunks: false,
-    // LimitChunkCountPlugin with maxChunks=1 prevents dynamic import() chunks
     minimize: defaultConfig.optimization?.minimize ?? true,
   },
   plugins: [
     ...(defaultConfig.plugins || []),
-    new webpack.optimize.LimitChunkCountPlugin({
-      maxChunks: 1,
-    }),
   ],
 };
