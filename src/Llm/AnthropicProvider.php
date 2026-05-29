@@ -90,97 +90,41 @@ class AnthropicProvider implements LlmProviderInterface
         $contentBlocks = [];
         $currentIndex = -1;
         $inputJsonBuffer = '';
-        $errorBody = '';
-
-        $lineBuffer = '';
-
-        $ch = curl_init(self::API_URL);
 
         $headers = [
             'Content-Type: application/json',
             'x-api-key: '.$this->apiKey,
             'anthropic-version: '.self::API_VERSION,
         ];
-
         if ($this->useAdvisor) {
             $headers[] = 'anthropic-beta: advisor-tool-2026-03-01';
         }
 
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (
-                &$lineBuffer,
-                &$contentBlocks,
-                &$currentIndex,
-                &$inputJsonBuffer,
-                &$errorBody,
-                $onEvent,
-            ) {
-                // Capture non-SSE error responses
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                if ($httpCode >= 400) {
-                    $errorBody .= $data;
-
-                    return strlen($data);
+        $stream = SseStreamReader::stream(
+            self::API_URL,
+            $headers,
+            (string) json_encode($payload),
+            function (array $event) use (&$contentBlocks, &$currentIndex, &$inputJsonBuffer, $onEvent) {
+                // Anthropic events always carry `type`; anything else is
+                // garbage we can't route.
+                if (! isset($event['type'])) {
+                    return;
                 }
-
-                $lineBuffer .= $data;
-
-                while (($newlinePos = strpos($lineBuffer, "\n")) !== false) {
-                    $line = substr($lineBuffer, 0, $newlinePos);
-                    $lineBuffer = substr($lineBuffer, $newlinePos + 1);
-
-                    $line = trim($line);
-                    if ($line === '' || str_starts_with($line, ':')) {
-                        continue;
-                    }
-
-                    if (str_starts_with($line, 'event: ')) {
-                        continue;
-                    }
-
-                    if (! str_starts_with($line, 'data: ')) {
-                        continue;
-                    }
-
-                    $json = substr($line, 6);
-                    $event = json_decode($json, true);
-                    if (! $event || ! isset($event['type'])) {
-                        continue;
-                    }
-
-                    $this->processEvent(
-                        $event,
-                        $contentBlocks,
-                        $currentIndex,
-                        $inputJsonBuffer,
-                        $onEvent,
-                    );
-                }
-
-                return strlen($data);
+                $this->processEvent(
+                    $event,
+                    $contentBlocks,
+                    $currentIndex,
+                    $inputJsonBuffer,
+                    $onEvent,
+                );
             },
-        ]);
+        );
 
-        $result = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($result === false) {
-            $onEvent('error', ['message' => 'curl error: '.$curlError]);
+        if ($stream['curlError'] !== '') {
+            $onEvent('error', ['message' => 'curl error: '.$stream['curlError']]);
         }
-
-        if ($httpCode >= 400) {
-            $errorMsg = "API returned HTTP $httpCode";
-            $decoded = json_decode($errorBody, true);
-            if ($decoded && isset($decoded['error']['message'])) {
-                $errorMsg .= ': '.$decoded['error']['message'];
-            }
-            $onEvent('error', ['message' => $errorMsg]);
+        if ($stream['httpCode'] >= 400) {
+            $onEvent('error', ['message' => SseStreamReader::describeHttpError($stream['httpCode'], $stream['errorBody'])]);
         }
 
         return $contentBlocks;

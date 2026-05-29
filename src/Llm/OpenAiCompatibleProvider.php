@@ -73,71 +73,30 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         $contentBlocks = [];
         $currentIndex = -1;
         $toolCallBuffers = []; // id => {name, arguments_json}
-        $errorBody = '';
-        $lineBuffer = '';
 
-        $ch = curl_init($this->baseUrl.'/chat/completions');
-
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
+        $stream = SseStreamReader::stream(
+            $this->baseUrl.'/chat/completions',
+            [
                 'Content-Type: application/json',
                 'Authorization: Bearer '.$this->apiKey,
             ],
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (
-                &$lineBuffer,
-                &$contentBlocks,
-                &$currentIndex,
-                &$toolCallBuffers,
-                &$errorBody,
-                $onEvent,
-            ) {
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                if ($httpCode >= 400) {
-                    $errorBody .= $data;
-
-                    return strlen($data);
-                }
-
-                $lineBuffer .= $data;
-
-                while (($pos = strpos($lineBuffer, "\n")) !== false) {
-                    $line = trim(substr($lineBuffer, 0, $pos));
-                    $lineBuffer = substr($lineBuffer, $pos + 1);
-
-                    if ($line === '' || $line === 'data: [DONE]') {
-                        continue;
-                    }
-
-                    if (! str_starts_with($line, 'data: ')) {
-                        continue;
-                    }
-
-                    $json = substr($line, 6);
-                    $event = json_decode($json, true);
-                    if (! $event) {
-                        continue;
-                    }
-
-                    $this->processChunk(
-                        $event,
-                        $contentBlocks,
-                        $currentIndex,
-                        $toolCallBuffers,
-                        $onEvent,
-                    );
-                }
-
-                return strlen($data);
+            (string) json_encode($payload),
+            function (array $event) use (&$contentBlocks, &$currentIndex, &$toolCallBuffers, $onEvent) {
+                $this->processChunk(
+                    $event,
+                    $contentBlocks,
+                    $currentIndex,
+                    $toolCallBuffers,
+                    $onEvent,
+                );
             },
-        ]);
-
-        curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
+            // OpenAI uses `data: [DONE]` as the stream terminator — skip it
+            // before the default `data: {…}` parse.
+            fn (string $line) => $line === 'data: [DONE]',
+        );
+        $httpCode = $stream['httpCode'];
+        $curlError = $stream['curlError'];
+        $errorBody = $stream['errorBody'];
 
         // Flush any remaining tool call arguments that weren't finalized
         if (! empty($toolCallBuffers)) {
@@ -167,12 +126,7 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         }
 
         if ($httpCode >= 400) {
-            $errorMsg = "API returned HTTP $httpCode";
-            $decoded = json_decode($errorBody, true);
-            if ($decoded && isset($decoded['error']['message'])) {
-                $errorMsg .= ': '.$decoded['error']['message'];
-            }
-            $onEvent('error', ['message' => $errorMsg]);
+            $onEvent('error', ['message' => SseStreamReader::describeHttpError($httpCode, $errorBody)]);
         }
 
         return $contentBlocks;
