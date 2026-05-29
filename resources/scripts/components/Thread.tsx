@@ -14,7 +14,11 @@
 import { ThreadPrimitive, useThreadRuntime } from "@assistant-ui/react";
 import { useCallback, useEffect, useRef, useState } from "@wordpress/element";
 
-import { fetchConversations } from "../hooks/use-runtime-adapter";
+import {
+  fetchConversations,
+  type ConversationSummary,
+} from "../hooks/use-runtime-adapter";
+import type { PendingApproval } from "./assistant-modal";
 import { Composer } from "./Composer";
 import { AssistantMessage, UserMessage, copyToClipboard } from "./Messages";
 import {
@@ -29,12 +33,30 @@ import {
 } from "./SidePanels";
 
 /**
+ * Minimal shape needed to walk message content for Markdown export — accepts
+ * the union of part shapes assistant-ui surfaces, all of which we treat as
+ * optional. Matches UiContentPart but kept loose to absorb runtime drift.
+ */
+interface TranscriptPart {
+  type: string;
+  text?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  isError?: boolean;
+}
+
+interface TranscriptMessage {
+  role: string;
+  content?: TranscriptPart[];
+}
+
+/**
  * Serialise the thread to Markdown for Export-as-Markdown and Copy-chat.
  * Built from message DATA (not the rendered DOM) so collapsed tool-call cards
  * still emit their full request + response.
- * @param msgs
  */
-function transcriptToMarkdown(msgs) {
+function transcriptToMarkdown(msgs: TranscriptMessage[] | undefined): string {
   if (!msgs?.length) {
     return "";
   }
@@ -77,6 +99,19 @@ function transcriptToMarkdown(msgs) {
   return lines.join("");
 }
 
+export interface ThreadProps {
+  onNewChat: () => void;
+  onLoadConversation: (uuid: string) => void;
+  systemContext?: string;
+  onSystemContextChange: (ctx: string) => void;
+  onApproveToolCall: (opts?: { trustHost?: boolean }) => void;
+  onDenyToolCall: () => void;
+  pendingApprovals: PendingApproval[];
+  onHeaderMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
+  resetPanelPosition?: () => void;
+  onClose: () => void;
+}
+
 export function Thread({
   onNewChat,
   onLoadConversation,
@@ -88,22 +123,22 @@ export function Thread({
   onHeaderMouseDown,
   resetPanelPosition,
   onClose,
-}) {
+}: ThreadProps): JSX.Element {
   const [showHistory, setShowHistory] = useState(false);
-  const [conversations, setConversations] = useState([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeTitle, setActiveTitle] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
   const [showMore, setShowMore] = useState(false);
-  const moreRef = useRef(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
 
   // Close the "⋯" overflow menu on an outside click.
   useEffect(() => {
     if (!showMore) {
       return undefined;
     }
-    const onDocClick = (e) => {
-      if (moreRef.current && !moreRef.current.contains(e.target)) {
+    const onDocClick = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
         setShowMore(false);
       }
     };
@@ -135,7 +170,7 @@ export function Thread({
   }, []);
 
   const handleSelect = useCallback(
-    (conv) => {
+    (conv: ConversationSummary) => {
       onLoadConversation(conv.uuid);
       setActiveTitle(conv.title || "Untitled");
       setShowHistory(false);
@@ -151,7 +186,15 @@ export function Thread({
   // Export conversation as Markdown
   const threadRuntime = useThreadRuntime();
   const handleExport = useCallback(() => {
-    const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
+    // Thread runtime's `messages` is its own internal union; treat as our
+    // minimal TranscriptMessage shape for serialisation — we only read
+    // role/content fields the runtime is guaranteed to surface.
+    // Runtime's `messages` is a readonly union of its own ThreadMessage
+    // shape; cast via unknown to the minimal fields we actually walk.
+    const msgs = threadRuntime.getState()?.messages as unknown as
+      | TranscriptMessage[]
+      | undefined;
+    const md = transcriptToMarkdown(msgs || []);
     if (!md) {
       return;
     }
@@ -166,7 +209,12 @@ export function Thread({
 
   const [chatCopied, setChatCopied] = useState(false);
   const handleCopyChat = useCallback(() => {
-    const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
+    // Runtime's `messages` is a readonly union of its own ThreadMessage
+    // shape; cast via unknown to the minimal fields we actually walk.
+    const msgs = threadRuntime.getState()?.messages as unknown as
+      | TranscriptMessage[]
+      | undefined;
+    const md = transcriptToMarkdown(msgs || []);
     if (!md) {
       return;
     }
@@ -182,11 +230,11 @@ export function Thread({
   return (
     <ThreadPrimitive.Root
       className="gds-assistant__thread"
-      ref={(el) => {
+      ref={(el: HTMLDivElement | null) => {
         // Auto-focus composer input when thread mounts
         if (el) {
           setTimeout(() => {
-            el.querySelector(".gds-assistant__input")?.focus();
+            el.querySelector<HTMLElement>(".gds-assistant__input")?.focus();
           }, 100);
         }
       }}
@@ -199,9 +247,13 @@ export function Thread({
       <div
         className="gds-assistant__header"
         onMouseDown={onHeaderMouseDown}
-        onDoubleClick={(e) => {
+        onDoubleClick={(e: React.MouseEvent<HTMLDivElement>) => {
           // Double-click empty header area to reset panel position/size
-          if (e.target.closest("button, input, textarea, select, a")) {
+          if (
+            (e.target as HTMLElement).closest(
+              "button, input, textarea, select, a",
+            )
+          ) {
             return;
           }
           resetPanelPosition?.();
