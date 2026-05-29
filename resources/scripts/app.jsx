@@ -1,12 +1,31 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { useState, useCallback, useEffect } from "@wordpress/element";
-import { AssistantModal } from "./components/assistant-modal";
 import {
-  useAssistantRuntime,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useState,
+} from "@wordpress/element";
+
+import {
+  getPersistedConversationId,
   newChat,
   setSystemContext,
-  getPersistedConversationId,
+  useAssistantRuntime,
 } from "./hooks/use-runtime-adapter";
+
+// Lazy-load the modal subtree. It pulls in @assistant-ui/react-streamdown,
+// @assistant-ui/react-markdown, and the carved component tree
+// (Composer, Thread, Messages, SidePanels, ToolCallFallback, MicButton,
+// ReadAloudController) — none of which is needed for the first paint of the
+// pages that just mount the floating ✦ trigger. Saves ~half the initial
+// bundle. Trade-off: the trigger button and Cmd+K shortcut take a tick to
+// appear after page load while the chunk arrives.
+const AssistantModal = lazy(() =>
+  import("./components/assistant-modal").then((m) => ({
+    default: m.AssistantModal,
+  })),
+);
 
 const OPEN_KEY = "gds-assistant-open";
 
@@ -69,17 +88,19 @@ export function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <AssistantModal
-        onNewChat={handleNewChat}
-        onLoadConversation={loadConversation}
-        systemContext={context}
-        onSystemContextChange={handleContextChange}
-        onApproveToolCall={approveToolCall}
-        onDenyToolCall={denyToolCall}
-        pendingApprovals={pendingApprovals}
-        undoableActions={undoableActions}
-        onUndo={undoAction}
-      />
+      <Suspense fallback={null}>
+        <AssistantModal
+          onNewChat={handleNewChat}
+          onLoadConversation={loadConversation}
+          systemContext={context}
+          onSystemContextChange={handleContextChange}
+          onApproveToolCall={approveToolCall}
+          onDenyToolCall={denyToolCall}
+          pendingApprovals={pendingApprovals}
+          undoableActions={undoableActions}
+          onUndo={undoAction}
+        />
+      </Suspense>
     </AssistantRuntimeProvider>
   );
 }
