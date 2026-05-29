@@ -132,6 +132,12 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
         return $contentBlocks;
     }
 
+    /**
+     * @param  array<string, mixed>  $event
+     * @param  array<array<string, mixed>>  $contentBlocks
+     * @param  array<int|string, array<string, mixed>>  $toolCallBuffers
+     * @param  callable(string, array<string, mixed>): void  $onEvent
+     */
     private function processChunk(
         array $event,
         array &$contentBlocks,
@@ -228,6 +234,9 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
 
     /**
      * Convert Anthropic-style tools to OpenAI format.
+     *
+     * @param  array<int, array<string, mixed>>  $tools
+     * @return array<int, array<string, mixed>>
      */
     private static function convertTools(array $tools): array
     {
@@ -243,6 +252,9 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
 
     /**
      * Sanitize schema for OpenAI compatibility.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
      */
     private static function sanitizeSchema(array $schema): array
     {
@@ -283,6 +295,9 @@ class OpenAiCompatibleProvider implements LlmProviderInterface
     /**
      * Convert a message to OpenAI format.
      * Handles Anthropic-style content blocks and tool results.
+     *
+     * @param  array<string, mixed>  $msg
+     * @return array<string, mixed>
      */
     private static function convertMessage(array $msg): array
     {

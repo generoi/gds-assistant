@@ -130,6 +130,11 @@ class AnthropicProvider implements LlmProviderInterface
         return $contentBlocks;
     }
 
+    /**
+     * @param  array<string, mixed>  $event
+     * @param  array<array<string, mixed>>  $contentBlocks
+     * @param  callable(string, array<string, mixed>): void  $onEvent
+     */
     private function processEvent(
         array $event,
         array &$contentBlocks,
@@ -240,6 +245,9 @@ class AnthropicProvider implements LlmProviderInterface
      *
      * Skipped on very short conversations (<3 messages) where caching the
      * first-message prefix isn't worth the 5-minute TTL overhead.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function cacheControlLastMessage(array $messages): array
     {
@@ -276,6 +284,10 @@ class AnthropicProvider implements LlmProviderInterface
         return $messages;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private static function convertUrlImages(array $messages): array
     {
         return array_map(function (array $msg) {

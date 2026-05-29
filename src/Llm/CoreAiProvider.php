@@ -85,6 +85,7 @@ final class CoreAiProvider implements LlmProviderInterface
     }
 
     /**
+     * @param  array<int, array<string, mixed>>  $messages
      * @param  string[]  $modelPreference
      */
     public static function generateText(array $messages, ?string $systemPrompt = null, int $maxTokens = 4096, array $modelPreference = []): string|\WP_Error
@@ -111,8 +112,10 @@ final class CoreAiProvider implements LlmProviderInterface
     }
 
     /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  array<int, array<string, mixed>>  $tools
      * @param  string[]  $modelPreference
-     * @return array{answer: string, tool_calls: array<int, array{name: string, input: array}>}|\WP_Error
+     * @return array{answer: string, tool_calls: array<int, array{name: string, input: array<string, mixed>}>}|\WP_Error
      */
     public static function generateAssistantTurn(array $messages, array $tools, ?string $systemPrompt = null, int $maxTokens = 4096, array $modelPreference = []): array|\WP_Error
     {
@@ -187,6 +190,10 @@ final class CoreAiProvider implements LlmProviderInterface
         return 'Return only JSON matching the requested schema. To use a tool, put it in tool_calls with the exact tool name and JSON input. If a tool is needed, keep answer empty until tool results are available. Do not invent tool names.';
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  array<int, array<string, mixed>>  $tools
+     */
     private static function agentPrompt(array $messages, array $tools): string
     {
         return "Conversation:\n\n"
@@ -195,6 +202,7 @@ final class CoreAiProvider implements LlmProviderInterface
             .self::toolsToPrompt($tools);
     }
 
+    /** @param array<int, array<string, mixed>> $tools */
     private static function toolsToPrompt(array $tools): string
     {
         if (empty($tools)) {
@@ -213,6 +221,7 @@ final class CoreAiProvider implements LlmProviderInterface
         return implode("\n", $parts);
     }
 
+    /** @param array<int, array<string, mixed>> $tools */
     private static function toolExists(string $name, array $tools): bool
     {
         foreach ($tools as $tool) {
@@ -224,6 +233,7 @@ final class CoreAiProvider implements LlmProviderInterface
         return false;
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     private static function messagesToPrompt(array $messages): string
     {
         $parts = [];

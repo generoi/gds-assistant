@@ -204,6 +204,7 @@ class ProviderRegistry
         do_action('gds-assistant/register_providers');
     }
 
+    /** @param array<string, mixed> $config */
     public static function register(string $name, array $config): void
     {
         self::$providers[$name] = $config;
@@ -218,7 +219,7 @@ class ProviderRegistry
     }
 
     /**
-     * @return array{key: string|null, source: string, connector: array|null, setting: string|null}
+     * @return array{key: string|null, source: string, connector: array<string, mixed>|null, setting: string|null}
      */
     public static function getCredentialInfo(string $providerName): array
     {
@@ -244,7 +245,7 @@ class ProviderRegistry
     /**
      * Get all available providers (those with API keys configured).
      *
-     * @return array<string, array{label: string, models: array, default: string}>
+     * @return array<string, array{label: string, models: array<string, mixed>, default: string}>
      */
     public static function getAvailable(): array
     {

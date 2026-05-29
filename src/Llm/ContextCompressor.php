@@ -48,9 +48,9 @@ class ContextCompressor
     /**
      * Compress messages to fit within reasonable token limits.
      *
-     * @param  array  $messages  Full conversation messages
+     * @param  array<int, array<string, mixed>>  $messages  Full conversation messages
      * @param  string  $existingSummary  Rolling summary from previous compressions
-     * @return array{messages: array, summary: string} Compressed messages + updated summary
+     * @return array{messages: array<int, array<string, mixed>>, summary: string} Compressed messages + updated summary
      */
     public static function compress(array $messages, string $existingSummary = ''): array
     {
@@ -93,6 +93,8 @@ class ContextCompressor
     /**
      * Build a rolling summary update for the current turn.
      * Appended to the stored summary after each request.
+     *
+     * @param  array<int, array<string, mixed>>  $newMessages
      */
     public static function buildTurnSummary(array $newMessages): string
     {
@@ -132,6 +134,8 @@ class ContextCompressor
     /**
      * Generate an LLM-powered structured summary of old messages.
      * Uses the cheapest available model for the summary call.
+     *
+     * @param  array<int, array<string, mixed>>  $oldMessages
      */
     public static function generateLlmSummary(array $oldMessages): ?string
     {
@@ -205,6 +209,10 @@ class ContextCompressor
 
     // ── Level 1: Smart tool result truncation ───────────────────
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private static function truncateLargeToolResults(array $messages): array
     {
         foreach ($messages as &$msg) {
@@ -231,6 +239,10 @@ class ContextCompressor
 
     // ── Level 2: Strip old tool results ─────────────────────────
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private static function stripOldToolResults(array $messages, int $keepRecent): array
     {
         $total = count($messages);
@@ -255,6 +267,10 @@ class ContextCompressor
 
     // ── Level 3: Summarize old messages ─────────────────────────
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array{messages: array<int, array<string, mixed>>, summary: string}
+     */
     private static function summarizeOldMessages(array $messages, int $keepRecent, string $existingSummary): array
     {
         $total = count($messages);
@@ -334,6 +350,7 @@ class ContextCompressor
         return '[Result: '.strlen($json).' bytes, keys: '.implode(', ', array_slice($keys, 0, 10)).']';
     }
 
+    /** @param array<string, mixed> $data */
     private static function summarizeContentList(array $data): string
     {
         $count = count($data['posts']);
@@ -362,6 +379,7 @@ class ContextCompressor
         return $summary;
     }
 
+    /** @param array<string, mixed> $data */
     private static function summarizeSingleItem(array $data): string
     {
         $id = $data['id'] ?? '?';
@@ -391,6 +409,7 @@ class ContextCompressor
         return implode(', ', $parts).']';
     }
 
+    /** @param array<string, mixed> $data */
     private static function summarizeForm(array $data): string
     {
         $id = $data['id'] ?? '?';
@@ -402,6 +421,7 @@ class ContextCompressor
         return "[Form #{$id}: \"{$title}\", {$fieldCount} fields (".implode(', ', $fields)."), {$notifCount} notifications]";
     }
 
+    /** @param array<string, mixed> $data */
     private static function summarizeSiteMap(array $data): string
     {
         $menuName = $data['menu']['name'] ?? 'unknown';
@@ -411,6 +431,7 @@ class ContextCompressor
         return "[Site map: menu \"{$menuName}\" ({$menuItems} top-level items), {$disconnected} disconnected pages]";
     }
 
+    /** @param array<string, mixed> $data */
     private static function summarizeAudit(array $data): string
     {
         return '[Audit result: '.json_encode(array_map(fn ($v) => is_array($v) ? count($v).' items' : $v, $data)).']';
@@ -435,6 +456,7 @@ class ContextCompressor
         return ProviderRegistry::getDefaultModelKey();
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     private static function buildConversationText(array $messages): string
     {
         $parts = [];
@@ -462,6 +484,7 @@ class ContextCompressor
         return implode("\n", $parts);
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     private static function buildMechanicalSummary(array $messages): string
     {
         $parts = [];
@@ -519,6 +542,7 @@ class ContextCompressor
         return '';
     }
 
+    /** @param array<string, mixed> $data */
     private static function extractTitle(array $data): string
     {
         $title = $data['title']['rendered'] ?? $data['title']['raw'] ?? $data['title'] ?? $data['name'] ?? '?';
@@ -534,6 +558,7 @@ class ContextCompressor
         return mb_strlen($text) > $maxLen ? mb_substr($text, 0, $maxLen - 3).'...' : $text;
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     public static function estimateTokens(array $messages): int
     {
         $imageCount = 0;
@@ -562,6 +587,10 @@ class ContextCompressor
     /**
      * Strip image blocks from old messages to keep context manageable.
      * Replaces images with a placeholder text block.
+     */
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     public static function stripOldImages(array $messages, int $keepRecent = 4): array
     {

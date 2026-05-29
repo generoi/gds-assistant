@@ -2,6 +2,12 @@
 
 namespace GeneroWP\Assistant\Llm;
 
+/**
+ * @phpstan-type LlmMessage array<string, mixed>
+ * @phpstan-type LlmTool array<string, mixed>
+ * @phpstan-type LlmContentBlock array<string, mixed>
+ * @phpstan-type LlmEventCallback callable(string, array<string, mixed>): void
+ */
 interface LlmProviderInterface
 {
     /**
@@ -10,11 +16,11 @@ interface LlmProviderInterface
      * The callback receives SSE events: fn(string $eventType, array $data)
      * Event types: text_delta, tool_use_start, tool_result, message_stop, error
      *
-     * @param  array  $messages  Conversation messages [{role, content}]
-     * @param  array  $tools  Tool definitions [{name, description, input_schema}]
-     * @param  callable  $onEvent  SSE event callback
+     * @param  array<int, LlmMessage>  $messages  Conversation messages [{role, content}]
+     * @param  array<int, LlmTool>  $tools  Tool definitions [{name, description, input_schema}]
+     * @param  LlmEventCallback  $onEvent  SSE event callback
      * @param  string|null  $systemPrompt  System prompt
-     * @return array Final assistant message content blocks
+     * @return array<int, LlmContentBlock> Final assistant message content blocks
      */
     public function stream(
         array $messages,
