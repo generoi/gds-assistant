@@ -1141,6 +1141,109 @@ export function useAssistantRuntime() {
     });
   }, []);
 
+  // Retry a single failed tool call by re-executing it with the same args.
+  // Currently supports CLIENT-executed tools only (editor__* operate on the
+  // live block editor); for server-side tools the user gets a clear message
+  // because real retry requires a new backend round-trip (see #38 for the
+  // server-side proposal).
+  //
+  // Behaviour:
+  //  - Patches the failed tool-call part in-place: replaces result + isError
+  //    on success, replaces just result if the retry also fails.
+  //  - The LLM sees the retried result in the conversation history on its
+  //    next turn — no auto-resend, no re-prompt.
+  const [retryingIds, setRetryingIds] = useState(() => new Set());
+  const retryToolCall = useCallback(
+    async (toolCallId) => {
+      if (!toolCallId) {
+        return;
+      }
+
+      // Locate the tool-call part across the message history. Iterate from the
+      // end since retries are almost always on the most recent error.
+      let target = null;
+      let messageId = null;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        const part = (m.content || []).find(
+          (p) => p.type === "tool-call" && p.toolCallId === toolCallId,
+        );
+        if (part) {
+          target = part;
+          messageId = m.id;
+          break;
+        }
+      }
+      if (!target) {
+        return;
+      }
+
+      // Only client-executed tools can be safely retried locally. Server tools
+      // are part of the LLM stream's tool-use cycle and need a fresh backend
+      // round-trip to replay — outside this PR's scope.
+      if (!target.toolName?.startsWith("editor__")) {
+        // eslint-disable-next-line no-alert
+        window.alert(
+          `Retry is currently supported for client-side editor tools only.\n\n` +
+            `For "${target.toolName}", please re-send the original prompt or ` +
+            `edit your message and resend.`,
+        );
+        return;
+      }
+
+      setRetryingIds((s) => {
+        const next = new Set(s);
+        next.add(toolCallId);
+        return next;
+      });
+      try {
+        const newResult = await executeClientTool(target.toolName, target.args);
+        const isError = !!(newResult && newResult.error);
+
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) {
+              return m;
+            }
+            return {
+              ...m,
+              content: (m.content || []).map((p) =>
+                p.type === "tool-call" && p.toolCallId === toolCallId
+                  ? { ...p, result: newResult, isError }
+                  : p,
+              ),
+            };
+          }),
+        );
+      } catch (e) {
+        // Re-execution threw (rather than returning an error result) — surface
+        // it as the new result so the user can see what changed.
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) {
+              return m;
+            }
+            return {
+              ...m,
+              content: (m.content || []).map((p) =>
+                p.type === "tool-call" && p.toolCallId === toolCallId
+                  ? { ...p, result: { error: String(e) }, isError: true }
+                  : p,
+              ),
+            };
+          }),
+        );
+      } finally {
+        setRetryingIds((s) => {
+          const next = new Set(s);
+          next.delete(toolCallId);
+          return next;
+        });
+      }
+    },
+    [messages],
+  );
+
   // Undo a single past action by its audit-log id. Direct REST call (no chat
   // turn) — see Api\UndoEndpoint. Updates the per-tool undo state so the
   // button can show "Undone" / surface caveats.
@@ -1224,6 +1327,8 @@ export function useAssistantRuntime() {
     pendingApprovals,
     undoableActions,
     undoAction,
+    retryToolCall,
+    retryingIds,
   };
 }
 

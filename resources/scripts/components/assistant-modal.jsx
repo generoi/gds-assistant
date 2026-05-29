@@ -40,18 +40,22 @@ export function AssistantModal({
   pendingApprovals,
   undoableActions,
   onUndo,
+  onRetry,
+  retryingIds,
 }) {
   const undoContextValue = useMemo(
     () => ({
       undoableActions: undoableActions || {},
       onUndo,
+      onRetry,
+      retryingIds: retryingIds || new Set(),
       // Tool-call cards detect their "approval required" state by id — assistant-ui
       // doesn't surface requires-action status for external-store parts.
       pendingApprovalIds: new Set(
         (pendingApprovals || []).map((p) => p.toolUseId),
       ),
     }),
-    [undoableActions, onUndo, pendingApprovals],
+    [undoableActions, onUndo, onRetry, retryingIds, pendingApprovals],
   );
 
   // Persist open/closed state so the panel reopens itself after a full-page
