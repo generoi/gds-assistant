@@ -89,15 +89,16 @@ export function McpServersDataView() {
 
   const remove = useCallback(
     async (name) => {
+      // Quick destructive confirmation. Worth a real dialog UI eventually
+      // (see .eslintrc.js — no-alert is acknowledged as a warning, not a
+      // blocker); for now `window.confirm` keeps the data-view delete cell
+      // honest about what's about to happen.
+      const message = __(
+        "Delete this MCP server and any stored tokens for it?",
+        "gds-assistant",
+      );
       // eslint-disable-next-line no-alert
-      if (
-        !window.confirm(
-          __(
-            "Delete this MCP server and any stored tokens for it?",
-            "gds-assistant",
-          ),
-        )
-      ) {
+      if (!window.confirm(message)) {
         return;
       }
       setBusy(name);
@@ -254,28 +255,7 @@ export function McpServersDataView() {
         </Notice>
       )}
 
-      {loading ? (
-        <p>{__("Loading…", "gds-assistant")}</p>
-      ) : servers.length === 0 ? (
-        <Notice status="info" isDismissible={false}>
-          {__(
-            'No MCP servers yet. Click "Add MCP Server" above to configure one (e.g. Asana at https://mcp.asana.com/v2/mcp with OAuth).',
-            "gds-assistant",
-          )}
-        </Notice>
-      ) : (
-        <DataViews
-          data={servers}
-          fields={fields}
-          view={view}
-          onChangeView={() => {}}
-          defaultLayouts={{ table: {} }}
-          getItemId={(item) => item.id}
-          paginationInfo={{ totalItems: servers.length, totalPages: 1 }}
-          search={false}
-          actions={[]}
-        />
-      )}
+      {renderListBody(loading, servers, fields, view)}
 
       {editing && (
         <ServerModal
@@ -298,18 +278,58 @@ export function McpServersDataView() {
   );
 }
 
+// Three-state list body extracted to keep the JSX flat: "loading" /
+// "empty state" / "render the table". Lives outside the component because it
+// only depends on its args.
+function renderListBody(loading, servers, fields, view) {
+  if (loading) {
+    return <p>{__("Loading…", "gds-assistant")}</p>;
+  }
+  if (servers.length === 0) {
+    return (
+      <Notice status="info" isDismissible={false}>
+        {__(
+          'No MCP servers yet. Click "Add MCP Server" above to configure one (e.g. Asana at https://mcp.asana.com/v2/mcp with OAuth).',
+          "gds-assistant",
+        )}
+      </Notice>
+    );
+  }
+  return (
+    <DataViews
+      data={servers}
+      fields={fields}
+      view={view}
+      onChangeView={() => {}}
+      defaultLayouts={{ table: {} }}
+      getItemId={(item) => item.id}
+      paginationInfo={{ totalItems: servers.length, totalPages: 1 }}
+      search={false}
+      actions={[]}
+    />
+  );
+}
+
+// Map a server-origin key to its translated label. Falls through to the raw
+// key so an unknown origin surfaces something rather than nothing.
+function originLabel(origin) {
+  if (origin === "code") {
+    return __("code", "gds-assistant");
+  }
+  if (origin === "env") {
+    return __("env", "gds-assistant");
+  }
+  if (origin === "builtin") {
+    return __("built-in", "gds-assistant");
+  }
+  return origin;
+}
+
 function OriginBadge({ origin }) {
   if (!origin || origin === "admin") {
     return null;
   }
-  const label =
-    origin === "code"
-      ? __("code", "gds-assistant")
-      : origin === "env"
-      ? __("env", "gds-assistant")
-      : origin === "builtin"
-      ? __("built-in", "gds-assistant")
-      : origin;
+  const label = originLabel(origin);
   return (
     <span
       style={{
@@ -544,11 +564,7 @@ function ServerModal({ initial, onClose, onSaved }) {
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
         <Button variant="primary" onClick={save} disabled={saving}>
-          {saving
-            ? __("Saving…", "gds-assistant")
-            : isEdit
-            ? __("Update", "gds-assistant")
-            : __("Save", "gds-assistant")}
+          {saveLabel(saving, isEdit)}
         </Button>
         <Button variant="tertiary" onClick={onClose}>
           {__("Cancel", "gds-assistant")}
@@ -558,11 +574,21 @@ function ServerModal({ initial, onClose, onSaved }) {
   );
 }
 
+// Save-button label tracks two booleans without nesting ternaries inline.
+function saveLabel(saving, isEdit) {
+  if (saving) {
+    return __("Saving…", "gds-assistant");
+  }
+  if (isEdit) {
+    return __("Update", "gds-assistant");
+  }
+  return __("Save", "gds-assistant");
+}
+
 /** Convert ?mcp_connect=success|error query args from the OAuth callback into a Notice. */
 function readInitialNotice() {
   const params = new URLSearchParams(window.location.search);
   const status = params.get("mcp_connect");
-  const msg = params.get("mcp_msg");
   if (status === "success") {
     return {
       type: "success",
@@ -570,6 +596,7 @@ function readInitialNotice() {
     };
   }
   if (status === "error") {
+    const msg = params.get("mcp_msg");
     return {
       type: "error",
       text: msg

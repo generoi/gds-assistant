@@ -186,6 +186,46 @@ function ComposerAttachment({ attachment }) {
 
 // ── Composer with Send/Stop toggle ──────────────────────────
 
+// Renders the trailing action button: Stop while a turn is streaming,
+// Send when the composer has text, nothing otherwise. Extracted so the
+// state machine reads as a flat if/else instead of a nested ternary in JSX.
+function renderActionButton(isRunning, hasText, handleCancel) {
+  if (isRunning) {
+    return (
+      <button
+        type="button"
+        className="gds-assistant__cancel"
+        onClick={handleCancel}
+        title="Stop generating"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+        </svg>
+      </button>
+    );
+  }
+  if (hasText) {
+    return (
+      <ComposerPrimitive.Send className="gds-assistant__send" title="Send">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="22" y1="2" x2="11" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
+      </ComposerPrimitive.Send>
+    );
+  }
+  return null;
+}
+
 export function Composer() {
   const threadRuntime = useThreadRuntime();
   const [isRunning, setIsRunning] = useState(false);
@@ -313,34 +353,7 @@ export function Composer() {
         onChange={handleInputChange}
       />
       <MicButton />
-      {isRunning ? (
-        <button
-          type="button"
-          className="gds-assistant__cancel"
-          onClick={handleCancel}
-          title="Stop generating"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="4" y="4" width="16" height="16" rx="2" />
-          </svg>
-        </button>
-      ) : hasText ? (
-        <ComposerPrimitive.Send className="gds-assistant__send" title="Send">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </ComposerPrimitive.Send>
-      ) : null}
+      {renderActionButton(isRunning, hasText, handleCancel)}
       {wasStopped && !isRunning && (
         <span className="gds-assistant__stopped">Stopped</span>
       )}

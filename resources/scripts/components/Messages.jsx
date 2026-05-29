@@ -112,11 +112,17 @@ function BlockChip({ clientId, cachedLabel }) {
   const liveName =
     window.wp?.data?.select?.("core/block-editor")?.getBlockName?.(clientId) ||
     "";
-  const label = liveName
-    ? liveName.replace(/^core\//, "").replace(/-/g, " ")
-    : cachedLabel
-    ? cachedLabel.trim()
-    : "block";
+  // Prefer the live block name (reflects renames + lookups by id), fall
+  // back to the cached label captured when the chip was first inserted,
+  // then a generic "block" so the chip never reads as empty.
+  let label;
+  if (liveName) {
+    label = liveName.replace(/^core\//, "").replace(/-/g, " ");
+  } else if (cachedLabel) {
+    label = cachedLabel.trim();
+  } else {
+    label = "block";
+  }
   const onClick = (e) => {
     e.preventDefault();
     e.stopPropagation();

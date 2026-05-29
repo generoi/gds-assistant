@@ -66,7 +66,6 @@ export function MicButton() {
   const wrapRef = useRef(null);
   const [readAloud, setReadAloud] = useTtsEnabled();
   const [voiceMode, setVoiceMode] = useVoiceMode();
-  const ttsAvail = ttsSupported();
   // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
   // every render and so its handlers see the freshest composer/threadRuntime
   // values.
@@ -235,6 +234,7 @@ export function MicButton() {
   // Chevron + popover are useful when there's >1 dictation language OR when
   // TTS is supported (so the user can flip the read-aloud toggle); hide the
   // chevron only when neither is true.
+  const ttsAvail = ttsSupported();
   const showPopoverToggle = langs.length > 1 || ttsAvail;
 
   return (

@@ -1064,11 +1064,16 @@ interface FailedEntry {
 // recursive so an invalid CHILD is fixed too. Undoable via the editor history.
 // Unregistered blocks (core/missing) can't be recreated and are kept as-is.
 function recoverBlock(input: RecoverBlockInput = {}): EditorToolResult {
-  const ids = Array.isArray(input.client_ids)
-    ? input.client_ids
-    : input.client_id
-    ? [input.client_id]
-    : [];
+  // Accept either a list (`client_ids`) or a single id (`client_id`);
+  // normalise to a list so the recovery walk has one shape to iterate.
+  let ids: string[];
+  if (Array.isArray(input.client_ids)) {
+    ids = input.client_ids;
+  } else if (input.client_id) {
+    ids = [input.client_id];
+  } else {
+    ids = [];
+  }
   if (!ids.length) {
     return { error: "No client_ids provided to recover." };
   }
@@ -1268,15 +1273,20 @@ function queryDom(input: QueryDomInput = {}): EditorToolResult {
   if (!selector) {
     return { error: "Provide a CSS selector." };
   }
-  const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
 
   const out: DomElementSummary[] = [];
+  // Same numeric clamp every iteration uses; computed lazily so we don't
+  // burn it on the early-return branch when querySelectorAll throws.
+  let limit = 0;
   for (const doc of editorDocs()) {
     let nodes: NodeListOf<Element>;
     try {
       nodes = doc.querySelectorAll(selector);
     } catch (e) {
       return { error: `Invalid selector: ${(e as Error).message}` };
+    }
+    if (!limit) {
+      limit = Math.min(Math.max(Number(input.limit) || 20, 1), 50);
     }
     for (const el of Array.from(nodes)) {
       if (out.length >= limit) {
