@@ -14,7 +14,7 @@
  *    `tool-call` part with `result` filled in on completion, and `image`
  *    carries a plain URL ready for `<img>`.
  *
- * The runtime adapter ({@link use-runtime-adapter}) translates between them.
+ * The runtime adapter (`use-runtime-adapter`) translates between them.
  * Stored history goes through `wireToAssistantUi()` on load; new chat turns
  * are built directly in the assistant-ui form and then persisted.
  *
@@ -172,7 +172,7 @@ export interface ToolApprovalRequiredEvent {
 
 /**
  * Server is delegating an `editor__*` tool to the browser. We execute it
- * via {@link editor-bridge.executeClientTool} and POST results back to
+ * via `editor-bridge.executeClientTool` and POST results back to
  * resume the loop.
  */
 export interface ClientToolCallEvent {
