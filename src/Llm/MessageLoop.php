@@ -124,7 +124,7 @@ class MessageLoop
             // Check for tool use blocks
             $toolUseBlocks = array_filter(
                 $contentBlocks,
-                fn ($block) => ($block['type'] ?? '') === 'tool_use',
+                fn ($block) => $block['type'] === 'tool_use',
             );
 
             if (empty($toolUseBlocks)) {
@@ -314,14 +314,25 @@ class MessageLoop
      * provider-bound copy — the returned/persisted transcript keeps its extras.
      *
      * @param  array<int, array<string, mixed>>  $messages
-     * @return array<int, array{role: string, content: mixed}>
+     * @return list<array{role: string, content: string|list<array<string, mixed>>}>
      */
     private static function stripMessageMeta(array $messages): array
     {
-        return array_map(
-            fn ($m) => ['role' => $m['role'] ?? 'user', 'content' => $m['content'] ?? ''],
+        return array_values(array_map(
+            static function (array $m): array {
+                $role = (string) ($m['role'] ?? 'user');
+                $content = $m['content'] ?? '';
+                if (is_string($content)) {
+                    return ['role' => $role, 'content' => $content];
+                }
+
+                return [
+                    'role' => $role,
+                    'content' => is_array($content) ? array_values($content) : [],
+                ];
+            },
             $messages,
-        );
+        ));
     }
 
     private function isDestructive(string $abilityName): bool

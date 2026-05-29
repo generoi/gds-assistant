@@ -192,8 +192,8 @@ class ContextCompressor
             // Extract text from content blocks
             if (! $result) {
                 foreach ($blocks as $block) {
-                    if (($block['type'] ?? '') === 'text') {
-                        $result .= $block['text'] ?? '';
+                    if ($block['type'] === 'text') {
+                        $result .= (string) ($block['text'] ?? '');
                     }
                 }
             }
