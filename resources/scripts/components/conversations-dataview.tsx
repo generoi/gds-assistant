@@ -1,8 +1,4 @@
-import {
-  DataViews,
-  type Field,
-  type View,
-} from "@wordpress/dataviews";
+import { DataViews, type Field, type View } from "@wordpress/dataviews";
 import { useState, useEffect, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 import { backup, external, download } from "@wordpress/icons";
@@ -19,7 +15,11 @@ interface ConversationRow {
   [key: string]: unknown;
 }
 
-/** Trigger a client-side JSON file download. */
+/**
+ * Trigger a client-side JSON file download.
+ * @param data
+ * @param filename
+ */
 function downloadJson(data: unknown, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
@@ -32,7 +32,10 @@ function downloadJson(data: unknown, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Format relative time. */
+/**
+ * Format relative time.
+ * @param dateStr
+ */
 function timeAgo(dateStr: string | undefined): string {
   if (!dateStr) {
     return "—";
@@ -61,6 +64,9 @@ function timeAgo(dateStr: string | undefined): string {
  * Estimate cost from tokens using full input price (no cache breakdown
  * available in stored history). Over-estimates slightly since real cost
  * had cache discounts, but is the safest approximation.
+ * @param input
+ * @param output
+ * @param model
  */
 function estimateCost(
   input: number,

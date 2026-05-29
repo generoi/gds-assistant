@@ -49,8 +49,10 @@ export const SUGGESTIONS = [
 
 // ── Local types ─────────────────────────────────────────────
 
-/** Some skills carry a preferred model in post-meta — not part of the cache
- * `Skill` shape so widen locally rather than mutate the source type. */
+/**
+ * Some skills carry a preferred model in post-meta — not part of the cache
+ * `Skill` shape so widen locally rather than mutate the source type.
+ */
 type SkillWithMaybeModel = Skill & { model?: string };
 
 /** Shape of `window.gdsAssistant.models` consumed by the model selector. */
@@ -115,12 +117,10 @@ export interface PanelHeaderProps {
   onClose: () => void;
 }
 
-/**
- * Small header for the slide-in panels (skills, history, system context) so
- * each one carries its own title and an unambiguous close (×) — the panels
- * are opened from the "⋯" menu, so without this there's no visible way to
- * dismiss them.
- */
+// Small header for the slide-in panels (skills, history, system context) so
+// each one carries its own title and an unambiguous close (×) — the panels
+// are opened from the "⋯" menu, so without this there's no visible way to
+// dismiss them.
 export function PanelHeader({ title, onClose }: PanelHeaderProps): JSX.Element {
   return (
     <div className="gds-assistant__panel-head">
@@ -178,7 +178,10 @@ export function SystemContextInput({
 
 // ── Cost / usage helpers ────────────────────────────────────
 
-/** Format a dollar amount for display. */
+/**
+ * Format a dollar amount for display.
+ * @param dollars
+ */
 function formatCost(dollars: number): string {
   if (dollars < 0.001) {
     return "<$0.001";
@@ -186,7 +189,10 @@ function formatCost(dollars: number): string {
   return `~$${dollars.toFixed(3)}`;
 }
 
-/** Format a date as relative time (5m ago, 2h ago, Yesterday, Apr 10). */
+/**
+ * Format a date as relative time (5m ago, 2h ago, Yesterday, Apr 10).
+ * @param dateStr
+ */
 function relativeTime(dateStr: string): string {
   const date = new Date(dateStr + "Z");
   const now = new Date();
@@ -396,9 +402,7 @@ export function ConversationList({
 function getModelConfig(): ModelsConfig {
   // `models` lives on the window global; read with a local cast rather than
   // extending the global type (it's used only here + skills-dataview).
-  const g = window.gdsAssistant as
-    | { models?: ModelsConfig }
-    | undefined;
+  const g = window.gdsAssistant as { models?: ModelsConfig } | undefined;
   return g?.models || { providers: [], default: null };
 }
 
@@ -450,9 +454,7 @@ interface MaxTokensOption {
 
 function getMaxTokensOptions(): MaxTokensOption[] {
   // `defaultMaxTokens` is a window global; read with a local cast.
-  const g = window.gdsAssistant as
-    | { defaultMaxTokens?: number }
-    | undefined;
+  const g = window.gdsAssistant as { defaultMaxTokens?: number } | undefined;
   const def = g?.defaultMaxTokens || 4096;
   const presets = [4096, 8192, 16384, 32768];
   const formatK = (v: number) => `${Math.round(v / 1024)}K`;

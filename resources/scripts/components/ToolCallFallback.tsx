@@ -33,6 +33,7 @@ interface ToolDiff {
  * Short one-line hint shown next to the tool name in the collapsed summary.
  * Picks up to 3 identifying args so a bulk sequence of the same tool is
  * distinguishable at a glance (e.g. `id=26520 menu_order=6`).
+ * @param args
  */
 function summarizeArgs(args: unknown): string {
   if (!args || typeof args !== "object" || Array.isArray(args)) {
@@ -121,6 +122,8 @@ interface DiffViewerProps {
  * the tool result (set by editor-bridge after the mutation applied) — shows
  * line-level +/- with surrounding context collapsed to "…" stubs. Pure
  * presentation; no buttons, no state.
+ * @param root0
+ * @param root0.diff
  */
 function DiffViewer({ diff }: DiffViewerProps): JSX.Element | null {
   const rows = useMemo(() => {
@@ -236,7 +239,7 @@ export function ToolCallFallback({
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
   const diff: ToolDiff | null =
     result && typeof result === "object" && "diff" in result
-      ? ((result as { diff?: ToolDiff }).diff ?? null)
+      ? (result as { diff?: ToolDiff }).diff ?? null
       : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
   const isRetrying = !!(toolCallId && retryingIds?.has(toolCallId));

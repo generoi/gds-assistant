@@ -135,16 +135,12 @@ function BlockChip({ clientId, cachedLabel }: BlockChipProps): JSX.Element {
     window as unknown as {
       wp?: {
         data?: {
-          select?: (
-            store: string,
-          ) =>
+          select?: (store: string) =>
             | {
                 getBlockName?: (clientId: string) => string | undefined;
               }
             | undefined;
-          dispatch?: (
-            store: string,
-          ) =>
+          dispatch?: (store: string) =>
             | {
                 selectBlock?: (clientId: string) => void;
               }
@@ -340,7 +336,9 @@ interface AssistantMessageTextProps {
   text: string;
 }
 
-function AssistantMessageText({ text }: AssistantMessageTextProps): JSX.Element {
+function AssistantMessageText({
+  text,
+}: AssistantMessageTextProps): JSX.Element {
   // StreamdownTextPrimitive's published types omit our actual props (text,
   // allowedTags) but the runtime accepts them — these are how assistant-ui
   // intends the primitive to be used inside a MessagePrimitive.Content
@@ -357,6 +355,7 @@ function AssistantMessageText({ text }: AssistantMessageTextProps): JSX.Element 
  * message DATA (not the rendered DOM) so it captures each tool call's full
  * request + response even while the card is collapsed — handy for pasting a
  * tool exchange into a bug report.
+ * @param parts
  */
 function messageToCopyText(parts: AnyMessagePart[] | undefined): string {
   return (parts || [])
@@ -392,6 +391,7 @@ function messageToCopyText(parts: AnyMessagePart[] | undefined): string {
  * "Copied!" confirmation stays reliable.
  *
  * Exported because the modal's "Copy transcript" button reuses it.
+ * @param text
  */
 export function copyToClipboard(text: string): Promise<boolean> {
   // execCommand first: it's synchronous, so it stays inside the click's

@@ -84,6 +84,9 @@ export function getStoredPanelPosition(): PanelPosition | null {
  * Set the panel's position CSS custom properties on the Radix Content node
  * (and tag its wrapper so our flattening stylesheet kicks in). Called from
  * the AssistantModal's drag-end handler.
+ * @param node
+ * @param top
+ * @param left
  */
 export function applyPanelPosition(
   node: HTMLElement | null,
@@ -105,6 +108,7 @@ export function applyPanelPosition(
  * Reverse of {@link applyPanelPosition} — drop our overrides so CSS defaults
  * (bottom-right anchored) take over again. Used when the user "resets
  * position" or closes the panel.
+ * @param node
  */
 export function clearPanelPosition(node: HTMLElement | null): void {
   if (!node) {

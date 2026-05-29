@@ -53,10 +53,9 @@ export interface AssistantModalProps {
   retryingIds?: Set<string>;
 }
 
-/**
- * Floating assistant modal for the WP admin.
- * Uses assistant-ui primitives for full control over rendering.
- */
+// Floating assistant modal for the WP admin.
+// Uses assistant-ui primitives for full control over rendering — see
+// AssistantModalProps for the wiring surface.
 export function AssistantModal({
   onNewChat,
   onLoadConversation,
@@ -150,62 +149,65 @@ export function AssistantModal({
   // Drag the panel around by its header. Starts a drag only on empty
   // header space — clicks on buttons inside the header still work
   // normally because they stop propagation naturally.
-  const onHeaderMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) {
-      return;
-    }
-    const target = e.target as HTMLElement;
-    if (target.closest("button, input, textarea, select, a")) {
-      return;
-    }
-
-    e.preventDefault();
-    const panel = panelRef.current;
-    if (!panel) {
-      return;
-    }
-
-    // Snapshot initial rect + mouse pos, THEN lock our positioning
-    // immediately so the panel stays put during the drag (no jump).
-    const rect = panel.getBoundingClientRect();
-    const startTop = rect.top;
-    const startLeft = rect.left;
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    // Pin the panel at its current visual location. Flip React state so
-    // the --moved class is rendered via the className prop (React would
-    // strip a DOM-only class on next render).
-    setIsMoved(true);
-    applyPanelPosition(panel, startTop, startLeft);
-
-    const clamp = (top: number, left: number) => ({
-      top: Math.max(0, Math.min(window.innerHeight - 40, top)),
-      left: Math.max(0, Math.min(window.innerWidth - 40, left)),
-    });
-
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      const { top, left } = clamp(startTop + dy, startLeft + dx);
-      applyPanelPosition(panel, top, left);
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      try {
-        const r = panel.getBoundingClientRect();
-        localStorage.setItem(
-          "gds-assistant-panel-position",
-          JSON.stringify({ top: r.top, left: r.left }),
-        );
-      } catch {
-        // noop
+  const onHeaderMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) {
+        return;
       }
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
+      const target = e.target as HTMLElement;
+      if (target.closest("button, input, textarea, select, a")) {
+        return;
+      }
+
+      e.preventDefault();
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+
+      // Snapshot initial rect + mouse pos, THEN lock our positioning
+      // immediately so the panel stays put during the drag (no jump).
+      const rect = panel.getBoundingClientRect();
+      const startTop = rect.top;
+      const startLeft = rect.left;
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      // Pin the panel at its current visual location. Flip React state so
+      // the --moved class is rendered via the className prop (React would
+      // strip a DOM-only class on next render).
+      setIsMoved(true);
+      applyPanelPosition(panel, startTop, startLeft);
+
+      const clamp = (top: number, left: number) => ({
+        top: Math.max(0, Math.min(window.innerHeight - 40, top)),
+        left: Math.max(0, Math.min(window.innerWidth - 40, left)),
+      });
+
+      const onMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const { top, left } = clamp(startTop + dy, startLeft + dx);
+        applyPanelPosition(panel, top, left);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        try {
+          const r = panel.getBoundingClientRect();
+          localStorage.setItem(
+            "gds-assistant-panel-position",
+            JSON.stringify({ top: r.top, left: r.left }),
+          );
+        } catch {
+          // noop
+        }
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [],
+  );
 
   // Reset position/size to defaults (clears both localStorage keys and
   // inline styles). Exposed via a button in the header context menu or

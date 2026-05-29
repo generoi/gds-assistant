@@ -1,8 +1,4 @@
-import {
-  DataViews,
-  type Field,
-  type View,
-} from "@wordpress/dataviews";
+import { DataViews, type Field, type View } from "@wordpress/dataviews";
 import { useState, useEffect, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 import {
@@ -70,9 +66,9 @@ export function McpServersDataView(): JSX.Element {
     readInitialNotice(),
   );
   // null = closed, {} = add, server-row = edit
-  const [editing, setEditing] = useState<ServerRow | Record<string, never> | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<
+    ServerRow | Record<string, never> | null
+  >(null);
 
   const load = useCallback(async () => {
     setLoading(true);

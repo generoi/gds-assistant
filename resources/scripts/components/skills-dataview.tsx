@@ -1,8 +1,4 @@
-import {
-  DataViews,
-  type Field,
-  type View,
-} from "@wordpress/dataviews";
+import { DataViews, type Field, type View } from "@wordpress/dataviews";
 import { useEntityRecords } from "@wordpress/core-data";
 import { useState, useCallback, useRef } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
@@ -44,7 +40,10 @@ interface EditingSkill {
 
 // ── Helpers ─────────────────────────────────────────────────
 
-/** Convert a skill record to export format. */
+/**
+ * Convert a skill record to export format.
+ * @param item
+ */
 function toExportFormat(item: SkillRow): ExportedSkill {
   const titleField = item.title;
   const title =
@@ -66,7 +65,11 @@ function toExportFormat(item: SkillRow): ExportedSkill {
   };
 }
 
-/** Download JSON as a file. */
+/**
+ * Download JSON as a file.
+ * @param data
+ * @param filename
+ */
 function downloadJson(data: unknown, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
@@ -89,8 +92,7 @@ const FIELDS: Field<SkillRow>[] = [
     enableGlobalSearch: true,
     render: ({ item }) => {
       const t = item.title;
-      const text =
-        typeof t === "string" ? t : t?.rendered || t?.raw || "";
+      const text = typeof t === "string" ? t : t?.rendered || t?.raw || "";
       return <strong>{text}</strong>;
     },
   },
@@ -281,8 +283,7 @@ export function SkillsDataView(): JSX.Element {
       label: __("Model & Schedule", "gds-assistant"),
       callback: ([item]: SkillRow[]) => {
         const t = item!.title;
-        const title =
-          typeof t === "string" ? t : t?.raw || t?.rendered || "";
+        const title = typeof t === "string" ? t : t?.raw || t?.rendered || "";
         setEditingSkill({
           id: item!.id,
           title,

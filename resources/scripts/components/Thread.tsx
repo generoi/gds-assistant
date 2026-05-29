@@ -55,6 +55,7 @@ interface TranscriptMessage {
  * Serialise the thread to Markdown for Export-as-Markdown and Copy-chat.
  * Built from message DATA (not the rendered DOM) so collapsed tool-call cards
  * still emit their full request + response.
+ * @param msgs
  */
 function transcriptToMarkdown(msgs: TranscriptMessage[] | undefined): string {
   if (!msgs?.length) {

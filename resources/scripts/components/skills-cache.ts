@@ -61,8 +61,7 @@ export async function getSkillsFresh(): Promise<Skill[]> {
       skillsCache = posts.map((p) => ({
         id: p.id,
         slug: p.slug,
-        title:
-          typeof p.title === "string" ? p.title : p.title?.rendered || "",
+        title: typeof p.title === "string" ? p.title : p.title?.rendered || "",
         description: p.excerpt?.rendered?.replace(/<[^>]*>/g, "").trim() || "",
         // Use raw content (preserves markdown/formatting) when available
         prompt:
