@@ -206,10 +206,12 @@ export function ToolCallFallback({
 }) {
   const argsHint = summarizeArgs(args);
   const ctx = useContext(UndoContext);
-  const { undoableActions, onUndo, pendingApprovalIds } = ctx;
+  const { undoableActions, onUndo, onRetry, retryingIds, pendingApprovalIds } =
+    ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
   const diff = result && typeof result === "object" ? result.diff : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
+  const isRetrying = !!(toolCallId && retryingIds?.has(toolCallId));
 
   return (
     <div
@@ -242,6 +244,25 @@ export function ToolCallFallback({
             <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--error">
               Error
             </span>
+          )}
+          {/* Retry — only meaningful on errored, completed calls. The retry
+              handler decides whether the tool is actually re-runnable; for
+              server-side tools we alert that re-running isn't supported yet.
+              See use-runtime-adapter `retryToolCall`. */}
+          {isError && onRetry && !needsApproval && (
+            <button
+              type="button"
+              className="gds-assistant__tool-retry-btn"
+              disabled={isRetrying}
+              title={`Re-run ${toolName} with the same arguments`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRetry(toolCallId);
+              }}
+            >
+              {isRetrying ? "Retrying…" : "↻ Retry"}
+            </button>
           )}
           {/* Per-action Undo (only for reversible, successful actions). */}
           {undo &&

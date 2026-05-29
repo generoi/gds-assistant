@@ -38,6 +38,8 @@ export function App() {
     pendingApprovals,
     undoableActions,
     undoAction,
+    retryToolCall,
+    retryingIds,
   } = useAssistantRuntime();
   const [context, setContext] = useState("");
 
@@ -99,6 +101,8 @@ export function App() {
           pendingApprovals={pendingApprovals}
           undoableActions={undoableActions}
           onUndo={undoAction}
+          onRetry={retryToolCall}
+          retryingIds={retryingIds}
         />
       </Suspense>
     </AssistantRuntimeProvider>

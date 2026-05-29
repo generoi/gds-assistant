@@ -9,8 +9,8 @@
  *
  * `@theme` tokens stay un-prefixed so CSS variables remain referenceable.
  */
-@import 'tailwindcss/utilities';
-@import 'tailwindcss/theme';
+@import "tailwindcss/utilities";
+@import "tailwindcss/theme";
 
 /* Scan streamdown for Tailwind utility classes.
    Local node_modules, hoisted workspace root, and btb-transformers root. */
@@ -46,7 +46,7 @@
      panel have their own 100100 below; putting z-index on this base class
      affects any WP admin page wrapper also tagged `.gds-assistant` (Memory,
      Skills, MCP Servers…), pushing those above WP modals' backdrops. */
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -79,7 +79,7 @@
     transform: scale(1.05);
   }
 
-  &[data-state='open'] {
+  &[data-state="open"] {
     background: #135e96;
   }
 }
@@ -499,7 +499,9 @@
 }
 
 @keyframes gds-assistant-typing {
-  0%, 60%, 100% {
+  0%,
+  60%,
+  100% {
     opacity: 0.25;
     transform: translateY(0);
   }
@@ -1547,7 +1549,7 @@ abbr.gds-tool {
 }
 
 /* Streamdown table wrapper + action buttons */
-.gds-assistant__message--assistant [data-streamdown='table-wrapper'] {
+.gds-assistant__message--assistant [data-streamdown="table-wrapper"] {
   border-radius: 6px;
   border: 1px solid #ddd;
   background: #f9f9f9;
@@ -1560,7 +1562,7 @@ abbr.gds-tool {
 }
 
 /* Button toolbar row (copy/download/fullscreen) */
-.gds-assistant__message--assistant [data-streamdown='table-wrapper'] > .flex {
+.gds-assistant__message--assistant [data-streamdown="table-wrapper"] > .flex {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -1568,7 +1570,7 @@ abbr.gds-tool {
   gap: 2px;
 }
 
-.gds-assistant__message--assistant [data-streamdown='table-wrapper'] button {
+.gds-assistant__message--assistant [data-streamdown="table-wrapper"] button {
   background: none;
   border: none;
   padding: 4px;
@@ -1580,13 +1582,13 @@ abbr.gds-tool {
   }
 }
 
-.gds-assistant__message--assistant [data-streamdown='table-wrapper'] .relative {
+.gds-assistant__message--assistant [data-streamdown="table-wrapper"] .relative {
   position: relative;
 }
 
 /* Streamdown inner table container (the div wrapping the <table>) */
 .gds-assistant__message--assistant
-  [data-streamdown='table-wrapper']
+  [data-streamdown="table-wrapper"]
   > div:last-child {
   overflow-x: auto;
   overflow-y: auto;
@@ -1620,7 +1622,7 @@ abbr.gds-tool {
 }
 
 /* Streamdown link safety modal — portal to panel level instead of viewport */
-[data-streamdown='link-safety-modal'] {
+[data-streamdown="link-safety-modal"] {
   position: absolute;
   inset: 0;
   z-index: 100101;
@@ -1793,6 +1795,33 @@ abbr.gds-tool {
   font-style: italic;
 }
 
+/* Mirrors the undo button — same compact, link-style affordance so both
+   per-tool actions sit consistently in the summary row. */
+.gds-assistant__tool-retry-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 11px;
+  line-height: 1;
+  color: #757575;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gds-assistant__tool-retry-btn:hover:not(:disabled) {
+  color: #2271b1;
+}
+
+.gds-assistant__tool-retry-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
 .gds-assistant__tool-undo-caveats {
   padding: 6px 10px;
   border-top: 1px solid #eee;
@@ -1853,4 +1882,3 @@ abbr.gds-tool {
     height: calc(100vh - 100px);
   }
 }
-
