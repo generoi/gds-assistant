@@ -13,9 +13,9 @@ class ToolRestrictor
     /**
      * Filter tools based on model tier.
      *
-     * @param  array  $tools  Tool definitions from ToolRegistry
+     * @param  array<int, array<string, mixed>>  $tools  Tool definitions from ToolRegistry
      * @param  string  $tier  Model tier: 'read', 'standard', or 'full'
-     * @return array Filtered tools
+     * @return array<int, array<string, mixed>> Filtered tools
      */
     public static function filter(array $tools, string $tier): array
     {
@@ -57,6 +57,7 @@ class ToolRestrictor
     /**
      * Classify a tool's risk level.
      *
+     * @param  array<string, mixed>  $tool
      * @return string 'safe', 'moderate', or 'dangerous'
      */
     public static function classifyRisk(array $tool): string

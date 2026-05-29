@@ -74,6 +74,7 @@ class SkillsToolProvider implements ToolProviderInterface
         return str_starts_with($name, self::PREFIX);
     }
 
+    /** @return array<int, array<string, mixed>> */
     private function listSkills(): array
     {
         $posts = get_posts([
@@ -94,6 +95,10 @@ class SkillsToolProvider implements ToolProviderInterface
         ], $posts);
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function createSkill(array $input): array|\WP_Error
     {
         $title = sanitize_text_field($input['title'] ?? '');
@@ -142,6 +147,10 @@ class SkillsToolProvider implements ToolProviderInterface
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function updateSkill(array $input): array|\WP_Error
     {
         $id = $input['id'] ?? 0;

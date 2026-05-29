@@ -58,6 +58,7 @@ class UndoToolProvider implements ToolProviderInterface
         return str_starts_with($name, self::PREFIX);
     }
 
+    /** @return array<int, array<string, mixed>> */
     private function listUndoable(): array
     {
         $rows = (new AuditLog)->getReversible(get_current_user_id(), 10);
@@ -74,6 +75,10 @@ class UndoToolProvider implements ToolProviderInterface
         }, $rows);
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>|\WP_Error
+     */
     private function undo(array $input): array|\WP_Error
     {
         $log = new AuditLog;

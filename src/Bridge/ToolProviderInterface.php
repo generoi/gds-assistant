@@ -19,6 +19,7 @@ interface ToolProviderInterface
     /**
      * Execute a tool by name.
      *
+     * @param  array<string, mixed>  $input
      * @return mixed|\WP_Error Result data or error
      */
     public function executeTool(string $name, array $input): mixed;
