@@ -16,7 +16,7 @@ class ContextCompressorTest extends WP_UnitTestCase
 
         $result = ContextCompressor::compress($messages);
 
-        $this->assertSame($messages, $result['messages']);
+        $this->assertSame($messages, $result->messages);
     }
 
     public function test_truncates_large_tool_results(): void
@@ -46,7 +46,7 @@ class ContextCompressorTest extends WP_UnitTestCase
         remove_all_filters('gds-assistant/compression_threshold');
 
         // The tool result should be summarized, not the full JSON
-        $compressed = $result['messages'][2]['content'][0]['content'] ?? '';
+        $compressed = $result->messages[2]['content'][0]['content'] ?? '';
         $this->assertStringContainsString('Content list', $compressed);
         $this->assertStringContainsString('Page 1', $compressed);
         $this->assertLessThan(strlen($largeResult), strlen($compressed));
@@ -75,7 +75,7 @@ class ContextCompressorTest extends WP_UnitTestCase
 
         // Old tool results should be stripped
         $firstToolResult = null;
-        foreach ($result['messages'] as $msg) {
+        foreach ($result->messages as $msg) {
             if (! is_array($msg['content'] ?? null)) {
                 continue;
             }
