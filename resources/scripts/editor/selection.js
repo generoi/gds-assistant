@@ -20,14 +20,22 @@ export const TEXT_BLOCKS = new Set([
   "core/verse",
 ]);
 
-/** Friendly block label for human-facing strings ("core/paragraph" → "paragraph"). */
+/**
+ * Friendly block label for human-facing strings ("core/paragraph" → "paragraph").
+ * @param name
+ */
 export function blockLabel(name) {
   return (name || "").replace(/^core\//, "").replace(/-/g, " ");
 }
 
-/** Strip HTML + collapse whitespace from a string. */
+/**
+ * Strip HTML + collapse whitespace from a string.
+ * @param value
+ */
 export function stripHtml(value) {
-  if (typeof value !== "string") return "";
+  if (typeof value !== "string") {
+    return "";
+  }
   return value
     .replace(/<[^>]+>/g, "")
     .replace(/\s+/g, " ")
@@ -39,11 +47,14 @@ export function stripHtml(value) {
  *  - an HTML string (legacy)
  *  - a RichTextValue object with `.text` + `.formats` (WP 7.0+)
  * Normalise both to plain text.
+ * @param attrValue
  */
 export function attrToPlainText(attrValue) {
   if (typeof attrValue === "string") {
     const rich = window.wp?.richText?.create?.({ html: attrValue });
-    if (typeof rich?.text === "string") return rich.text;
+    if (typeof rich?.text === "string") {
+      return rich.text;
+    }
     return stripHtml(attrValue);
   }
   if (
@@ -56,12 +67,17 @@ export function attrToPlainText(attrValue) {
   return "";
 }
 
-/** Plain text of a block's primary content attribute, collapsed + trimmed. */
+/**
+ * Plain text of a block's primary content attribute, collapsed + trimmed.
+ * @param clientId
+ */
 export function getBlockText(clientId) {
   const block = window.wp?.data
     ?.select?.("core/block-editor")
     ?.getBlock?.(clientId);
-  if (!block) return "";
+  if (!block) {
+    return "";
+  }
   const attrs = block.attributes || {};
   const value = attrs.content ?? attrs.text ?? attrs.value;
   return attrToPlainText(value).replace(/\s+/g, " ").trim();
@@ -72,22 +88,37 @@ export function getBlockText(clientId) {
  * rich-text attribute, return just that substring. Otherwise return ''.
  * wp.data preserves the selection across toolbar/composer clicks so this works
  * after focus has left the editor surface.
+ * @param clientId
  */
 export function getBlockSelectionText(clientId) {
   const select = window.wp?.data?.select?.("core/block-editor");
-  if (!select) return "";
+  if (!select) {
+    return "";
+  }
   const start = select.getSelectionStart?.();
   const end = select.getSelectionEnd?.();
-  if (!start || !end) return "";
-  if (start.clientId !== clientId || end.clientId !== clientId) return "";
-  if (start.attributeKey !== end.attributeKey) return "";
-  if (start.offset == null || end.offset == null) return "";
-  if (start.offset === end.offset) return "";
+  if (!start || !end) {
+    return "";
+  }
+  if (start.clientId !== clientId || end.clientId !== clientId) {
+    return "";
+  }
+  if (start.attributeKey !== end.attributeKey) {
+    return "";
+  }
+  if (start.offset === undefined || end.offset === undefined) {
+    return "";
+  }
+  if (start.offset === end.offset) {
+    return "";
+  }
 
   const block = select.getBlock?.(clientId);
   const attrValue = block?.attributes?.[start.attributeKey];
   const text = attrToPlainText(attrValue);
-  if (!text) return "";
+  if (!text) {
+    return "";
+  }
 
   // Rich-text selection offsets index the plain text, not the source HTML.
   const from = Math.min(start.offset, end.offset);
@@ -112,13 +143,19 @@ export function getBlockSelectionText(clientId) {
  */
 export function getCurrentSelectionContext() {
   const select = window.wp?.data?.select?.("core/block-editor");
-  if (!select) return null;
+  if (!select) {
+    return null;
+  }
   const ids = select.getSelectedBlockClientIds?.() || [];
-  if (!ids.length) return null;
+  if (!ids.length) {
+    return null;
+  }
 
   if (ids.length > 1) {
     const names = ids.map((id) => select.getBlockName?.(id)).filter(Boolean);
-    if (!names.length) return null;
+    if (!names.length) {
+      return null;
+    }
     return {
       mode: "multi-block",
       count: ids.length,
@@ -130,7 +167,9 @@ export function getCurrentSelectionContext() {
 
   const clientId = ids[0];
   const name = select.getBlockName?.(clientId);
-  if (!name) return null;
+  if (!name) {
+    return null;
+  }
   const label = blockLabel(name);
 
   // Text-range mode requires the block to be text-bearing AND have a non-empty

@@ -22,7 +22,9 @@ import { formatMessageTime } from "../hooks/use-runtime-adapter";
 import { ToolCallFallback } from "./ToolCallFallback";
 
 function MessageImage({ image }) {
-  if (!image) return null;
+  if (!image) {
+    return null;
+  }
   return (
     <img src={image} alt="Attached" className="gds-assistant__message-image" />
   );
@@ -75,9 +77,13 @@ function MessageTimestamp() {
   const role = useMessage((s) => s.role);
 
   // Streaming assistant message: no time yet — TypingIndicator covers it.
-  if (isRunning && isLast && role === "assistant") return null;
+  if (isRunning && isLast && role === "assistant") {
+    return null;
+  }
 
-  if (!createdAt || new Date(createdAt).getTime() < 100000) return null;
+  if (!createdAt || new Date(createdAt).getTime() < 100000) {
+    return null;
+  }
   const date = new Date(createdAt);
   return (
     <span
@@ -117,9 +123,9 @@ function BlockChip({ clientId, cachedLabel }) {
     try {
       const sel = `[data-block="${clientId}"]`;
       const inMain = document.querySelector(sel);
-      if (inMain)
+      if (inMain) {
         inMain.scrollIntoView({ behavior: "smooth", block: "center" });
-      else {
+      } else {
         const iframe = document.querySelector('iframe[name="editor-canvas"]');
         iframe?.contentDocument
           ?.querySelector(sel)
@@ -163,12 +169,18 @@ function renderTextWithBlockChips(text) {
   let m;
   BLOCK_REF_RE.lastIndex = 0;
   while ((m = BLOCK_REF_RE.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) {
+      out.push(text.slice(last, m.index));
+    }
     out.push({ chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}` });
     last = m.index + m[0].length;
   }
-  if (last < text.length) out.push(text.slice(last));
-  if (out.length === 1 && typeof out[0] === "string") return null;
+  if (last < text.length) {
+    out.push(text.slice(last));
+  }
+  if (out.length === 1 && typeof out[0] === "string") {
+    return null;
+  }
   return out;
 }
 
@@ -179,7 +191,9 @@ function UserMessageText({ text }) {
 
   const renderText = (raw) => {
     const parts = renderTextWithBlockChips(raw);
-    if (!parts) return raw;
+    if (!parts) {
+      return raw;
+    }
     return parts.map((p, i) =>
       typeof p === "string" ? (
         <span key={i}>{p}</span>
@@ -227,7 +241,9 @@ export function AssistantMessage() {
         p.type === "image",
     );
   });
-  if (isEmpty) return null;
+  if (isEmpty) {
+    return null;
+  }
 
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--assistant">
@@ -274,7 +290,9 @@ function AssistantMessageText({ text }) {
 function messageToCopyText(parts) {
   return (parts || [])
     .map((p) => {
-      if (p.type === "text") return p.text || "";
+      if (p.type === "text") {
+        return p.text || "";
+      }
       if (p.type === "tool-call") {
         const lines = [`Tool: ${p.toolName || "unknown"}`];
         const args = p.args || {};
@@ -322,7 +340,9 @@ export function copyToClipboard(text) {
     ta.select();
     const ok = document.execCommand("copy");
     document.body.removeChild(ta);
-    if (ok) return Promise.resolve(true);
+    if (ok) {
+      return Promise.resolve(true);
+    }
   } catch {
     // fall through to the async API
   }
@@ -342,7 +362,9 @@ function CopyMessageButton() {
   const handleCopy = useCallback(() => {
     const text = messageToCopyText(content);
     copyToClipboard(text).then((ok) => {
-      if (!ok) return;
+      if (!ok) {
+        return;
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });

@@ -46,11 +46,15 @@ import { UndoContext } from "./UndoContext";
 function getStoredPanelSize() {
   try {
     const raw = localStorage.getItem("gds-assistant-panel-size");
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const { width, height } = JSON.parse(raw);
     const maxW = window.innerWidth - 48;
     const maxH = window.innerHeight - 120;
-    if (typeof width !== "number" || typeof height !== "number") return null;
+    if (typeof width !== "number" || typeof height !== "number") {
+      return null;
+    }
     return {
       width: Math.max(320, Math.min(maxW, width)),
       height: Math.max(400, Math.min(maxH, height)),
@@ -77,7 +81,9 @@ function getStoredPanelSize() {
  * @param left
  */
 function applyPanelPosition(node, top, left) {
-  if (!node) return;
+  if (!node) {
+    return;
+  }
   node.style.setProperty("--gds-panel-top", `${top}px`);
   node.style.setProperty("--gds-panel-left", `${left}px`);
   // Radix wraps Content in <div data-radix-popper-content-wrapper> that
@@ -85,15 +91,21 @@ function applyPanelPosition(node, top, left) {
   // on the panel becomes relative to the wrapper, not the viewport — so
   // we tag the wrapper too. CSS rule for this class flattens the wrapper.
   const wrapper = node.closest("[data-radix-popper-content-wrapper]");
-  if (wrapper) wrapper.classList.add("gds-assistant__panel-wrapper--moved");
+  if (wrapper) {
+    wrapper.classList.add("gds-assistant__panel-wrapper--moved");
+  }
 }
 
 function clearPanelPosition(node) {
-  if (!node) return;
+  if (!node) {
+    return;
+  }
   node.style.removeProperty("--gds-panel-top");
   node.style.removeProperty("--gds-panel-left");
   const wrapper = node.closest("[data-radix-popper-content-wrapper]");
-  if (wrapper) wrapper.classList.remove("gds-assistant__panel-wrapper--moved");
+  if (wrapper) {
+    wrapper.classList.remove("gds-assistant__panel-wrapper--moved");
+  }
 }
 
 /**
@@ -104,9 +116,13 @@ function clearPanelPosition(node) {
 function getStoredPanelPosition() {
   try {
     const raw = localStorage.getItem("gds-assistant-panel-position");
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const { top, left } = JSON.parse(raw);
-    if (typeof top !== "number" || typeof left !== "number") return null;
+    if (typeof top !== "number" || typeof left !== "number") {
+      return null;
+    }
     // Keep at least 40px of the panel on-screen at all edges so the user
     // can always grab the drag handle.
     return {
@@ -185,7 +201,9 @@ export function AssistantModal({
   // appears.
   const setPanelRef = useCallback((node) => {
     panelRef.current = node;
-    if (!node) return;
+    if (!node) {
+      return;
+    }
     const size = getStoredPanelSize();
     if (size) {
       node.style.width = `${size.width}px`;
@@ -204,13 +222,19 @@ export function AssistantModal({
   // header space — clicks on buttons inside the header still work
   // normally because they stop propagation naturally.
   const onHeaderMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0) {
+      return;
+    }
     const target = e.target;
-    if (target.closest("button, input, textarea, select, a")) return;
+    if (target.closest("button, input, textarea, select, a")) {
+      return;
+    }
 
     e.preventDefault();
     const panel = panelRef.current;
-    if (!panel) return;
+    if (!panel) {
+      return;
+    }
 
     // Snapshot initial rect + mouse pos, THEN lock our positioning
     // immediately so the panel stays put during the drag (no jump).
@@ -279,7 +303,9 @@ export function AssistantModal({
   const onResizeStart = useCallback((e) => {
     e.preventDefault();
     const panel = panelRef.current;
-    if (!panel) return;
+    if (!panel) {
+      return;
+    }
     const startX = e.clientX;
     const startY = e.clientY;
     const rect = panel.getBoundingClientRect();
@@ -384,7 +410,9 @@ export function AssistantModal({
  * @param msgs
  */
 function transcriptToMarkdown(msgs) {
-  if (!msgs?.length) return "";
+  if (!msgs?.length) {
+    return "";
+  }
 
   const lines = [
     `# Conversation Export\n`,
@@ -446,7 +474,9 @@ function Thread({
 
   // Close the "⋯" overflow menu on an outside click.
   useEffect(() => {
-    if (!showMore) return undefined;
+    if (!showMore) {
+      return undefined;
+    }
     const onDocClick = (e) => {
       if (moreRef.current && !moreRef.current.contains(e.target)) {
         setShowMore(false);
@@ -497,7 +527,9 @@ function Thread({
   const threadRuntime = useThreadRuntime();
   const handleExport = useCallback(() => {
     const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
-    if (!md) return;
+    if (!md) {
+      return;
+    }
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -510,9 +542,13 @@ function Thread({
   const [chatCopied, setChatCopied] = useState(false);
   const handleCopyChat = useCallback(() => {
     const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
-    if (!md) return;
+    if (!md) {
+      return;
+    }
     copyToClipboard(md).then((ok) => {
-      if (!ok) return;
+      if (!ok) {
+        return;
+      }
       setChatCopied(true);
       setTimeout(() => setChatCopied(false), 1500);
     });
@@ -535,7 +571,9 @@ function Thread({
         onMouseDown={onHeaderMouseDown}
         onDoubleClick={(e) => {
           // Double-click empty header area to reset panel position/size
-          if (e.target.closest("button, input, textarea, select, a")) return;
+          if (e.target.closest("button, input, textarea, select, a")) {
+            return;
+          }
           resetPanelPosition?.();
         }}
         title="Drag to move — double-click to reset"

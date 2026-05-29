@@ -43,13 +43,17 @@ function SlashAutocomplete({ query, onSelect, onDismiss }) {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === "Escape") onDismiss();
+      if (e.key === "Escape") {
+        onDismiss();
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onDismiss]);
 
-  if (!filtered.length) return null;
+  if (!filtered.length) {
+    return null;
+  }
 
   return (
     <div className="gds-assistant__autocomplete">
@@ -88,8 +92,12 @@ function SlashAutocomplete({ query, onSelect, onDismiss }) {
 // the tooltip on huge documents. CSS (-webkit-line-clamp) handles the visual
 // truncation; this is just a backstop.
 function clampSnippet(text, max = 280) {
-  if (typeof text !== "string") return "";
-  if (text.length <= max) return text;
+  if (typeof text !== "string") {
+    return "";
+  }
+  if (text.length <= max) {
+    return text;
+  }
   return text.slice(0, max - 1).trimEnd() + "…";
 }
 
@@ -113,7 +121,9 @@ const SelectionIcon = (
 
 function SelectionChip() {
   const selection = useEditorSelection();
-  if (!selection) return null;
+  if (!selection) {
+    return null;
+  }
 
   let label;
   let snippet;
@@ -202,7 +212,9 @@ export function Composer() {
   // clear-on-skill-select transitions, so the draft is dropped once it's sent.
   useEffect(() => {
     const composer = threadRuntime.composer;
-    if (!composer?.subscribe || !composer.getState) return undefined;
+    if (!composer?.subscribe || !composer.getState) {
+      return undefined;
+    }
     try {
       const saved = localStorage.getItem("gds-assistant-draft");
       if (saved && !composer.getState().text && composer.setText) {

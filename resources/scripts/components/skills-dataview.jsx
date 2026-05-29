@@ -1,10 +1,10 @@
-import {DataViews} from '@wordpress/dataviews';
-import {useEntityRecords} from '@wordpress/core-data';
-import {useState, useCallback, useRef} from '@wordpress/element';
-import {__} from '@wordpress/i18n';
-import {edit, trash, plus, download, upload} from '@wordpress/icons';
-import {Button, Modal, SelectControl} from '@wordpress/components';
-import apiFetch from '@wordpress/api-fetch';
+import { DataViews } from "@wordpress/dataviews";
+import { useEntityRecords } from "@wordpress/core-data";
+import { useState, useCallback, useRef } from "@wordpress/element";
+import { __ } from "@wordpress/i18n";
+import { pencil, trash, plus, download, upload } from "@wordpress/icons";
+import { Button, Modal, SelectControl } from "@wordpress/components";
+import apiFetch from "@wordpress/api-fetch";
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -16,17 +16,17 @@ import apiFetch from '@wordpress/api-fetch';
  */
 function toExportFormat(item) {
   return {
-    title: item.title?.raw || item.title?.rendered || item.title || '',
-    slug: item.slug || '',
+    title: item.title?.raw || item.title?.rendered || item.title || "",
+    slug: item.slug || "",
     description:
       item.excerpt?.raw ||
-      item.excerpt?.rendered?.replace(/<[^>]*>/g, '').trim() ||
-      '',
+      item.excerpt?.rendered?.replace(/<[^>]*>/g, "").trim() ||
+      "",
     prompt:
       item.content?.raw ||
-      item.content?.rendered?.replace(/<[^>]*>/g, '').trim() ||
-      '',
-    model: item.meta?._assistant_model || '',
+      item.content?.rendered?.replace(/<[^>]*>/g, "").trim() ||
+      "",
+    model: item.meta?._assistant_model || "",
   };
 }
 
@@ -38,10 +38,10 @@ function toExportFormat(item) {
  */
 function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: 'application/json',
+    type: "application/json",
   });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
@@ -52,68 +52,72 @@ function downloadJson(data, filename) {
 
 const FIELDS = [
   {
-    id: 'title',
-    label: __('Title', 'gds-assistant'),
+    id: "title",
+    label: __("Title", "gds-assistant"),
     enableSorting: true,
     enableGlobalSearch: true,
-    render: ({item}) => <strong>{item.title?.rendered || item.title}</strong>,
+    render: ({ item }) => <strong>{item.title?.rendered || item.title}</strong>,
   },
   {
-    id: 'slug',
-    label: __('Slash Command', 'gds-assistant'),
-    render: ({item}) => <code>/{item.slug}</code>,
+    id: "slug",
+    label: __("Slash Command", "gds-assistant"),
+    render: ({ item }) => <code>/{item.slug}</code>,
   },
   {
-    id: 'excerpt',
-    label: __('Description', 'gds-assistant'),
+    id: "excerpt",
+    label: __("Description", "gds-assistant"),
     enableGlobalSearch: true,
-    render: ({item}) => {
+    render: ({ item }) => {
       const text =
         item.excerpt?.raw ||
-        item.excerpt?.rendered?.replace(/<[^>]*>/g, '') ||
-        '';
+        item.excerpt?.rendered?.replace(/<[^>]*>/g, "") ||
+        "";
       return (
-        <span>{text.length > 100 ? text.slice(0, 97) + '...' : text}</span>
+        <span>{text.length > 100 ? text.slice(0, 97) + "..." : text}</span>
       );
     },
   },
   {
-    id: 'model',
-    label: __('Model', 'gds-assistant'),
-    render: ({item}) => {
-      const model = item.meta?._assistant_model || '';
-      return model ?
-          <code>{model}</code>
-        : <span className="gds-assistant-muted">default</span>;
+    id: "model",
+    label: __("Model", "gds-assistant"),
+    render: ({ item }) => {
+      const model = item.meta?._assistant_model || "";
+      return model ? (
+        <code>{model}</code>
+      ) : (
+        <span className="gds-assistant-muted">default</span>
+      );
     },
   },
   {
-    id: 'schedule',
-    label: __('Schedule', 'gds-assistant'),
-    render: ({item}) => {
-      const schedule = item.meta?._assistant_schedule || '';
-      return schedule ?
-          <code>{schedule}</code>
-        : <span className="gds-assistant-muted">-</span>;
+    id: "schedule",
+    label: __("Schedule", "gds-assistant"),
+    render: ({ item }) => {
+      const schedule = item.meta?._assistant_schedule || "";
+      return schedule ? (
+        <code>{schedule}</code>
+      ) : (
+        <span className="gds-assistant-muted">-</span>
+      );
     },
   },
   {
-    id: 'date',
-    label: __('Date', 'gds-assistant'),
-    type: 'datetime',
+    id: "date",
+    label: __("Date", "gds-assistant"),
+    type: "datetime",
     enableSorting: true,
-    getValue: ({item}) => item.date,
+    getValue: ({ item }) => item.date,
   },
 ];
 
 const DEFAULT_VIEW = {
-  type: 'table',
-  search: '',
+  type: "table",
+  search: "",
   page: 1,
   perPage: 25,
-  sort: {field: 'title', direction: 'asc'},
+  sort: { field: "title", direction: "asc" },
   filters: [],
-  fields: ['title', 'slug', 'excerpt', 'model', 'schedule', 'date'],
+  fields: ["title", "slug", "excerpt", "model", "schedule", "date"],
 };
 
 // ── Component ───────────────────────────────────────────────
@@ -127,17 +131,17 @@ export function SkillsDataView() {
   const queryArgs = {
     per_page: view.perPage,
     page: view.page,
-    orderby: view.sort?.field || 'title',
-    order: view.sort?.direction || 'asc',
+    orderby: view.sort?.field || "title",
+    order: view.sort?.direction || "asc",
     search: view.search || undefined,
-    context: 'edit',
+    context: "edit",
     _embed: true,
     _refresh: refreshKey, // Cache-bust key to force refetch after mutations
   };
 
-  const {records, totalItems, totalPages, isResolving} = useEntityRecords(
-    'postType',
-    'assistant_skill',
+  const { records, totalItems, totalPages, isResolving } = useEntityRecords(
+    "postType",
+    "assistant_skill",
     queryArgs,
   );
 
@@ -145,7 +149,7 @@ export function SkillsDataView() {
     for (const item of items) {
       await apiFetch({
         path: `/wp/v2/assistant-skills/${item.id}?force=true`,
-        method: 'DELETE',
+        method: "DELETE",
       });
     }
     setRefreshKey((k) => k + 1);
@@ -154,19 +158,19 @@ export function SkillsDataView() {
   // Export all skills
   const handleExportAll = useCallback(async () => {
     const allSkills = await apiFetch({
-      path: '/wp/v2/assistant-skills?per_page=100&context=edit',
+      path: "/wp/v2/assistant-skills?per_page=100&context=edit",
     });
     const exported = allSkills.map(toExportFormat);
-    downloadJson(exported, 'gds-assistant-skills.json');
+    downloadJson(exported, "gds-assistant-skills.json");
   }, []);
 
   // Export selected skills (single or bulk)
   const handleExport = useCallback((items) => {
     const exported = items.map(toExportFormat);
     const filename =
-      items.length === 1 ?
-        `skill-${items[0].slug || items[0].id}.json`
-      : `gds-assistant-skills-${items.length}.json`;
+      items.length === 1
+        ? `skill-${items[0].slug || items[0].id}.json`
+        : `gds-assistant-skills-${items.length}.json`;
     downloadJson(exported, filename);
   }, []);
 
@@ -177,7 +181,9 @@ export function SkillsDataView() {
 
   const handleFileChange = useCallback(async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     try {
       const text = await file.text();
@@ -190,24 +196,26 @@ export function SkillsDataView() {
 
       let imported = 0;
       for (const skill of skills) {
-        if (!skill.title || !skill.prompt) continue;
+        if (!skill.title || !skill.prompt) {
+          continue;
+        }
 
         await apiFetch({
-          path: '/wp/v2/assistant-skills',
-          method: 'POST',
+          path: "/wp/v2/assistant-skills",
+          method: "POST",
           data: {
             title: skill.title,
-            slug: skill.slug || '',
+            slug: skill.slug || "",
             content: skill.prompt,
-            excerpt: skill.description || '',
-            status: 'publish',
+            excerpt: skill.description || "",
+            status: "publish",
           },
         });
         imported++;
       }
 
       // eslint-disable-next-line no-alert
-      window.alert(`Imported ${imported} skill${imported !== 1 ? 's' : ''}.`);
+      window.alert(`Imported ${imported} skill${imported !== 1 ? "s" : ""}.`);
       setRefreshKey((k) => k + 1);
     } catch (err) {
       // eslint-disable-next-line no-alert
@@ -215,41 +223,41 @@ export function SkillsDataView() {
     }
 
     // Reset file input
-    e.target.value = '';
+    e.target.value = "";
   }, []);
 
   const actions = [
     {
-      id: 'edit',
-      label: __('Edit', 'gds-assistant'),
-      icon: edit,
+      id: "edit",
+      label: __("Edit", "gds-assistant"),
+      icon: pencil,
       isPrimary: true,
       callback: ([item]) => {
         window.location.href = `post.php?post=${item.id}&action=edit`;
       },
     },
     {
-      id: 'settings',
-      label: __('Model & Schedule', 'gds-assistant'),
+      id: "settings",
+      label: __("Model & Schedule", "gds-assistant"),
       callback: ([item]) => {
         setEditingSkill({
           id: item.id,
-          title: item.title?.raw || item.title?.rendered || '',
-          model: item.meta?._assistant_model || '',
-          schedule: item.meta?._assistant_schedule || '',
+          title: item.title?.raw || item.title?.rendered || "",
+          model: item.meta?._assistant_model || "",
+          schedule: item.meta?._assistant_schedule || "",
         });
       },
     },
     {
-      id: 'export',
-      label: __('Export', 'gds-assistant'),
+      id: "export",
+      label: __("Export", "gds-assistant"),
       icon: download,
       supportsBulk: true,
       callback: handleExport,
     },
     {
-      id: 'delete',
-      label: __('Delete', 'gds-assistant'),
+      id: "delete",
+      label: __("Delete", "gds-assistant"),
       icon: trash,
       isDestructive: true,
       supportsBulk: true,
@@ -261,10 +269,10 @@ export function SkillsDataView() {
     <>
       <div
         style={{
-          marginBottom: '16px',
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'center',
+          marginBottom: "16px",
+          display: "flex",
+          gap: "8px",
+          alignItems: "center",
         }}
       >
         <Button
@@ -272,19 +280,19 @@ export function SkillsDataView() {
           icon={plus}
           href="post-new.php?post_type=assistant_skill"
         >
-          {__('Add New Skill', 'gds-assistant')}
+          {__("Add New Skill", "gds-assistant")}
         </Button>
         <Button variant="secondary" icon={download} onClick={handleExportAll}>
-          {__('Export All', 'gds-assistant')}
+          {__("Export All", "gds-assistant")}
         </Button>
         <Button variant="secondary" icon={upload} onClick={handleImport}>
-          {__('Import', 'gds-assistant')}
+          {__("Import", "gds-assistant")}
         </Button>
         <input
           ref={fileInputRef}
           type="file"
           accept=".json"
-          style={{display: 'none'}}
+          style={{ display: "none" }}
           onChange={handleFileChange}
         />
       </div>
@@ -300,7 +308,7 @@ export function SkillsDataView() {
         isLoading={isResolving}
         actions={actions}
         getItemId={(item) => String(item.id)}
-        defaultLayouts={{table: {}}}
+        defaultLayouts={{ table: {} }}
       />
       {editingSkill && (
         <SkillEditModal
@@ -309,7 +317,7 @@ export function SkillsDataView() {
           onSave={async (data) => {
             await apiFetch({
               path: `/wp/v2/assistant-skills/${data.id}`,
-              method: 'POST',
+              method: "POST",
               data: {
                 meta: {
                   _assistant_model: data.model,
@@ -326,13 +334,13 @@ export function SkillsDataView() {
   );
 }
 
-function SkillEditModal({skill, onClose, onSave}) {
+function SkillEditModal({ skill, onClose, onSave }) {
   const [model, setModel] = useState(skill.model);
   const [schedule, setSchedule] = useState(skill.schedule);
   const [saving, setSaving] = useState(false);
 
   const modelOptions = [
-    {label: __('Default (user selection)', 'gds-assistant'), value: ''},
+    { label: __("Default (user selection)", "gds-assistant"), value: "" },
   ];
   const providers = window.gdsAssistant?.models?.providers || [];
   for (const provider of providers) {
@@ -347,43 +355,43 @@ function SkillEditModal({skill, onClose, onSave}) {
   return (
     <Modal title={`Edit: ${skill.title}`} onRequestClose={onClose}>
       <SelectControl
-        label={__('Model', 'gds-assistant')}
+        label={__("Model", "gds-assistant")}
         value={model}
         options={modelOptions}
         onChange={setModel}
       />
       <SelectControl
-        label={__('Schedule', 'gds-assistant')}
+        label={__("Schedule", "gds-assistant")}
         value={schedule}
         options={[
-          {label: __('None', 'gds-assistant'), value: ''},
-          {label: __('Hourly', 'gds-assistant'), value: 'hourly'},
-          {label: __('Daily', 'gds-assistant'), value: 'daily'},
-          {label: __('Weekly', 'gds-assistant'), value: 'weekly'},
+          { label: __("None", "gds-assistant"), value: "" },
+          { label: __("Hourly", "gds-assistant"), value: "hourly" },
+          { label: __("Daily", "gds-assistant"), value: "daily" },
+          { label: __("Weekly", "gds-assistant"), value: "weekly" },
         ]}
         onChange={setSchedule}
       />
       <div
         style={{
-          marginTop: '16px',
-          display: 'flex',
-          gap: '8px',
-          justifyContent: 'flex-end',
+          marginTop: "16px",
+          display: "flex",
+          gap: "8px",
+          justifyContent: "flex-end",
         }}
       >
         <Button variant="secondary" onClick={onClose}>
-          {__('Cancel', 'gds-assistant')}
+          {__("Cancel", "gds-assistant")}
         </Button>
         <Button
           variant="primary"
           isBusy={saving}
           onClick={async () => {
             setSaving(true);
-            await onSave({id: skill.id, model, schedule});
+            await onSave({ id: skill.id, model, schedule });
             setSaving(false);
           }}
         >
-          {__('Save', 'gds-assistant')}
+          {__("Save", "gds-assistant")}
         </Button>
       </div>
     </Modal>

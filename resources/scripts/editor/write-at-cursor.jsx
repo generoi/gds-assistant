@@ -14,9 +14,13 @@
 const SHORTCUT_KEY = "j";
 
 function isInsideEditorCanvas(target) {
-  if (!target) return false;
+  if (!target) {
+    return false;
+  }
   // Don't intercept inside our own chat — we have our own shortcuts there.
-  if (target.closest && target.closest(".gds-assistant")) return false;
+  if (target.closest && target.closest(".gds-assistant")) {
+    return false;
+  }
   if (
     target.closest &&
     target.closest(
@@ -46,9 +50,15 @@ function focusComposer() {
 
 function handleKeydown(e) {
   const isMeta = e.metaKey || e.ctrlKey;
-  if (!isMeta || e.shiftKey || e.altKey) return;
-  if ((e.key || "").toLowerCase() !== SHORTCUT_KEY) return;
-  if (!isInsideEditorCanvas(e.target)) return;
+  if (!isMeta || e.shiftKey || e.altKey) {
+    return;
+  }
+  if ((e.key || "").toLowerCase() !== SHORTCUT_KEY) {
+    return;
+  }
+  if (!isInsideEditorCanvas(e.target)) {
+    return;
+  }
 
   e.preventDefault();
   e.stopPropagation();
@@ -64,7 +74,9 @@ window.addEventListener("keydown", handleKeydown, { capture: false });
 // always bubble out, so wire a listener inside it too when it's present.
 function attachIframeListener() {
   const iframe = document.querySelector('iframe[name="editor-canvas"]');
-  if (!iframe || iframe._gdsWriteCursorAttached) return;
+  if (!iframe || iframe._gdsWriteCursorAttached) {
+    return;
+  }
   iframe._gdsWriteCursorAttached = true;
   const wire = () => {
     try {

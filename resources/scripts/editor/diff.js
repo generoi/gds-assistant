@@ -11,13 +11,13 @@
  */
 
 export function diffLines(before, after) {
-  const a = String(before ?? '').split('\n');
-  const b = String(after ?? '').split('\n');
+  const a = String(before ?? "").split("\n");
+  const b = String(after ?? "").split("\n");
   const n = a.length;
   const m = b.length;
 
   // Build LCS-length table from the back so we can read off the diff forward.
-  const dp = Array.from({length: n + 1}, () => new Int32Array(m + 1));
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
     const ai = a[i];
     for (let j = m - 1; j >= 0; j--) {
@@ -34,23 +34,23 @@ export function diffLines(before, after) {
   let j = 0;
   while (i < n && j < m) {
     if (a[i] === b[j]) {
-      out.push({type: 'eq', text: a[i]});
+      out.push({ type: "eq", text: a[i] });
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({type: 'del', text: a[i]});
+      out.push({ type: "del", text: a[i] });
       i++;
     } else {
-      out.push({type: 'add', text: b[j]});
+      out.push({ type: "add", text: b[j] });
       j++;
     }
   }
   while (i < n) {
-    out.push({type: 'del', text: a[i]});
+    out.push({ type: "del", text: a[i] });
     i++;
   }
   while (j < m) {
-    out.push({type: 'add', text: b[j]});
+    out.push({ type: "add", text: b[j] });
     j++;
   }
   return out;
@@ -63,15 +63,17 @@ export function diffLines(before, after) {
  * git-style). Punctuation that's part of a word stays attached because we
  * just split on whitespace boundaries; the diff inside the chat is short
  * enough that finer tokenisation isn't worth the noise.
+ * @param before
+ * @param after
  */
 export function diffWords(before, after) {
-  const tokenize = (s) => String(s ?? '').match(/\S+|\s+/g) || [];
+  const tokenize = (s) => String(s ?? "").match(/\S+|\s+/g) || [];
   const a = tokenize(before);
   const b = tokenize(after);
   const n = a.length;
   const m = b.length;
 
-  const dp = Array.from({length: n + 1}, () => new Int32Array(m + 1));
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
     const ai = a[i];
     for (let j = m - 1; j >= 0; j--) {
@@ -88,23 +90,23 @@ export function diffWords(before, after) {
   let j = 0;
   while (i < n && j < m) {
     if (a[i] === b[j]) {
-      out.push({type: 'eq', text: a[i]});
+      out.push({ type: "eq", text: a[i] });
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({type: 'del', text: a[i]});
+      out.push({ type: "del", text: a[i] });
       i++;
     } else {
-      out.push({type: 'add', text: b[j]});
+      out.push({ type: "add", text: b[j] });
       j++;
     }
   }
   while (i < n) {
-    out.push({type: 'del', text: a[i]});
+    out.push({ type: "del", text: a[i] });
     i++;
   }
   while (j < m) {
-    out.push({type: 'add', text: b[j]});
+    out.push({ type: "add", text: b[j] });
     j++;
   }
   return out;
@@ -115,27 +117,28 @@ export function diffWords(before, after) {
  * viewer can render them with inline word-level highlighting (git's
  * --word-diff). When dels and adds come in unequal counts they pair in
  * order; the leftovers stay as plain del-only or add-only rows.
+ * @param segments
  */
 export function pairModifiedLines(segments) {
   const out = [];
   for (let i = 0; i < segments.length; ) {
     const s = segments[i];
-    if (s.type === 'del') {
+    if (s.type === "del") {
       // Collect the run of dels, then the run of adds that follows.
       const dels = [];
-      while (i < segments.length && segments[i].type === 'del') {
+      while (i < segments.length && segments[i].type === "del") {
         dels.push(segments[i]);
         i++;
       }
       const adds = [];
-      while (i < segments.length && segments[i].type === 'add') {
+      while (i < segments.length && segments[i].type === "add") {
         adds.push(segments[i]);
         i++;
       }
       const paired = Math.min(dels.length, adds.length);
       for (let k = 0; k < paired; k++) {
         out.push({
-          type: 'mod',
+          type: "mod",
           del: dels[k].text,
           add: adds[k].text,
           words: diffWords(dels[k].text, adds[k].text),
@@ -143,8 +146,12 @@ export function pairModifiedLines(segments) {
       }
       // Leftover dels (no matching add) and trailing adds (no matching del)
       // stay as solo lines so we don't lose them.
-      for (let k = paired; k < dels.length; k++) out.push(dels[k]);
-      for (let k = paired; k < adds.length; k++) out.push(adds[k]);
+      for (let k = paired; k < dels.length; k++) {
+        out.push(dels[k]);
+      }
+      for (let k = paired; k < adds.length; k++) {
+        out.push(adds[k]);
+      }
     } else {
       out.push(s);
       i++;
@@ -158,6 +165,8 @@ export function pairModifiedLines(segments) {
  * lines between two changed regions collapses to a "…" placeholder so the
  * diff doesn't fill the chat with boilerplate. Preserves the first and last
  * `context` lines around each hunk.
+ * @param segments
+ * @param context
  */
 export function collapseUnchanged(segments, context = 2) {
   // Compute, for each eq segment, distance to nearest non-eq on each side.
@@ -165,7 +174,9 @@ export function collapseUnchanged(segments, context = 2) {
   const eqRun = [];
 
   const flushEqRun = (hasChangeAfter) => {
-    if (!eqRun.length) return;
+    if (!eqRun.length) {
+      return;
+    }
     const hasChangeBefore = out.length > 0;
     const head = hasChangeBefore ? eqRun.slice(0, context) : [];
     const tail = hasChangeAfter ? eqRun.slice(-context) : [];
@@ -179,14 +190,17 @@ export function collapseUnchanged(segments, context = 2) {
     } else {
       out.push(...head);
       const hidden = eqRun.length - head.length - tail.length;
-      out.push({type: 'gap', text: `… ${hidden} unchanged line${hidden === 1 ? '' : 's'}`});
+      out.push({
+        type: "gap",
+        text: `… ${hidden} unchanged line${hidden === 1 ? "" : "s"}`,
+      });
       out.push(...tail);
     }
     eqRun.length = 0;
   };
 
   for (const seg of segments) {
-    if (seg.type === 'eq') {
+    if (seg.type === "eq") {
       eqRun.push(seg);
     } else {
       flushEqRun(true);

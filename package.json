@@ -20,7 +20,6 @@
     "wp": "../../../../vendor/bin/wp",
     "test:unit": "wp-scripts test-unit-js --passWithNoTests"
   },
-  "eslintConfig": {},
   "dependencies": {
     "@assistant-ui/react": "^0.12.0",
     "@assistant-ui/react-markdown": "^0.12.0",

@@ -25,11 +25,15 @@ import {
 // Pick the initial dictation language: a remembered choice, else the page
 // language (matched against the available codes), else the first available.
 function pickInitialVoiceLang(langs) {
-  if (!langs.length) return undefined;
+  if (!langs.length) {
+    return undefined;
+  }
   const codes = langs.map((l) => l.code);
   try {
     const saved = localStorage.getItem("gds-assistant-voice-lang");
-    if (saved && codes.includes(saved)) return saved;
+    if (saved && codes.includes(saved)) {
+      return saved;
+    }
   } catch {
     // storage unavailable
   }
@@ -39,7 +43,9 @@ function pickInitialVoiceLang(langs) {
     ""
   ).toLowerCase();
   const exact = codes.find((c) => c.toLowerCase() === page);
-  if (exact) return exact;
+  if (exact) {
+    return exact;
+  }
   const primary = page.split("-")[0];
   return (
     codes.find((c) => c.toLowerCase().split("-")[0] === primary) || codes[0]
@@ -77,7 +83,9 @@ export function MicButton() {
       const sep = base && !/\s$/.test(base) ? " " : "";
       composer.setText(base + sep + transcript);
 
-      if (isFinal) hasFinalRef.current = true;
+      if (isFinal) {
+        hasFinalRef.current = true;
+      }
 
       // Voice mode: any result event (interim or final) resets the silence
       // window; if no further events arrive within SEND_AFTER_SILENCE_MS the
@@ -90,9 +98,13 @@ export function MicButton() {
         }
         silenceTimerRef.current = setTimeout(() => {
           silenceTimerRef.current = null;
-          if (!hasFinalRef.current) return;
+          if (!hasFinalRef.current) {
+            return;
+          }
           const text = composer.getState?.()?.text || "";
-          if (!text.trim()) return;
+          if (!text.trim()) {
+            return;
+          }
           hasFinalRef.current = false;
           baseRef.current = "";
           composer.send?.();
@@ -103,7 +115,9 @@ export function MicButton() {
 
   // Close the language popover on an outside click.
   useEffect(() => {
-    if (!langOpen) return undefined;
+    if (!langOpen) {
+      return undefined;
+    }
     const onDoc = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         setLangOpen(false);
@@ -129,20 +143,29 @@ export function MicButton() {
   }, [readAloud]);
 
   const tryRestart = useCallback(() => {
-    if (!intendsRef.current) return;
-    if (listeningRef.current) return;
-    // Don't restart while TTS is still draining (cancel/end race).
-    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending)
+    if (!intendsRef.current) {
       return;
+    }
+    if (listeningRef.current) {
+      return;
+    }
+    // Don't restart while TTS is still draining (cancel/end race).
+    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) {
+      return;
+    }
     baseRef.current = composer.getState?.()?.text || "";
     start();
   }, [start, composer]);
 
   // TTS start → drop the mic; TTS end → bring it back if the user still wants it.
   useEffect(() => {
-    if (!supported) return undefined;
+    if (!supported) {
+      return undefined;
+    }
     const onTtsStart = () => {
-      if (listeningRef.current) stop();
+      if (listeningRef.current) {
+        stop();
+      }
     };
     const onTtsEnd = () => {
       // Small delay so the cancel-drained queue settles before we re-listen.
@@ -160,7 +183,9 @@ export function MicButton() {
   // recorded talking over the run), and resume on turn-end when read-aloud is
   // OFF (when it's ON, the TTS_END handler above takes care of resuming).
   useEffect(() => {
-    if (!supported) return undefined;
+    if (!supported) {
+      return undefined;
+    }
     let prevRunning = false;
     return threadRuntime.subscribe(() => {
       const running = !!threadRuntime.getState?.()?.isRunning;
@@ -174,7 +199,9 @@ export function MicButton() {
     });
   }, [supported, stop, tryRestart, threadRuntime]);
 
-  if (!supported) return null;
+  if (!supported) {
+    return null;
+  }
 
   const handle = () => {
     if (listening) {

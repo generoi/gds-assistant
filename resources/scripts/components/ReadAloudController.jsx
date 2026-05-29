@@ -25,7 +25,9 @@ export function ReadAloudController() {
   const threadRuntime = useThreadRuntime();
 
   useEffect(() => {
-    if (!enabled || !ttsSupported()) return undefined;
+    if (!enabled || !ttsSupported()) {
+      return undefined;
+    }
 
     let wasRunning = false;
     // Per-message bookkeeping for streaming reads. We track the offset into
@@ -62,15 +64,21 @@ export function ReadAloudController() {
         while ((m = re.exec(remainder)) !== null) {
           lastEnd = m.index + m[0].length;
         }
-        if (lastEnd < 0) return;
+        if (lastEnd < 0) {
+          return;
+        }
         // Don't speak less than a few words; avoids machine-gun queueing
         // when the model emits short fragments token-by-token.
-        if (lastEnd < 16) return;
+        if (lastEnd < 16) {
+          return;
+        }
         consume = lastEnd;
       }
 
       const chunk = remainder.slice(0, consume).trim();
-      if (chunk) speakAppend(chunk, lang);
+      if (chunk) {
+        speakAppend(chunk, lang);
+      }
       progress.set(key, {
         offset: state.offset + consume,
         lastTextLen: text.length,
@@ -87,7 +95,9 @@ export function ReadAloudController() {
 
     const tick = () => {
       const state = threadRuntime.getState?.();
-      if (!state) return;
+      if (!state) {
+        return;
+      }
       const running = !!state.isRunning;
       const messages = state.messages || [];
 
@@ -117,7 +127,9 @@ export function ReadAloudController() {
       const tailIdx = messages.length - 1;
       const key = tail.id || `idx:${tailIdx}`;
       const text = extractAssistantText(tail);
-      if (text) speakUpTo(key, text, readVoiceLang(), !running);
+      if (text) {
+        speakUpTo(key, text, readVoiceLang(), !running);
+      }
 
       wasRunning = running;
     };
@@ -130,7 +142,9 @@ export function ReadAloudController() {
 
     const unsub = threadRuntime.subscribe(tick);
     return () => {
-      if (typeof unsub === "function") unsub();
+      if (typeof unsub === "function") {
+        unsub();
+      }
       cancelTts();
     };
   }, [enabled, threadRuntime]);

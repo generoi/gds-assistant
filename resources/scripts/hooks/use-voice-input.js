@@ -1,4 +1,4 @@
-import {useState, useRef, useCallback} from '@wordpress/element';
+import { useState, useRef, useCallback } from "@wordpress/element";
 
 /**
  * Voice-to-text for the composer, backed by the browser's Web Speech API.
@@ -15,7 +15,7 @@ import {useState, useRef, useCallback} from '@wordpress/element';
  * @param {string}   [opts.lang]     BCP-47 language; defaults to the page/browser language.
  * @return {{supported: boolean, listening: boolean, start: Function, stop: Function, toggle: Function}} Voice control.
  */
-export function useVoiceInput({onResult, lang} = {}) {
+export function useVoiceInput({ onResult, lang } = {}) {
   const SpeechRecognition =
     window.SpeechRecognition || window.webkitSpeechRecognition;
   const supported = !!SpeechRecognition;
@@ -31,27 +31,29 @@ export function useVoiceInput({onResult, lang} = {}) {
   }, []);
 
   const start = useCallback(() => {
-    if (!SpeechRecognition || recRef.current) return;
+    if (!SpeechRecognition || recRef.current) {
+      return;
+    }
     const rec = new SpeechRecognition();
     rec.lang =
-      lang ||
-      document.documentElement.lang ||
-      navigator.language ||
-      'en';
+      lang || document.documentElement.lang || navigator.language || "en";
     rec.interimResults = true;
     rec.continuous = true;
 
     // Accumulate finalised phrases; append the in-progress interim each event
     // so the caller always gets the full session transcript.
-    let finalText = '';
+    let finalText = "";
     rec.onresult = (event) => {
-      let interim = '';
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const seg = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalText += seg;
-        else interim += seg;
+        if (event.results[i].isFinal) {
+          finalText += seg;
+        } else {
+          interim += seg;
+        }
       }
-      onResult?.((finalText + interim).trim(), interim === '');
+      onResult?.((finalText + interim).trim(), interim === "");
     };
     // onend always fires (after a normal stop or an error), so reset there.
     rec.onend = () => {
@@ -70,9 +72,12 @@ export function useVoiceInput({onResult, lang} = {}) {
   }, [SpeechRecognition, lang, onResult]);
 
   const toggle = useCallback(() => {
-    if (recRef.current) stop();
-    else start();
+    if (recRef.current) {
+      stop();
+    } else {
+      start();
+    }
   }, [start, stop]);
 
-  return {supported, listening, start, stop, toggle};
+  return { supported, listening, start, stop, toggle };
 }

@@ -9,28 +9,39 @@
  * without us shipping a separate gutenberg-side bundle.
  */
 
-import {addFilter} from '@wordpress/hooks';
-import {createHigherOrderComponent} from '@wordpress/compose';
-import {BlockControls} from '@wordpress/block-editor';
-import {ToolbarGroup, ToolbarDropdownMenu} from '@wordpress/components';
-import {Fragment} from '@wordpress/element';
+import { addFilter } from "@wordpress/hooks";
+import { createHigherOrderComponent } from "@wordpress/compose";
+import { BlockControls } from "@wordpress/block-editor";
+import { ToolbarGroup, ToolbarDropdownMenu } from "@wordpress/components";
+import { Fragment } from "@wordpress/element";
 
 import {
   TEXT_BLOCKS,
   blockLabel,
   getBlockText,
   getBlockSelectionText,
-} from './selection';
+} from "./selection";
 
-/** Open the chat panel if it's closed, then send the message as the user. */
+/**
+ * Open the chat panel if it's closed, then send the message as the user.
+ * @param message
+ */
 function sendToChat(message) {
-  if (!message) return;
+  if (!message) {
+    return;
+  }
   window.gdsAssistant?.openChat?.();
   window.gdsAssistant?.sendChatMessage?.(message);
 }
 
 const AiIcon = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
     <path d="M12 2.5l2.2 5.8 5.8 2.2-5.8 2.2L12 18.5l-2.2-5.8L4 10.5l5.8-2.2L12 2.5z" />
   </svg>
 );
@@ -40,7 +51,7 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
     // Image blocks get their own AI-image dropdown — generate / replace via
     // the server-side image generation tool and apply through the existing
     // editor tools.
-    if (props.name === 'core/image') {
+    if (props.name === "core/image") {
       return (
         <Fragment>
           <BlockEdit {...props} />
@@ -51,36 +62,38 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
                 label="AI image"
                 controls={[
                   {
-                    title: 'Replace with AI image…',
+                    title: "Replace with AI image…",
                     onClick: () => {
                       const current = props.attributes?.alt
                         ? ` (current alt: "${props.attributes.alt}")`
-                        : '';
+                        : "";
                       sendToChat(
                         `Replace the image (block ${props.clientId} — image)${current} with a new AI-generated image. Ask me what the new image should show, then call assistant__generate_image and update the block with editor__update_block_attributes (set id, url, alt to the new attachment).`,
                       );
                     },
                   },
                   {
-                    title: 'Vary this image (keep style)…',
+                    title: "Vary this image (keep style)…",
                     onClick: () => {
                       const id = props.attributes?.id;
                       const altSuffix = props.attributes?.alt
                         ? ` (alt: "${props.attributes.alt}")`
-                        : '';
+                        : "";
                       const refClause = id
                         ? ` Use the current image as the reference (reference_attachment_id: ${id})${altSuffix} so the new one keeps the same composition/style.`
-                        : ` Use the current image as the reference (reference_image_url: ${props.attributes?.url || ''})${altSuffix} so the new one keeps the same composition/style.`;
+                        : ` Use the current image as the reference (reference_image_url: ${
+                            props.attributes?.url || ""
+                          })${altSuffix} so the new one keeps the same composition/style.`;
                       sendToChat(
                         `Generate a variation of the image (block ${props.clientId} — image).${refClause} Ask me what should change, then call assistant__generate_image and update the block with editor__update_block_attributes.`,
                       );
                     },
                   },
                   {
-                    title: 'Improve alt text',
+                    title: "Improve alt text",
                     onClick: () => {
-                      const url = props.attributes?.url || '';
-                      const alt = props.attributes?.alt || '';
+                      const url = props.attributes?.url || "";
+                      const alt = props.attributes?.alt || "";
                       sendToChat(
                         `Suggest a better alt text for the image (block ${props.clientId} — image) — current alt: "${alt}", image url: ${url}. When I confirm, set it via editor__update_block_attributes.`,
                       );
@@ -99,11 +112,11 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
     }
 
     const langs = window.gdsAssistant?.voiceLanguages || [];
-    const pagePrimary = (document.documentElement.lang || '')
+    const pagePrimary = (document.documentElement.lang || "")
       .toLowerCase()
-      .split('-')[0];
+      .split("-")[0];
     const translateTargets = langs.filter(
-      (l) => l.code.toLowerCase().split('-')[0] !== pagePrimary,
+      (l) => l.code.toLowerCase().split("-")[0] !== pagePrimary,
     );
 
     const label = blockLabel(props.name);
@@ -127,20 +140,21 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
 
     const controls = [
       {
-        title: 'Rewrite',
-        onClick: () => sendToChat(buildMessage('Rewrite')),
+        title: "Rewrite",
+        onClick: () => sendToChat(buildMessage("Rewrite")),
       },
       {
-        title: 'Shorten',
-        onClick: () => sendToChat(buildMessage('Shorten')),
+        title: "Shorten",
+        onClick: () => sendToChat(buildMessage("Shorten")),
       },
       {
-        title: 'Expand',
-        onClick: () => sendToChat(buildMessage('Expand')),
+        title: "Expand",
+        onClick: () => sendToChat(buildMessage("Expand")),
       },
       {
-        title: 'Improve clarity',
-        onClick: () => sendToChat(buildMessage('Improve the clarity and flow of')),
+        title: "Improve clarity",
+        onClick: () =>
+          sendToChat(buildMessage("Improve the clarity and flow of")),
       },
       ...translateTargets.map((l) => ({
         title: `Translate to ${l.name}`,
@@ -176,11 +190,11 @@ const withAssistantBlockToolbar = createHigherOrderComponent(
       </Fragment>
     );
   },
-  'withAssistantBlockToolbar',
+  "withAssistantBlockToolbar",
 );
 
 addFilter(
-  'editor.BlockEdit',
-  'gds-assistant/block-toolbar',
+  "editor.BlockEdit",
+  "gds-assistant/block-toolbar",
   withAssistantBlockToolbar,
 );
