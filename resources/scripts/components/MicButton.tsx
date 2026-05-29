@@ -22,9 +22,14 @@ import {
   useVoiceMode,
 } from "../hooks/use-tts";
 
+interface VoiceLang {
+  code: string;
+  name?: string;
+}
+
 // Pick the initial dictation language: a remembered choice, else the page
 // language (matched against the available codes), else the first available.
-function pickInitialVoiceLang(langs) {
+function pickInitialVoiceLang(langs: VoiceLang[]): string | undefined {
   if (!langs.length) {
     return undefined;
   }
@@ -52,7 +57,7 @@ function pickInitialVoiceLang(langs) {
   );
 }
 
-export function MicButton() {
+export function MicButton(): JSX.Element | null {
   const composer = useComposerRuntime();
   // The text already in the composer when dictation starts — the transcript is
   // appended to it so we never clobber what the user typed.
@@ -60,16 +65,26 @@ export function MicButton() {
   // Web Speech can't auto-detect language; offer the site's languages (from
   // Polylang via the localized config) so a user can dictate in one that
   // differs from the admin UI language.
-  const langs = window.gdsAssistant?.voiceLanguages || [];
-  const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
+  const langs = (window.gdsAssistant?.voiceLanguages || []) as VoiceLang[];
+  const [lang, setLang] = useState<string | undefined>(() =>
+    pickInitialVoiceLang(langs),
+  );
   const [langOpen, setLangOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const [readAloud, setReadAloud] = useTtsEnabled();
-  const [voiceMode, setVoiceMode] = useVoiceMode();
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // The TTS hooks export as JS; narrow the [value, setter] tuple shape
+  // assistant-side until use-tts itself is migrated to TS.
+  const [readAloud, setReadAloud] = useTtsEnabled() as [
+    boolean,
+    (value: boolean) => void,
+  ];
+  const [voiceMode, setVoiceMode] = useVoiceMode() as [
+    boolean,
+    (value: boolean) => void,
+  ];
   // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
   // every render and so its handlers see the freshest composer/threadRuntime
   // values.
-  const silenceTimerRef = useRef(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceModeRef = useRef(voiceMode);
   const hasFinalRef = useRef(false);
   useEffect(() => {
@@ -77,7 +92,7 @@ export function MicButton() {
   }, [voiceMode]);
   const { supported, listening, start, stop } = useVoiceInput({
     lang,
-    onResult: (transcript, isFinal) => {
+    onResult: (transcript: string, isFinal: boolean) => {
       const base = baseRef.current;
       const sep = base && !/\s$/.test(base) ? " " : "";
       composer.setText(base + sep + transcript);
@@ -117,8 +132,8 @@ export function MicButton() {
     if (!langOpen) {
       return undefined;
     }
-    const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+    const onDoc = (e: MouseEvent): void => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         setLangOpen(false);
       }
     };
@@ -161,12 +176,12 @@ export function MicButton() {
     if (!supported) {
       return undefined;
     }
-    const onTtsStart = () => {
+    const onTtsStart = (): void => {
       if (listeningRef.current) {
         stop();
       }
     };
-    const onTtsEnd = () => {
+    const onTtsEnd = (): void => {
       // Small delay so the cancel-drained queue settles before we re-listen.
       setTimeout(tryRestart, 80);
     };
@@ -202,7 +217,7 @@ export function MicButton() {
     return null;
   }
 
-  const handle = () => {
+  const handle = (): void => {
     if (listening) {
       intendsRef.current = false;
       // Explicit stop overrides any pending auto-send timer.
@@ -221,7 +236,7 @@ export function MicButton() {
     start();
   };
 
-  const choose = (code) => {
+  const choose = (code: string): void => {
     setLang(code);
     setLangOpen(false);
     try {
