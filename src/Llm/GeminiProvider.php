@@ -70,69 +70,21 @@ class GeminiProvider implements LlmProviderInterface
 
         $contentBlocks = [];
         $currentIndex = -1;
-        $errorBody = '';
-        $lineBuffer = '';
 
-        $ch = curl_init($url);
-
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (
-                &$lineBuffer,
-                &$contentBlocks,
-                &$currentIndex,
-                &$errorBody,
-                $onEvent,
-            ) {
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                if ($httpCode >= 400) {
-                    $errorBody .= $data;
-
-                    return strlen($data);
-                }
-
-                $lineBuffer .= $data;
-
-                while (($pos = strpos($lineBuffer, "\n")) !== false) {
-                    $line = trim(substr($lineBuffer, 0, $pos));
-                    $lineBuffer = substr($lineBuffer, $pos + 1);
-
-                    if ($line === '' || ! str_starts_with($line, 'data: ')) {
-                        continue;
-                    }
-
-                    $json = substr($line, 6);
-                    $event = json_decode($json, true);
-                    if (! $event) {
-                        continue;
-                    }
-
-                    $this->processChunk($event, $contentBlocks, $currentIndex, $onEvent);
-                }
-
-                return strlen($data);
+        $stream = SseStreamReader::stream(
+            $url,
+            ['Content-Type: application/json'],
+            (string) json_encode($payload),
+            function (array $event) use (&$contentBlocks, &$currentIndex, $onEvent) {
+                $this->processChunk($event, $contentBlocks, $currentIndex, $onEvent);
             },
-        ]);
+        );
 
-        curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($curlError) {
-            $onEvent('error', ['message' => 'curl error: '.$curlError]);
+        if ($stream['curlError'] !== '') {
+            $onEvent('error', ['message' => 'curl error: '.$stream['curlError']]);
         }
-
-        if ($httpCode >= 400) {
-            $errorMsg = "API returned HTTP $httpCode";
-            $decoded = json_decode($errorBody, true);
-            if ($decoded && isset($decoded['error']['message'])) {
-                $errorMsg .= ': '.$decoded['error']['message'];
-            }
-            $onEvent('error', ['message' => $errorMsg]);
+        if ($stream['httpCode'] >= 400) {
+            $onEvent('error', ['message' => SseStreamReader::describeHttpError($stream['httpCode'], $stream['errorBody'])]);
         }
 
         return $contentBlocks;
@@ -254,7 +206,9 @@ class GeminiProvider implements LlmProviderInterface
                             // Download and inline — Gemini can't fetch arbitrary URLs
                             $imageData = @file_get_contents($source['url']);
                             if ($imageData) {
-                                $mimeType = 'image/'.pathinfo(parse_url($source['url'], PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpeg';
+                                // pathinfo returns '' when there's no extension — fall back to jpeg.
+                                $ext = pathinfo(parse_url($source['url'], PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'jpeg';
+                                $mimeType = 'image/'.$ext;
                                 $parts[] = [
                                     'inlineData' => [
                                         'mimeType' => $mimeType,
@@ -281,12 +235,19 @@ class GeminiProvider implements LlmProviderInterface
                         // JSON. If decode fails, fall back to sending the
                         // raw content as a string so the LLM at least sees
                         // what it can instead of receiving null.
-                        $raw = $block['content'] ?? '';
-                        $decoded = $raw !== '' ? json_decode($raw, true) : [];
-                        if ($decoded === null && $raw !== '') {
-                            $decoded = ['result' => $raw];
-                        } elseif (! is_array($decoded) || array_is_list($decoded)) {
-                            $decoded = ['result' => $decoded];
+                        // `content` is normally a non-empty JSON string;
+                        // missing/empty falls through as an empty object.
+                        $raw = (string) ($block['content'] ?? '');
+                        if ($raw === '') {
+                            $decoded = [];
+                        } else {
+                            $decoded = json_decode($raw, true);
+                            if ($decoded === null) {
+                                // Invalid JSON — forward the raw text.
+                                $decoded = ['result' => $raw];
+                            } elseif (! is_array($decoded) || array_is_list($decoded)) {
+                                $decoded = ['result' => $decoded];
+                            }
                         }
                         $parts[] = [
                             'functionResponse' => [

@@ -104,7 +104,7 @@ class SmartProvider implements LlmProviderInterface
             }
 
             // Pick the default model from this provider.
-            $modelKey = $name.':'.($available[$name]['default'] ?? '');
+            $modelKey = $name.':'.$available[$name]['default'];
             $resolved = ProviderRegistry::resolve($modelKey);
             if ($resolved) {
                 return $resolved['provider'];

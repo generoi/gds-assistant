@@ -1,43 +1,47 @@
 {
-  "name": "generoi/gds-assistant",
-  "type": "wordpress-plugin",
-  "license": "MIT",
-  "description": "AI-powered admin assistant with WordPress tool access",
-  "homepage": "https://github.com/generoi/gds-assistant",
-  "authors": [
-    {
-      "name": "Genero",
-      "email": "info@genero.fi"
+    "name": "generoi/gds-assistant",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "description": "AI-powered admin assistant with WordPress tool access",
+    "homepage": "https://github.com/generoi/gds-assistant",
+    "authors": [
+        {
+            "name": "Genero",
+            "email": "info@genero.fi"
+        }
+    ],
+    "require": {
+        "php": ">=8.3.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.29",
+        "phpunit/phpunit": "^9.0",
+        "wp-phpunit/wp-phpunit": "^7.0",
+        "yoast/phpunit-polyfills": "^2.0",
+        "phpstan/phpstan": "^2.2",
+        "szepeviktor/phpstan-wordpress": "^2.0",
+        "php-stubs/wp-cli-stubs": "^2.12"
+    },
+    "autoload": {
+        "psr-4": {
+            "GeneroWP\\Assistant\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "GeneroWP\\Assistant\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "lint": "pint --test",
+        "lint:fix": "pint",
+        "test": "phpunit",
+        "test:wp-env": "wp-env run tests-cli --env-cwd=wp-content/plugins/gds-assistant vendor/bin/phpunit",
+        "stan": "./vendor/bin/phpstan analyse --memory-limit=1G"
+    },
+    "config": {
+        "platform": {
+            "php": "8.3.30"
+        }
     }
-  ],
-  "require": {
-    "php": ">=8.3.0"
-  },
-  "require-dev": {
-    "laravel/pint": "^1.29",
-    "phpunit/phpunit": "^9.0",
-    "wp-phpunit/wp-phpunit": "^7.0",
-    "yoast/phpunit-polyfills": "^2.0"
-  },
-  "autoload": {
-    "psr-4": {
-      "GeneroWP\\Assistant\\": "src/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "GeneroWP\\Assistant\\Tests\\": "tests/"
-    }
-  },
-  "scripts": {
-    "lint": "pint --test",
-    "lint:fix": "pint",
-    "test": "phpunit",
-    "test:wp-env": "wp-env run tests-cli --env-cwd=wp-content/plugins/gds-assistant vendor/bin/phpunit"
-  },
-  "config": {
-    "platform": {
-      "php": "8.3.30"
-    }
-  }
 }

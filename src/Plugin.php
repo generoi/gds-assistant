@@ -33,10 +33,10 @@ class Plugin
         return $default;
     }
 
-    public static function getInstance(): static
+    public static function getInstance(): self
     {
         if (! isset(self::$instance)) {
-            self::$instance = new static;
+            self::$instance = new self;
         }
 
         return self::$instance;
@@ -130,7 +130,7 @@ class Plugin
             'restBase' => rest_url('wp/v2/'),
             'nonce' => wp_create_nonce('wp_rest'),
             'models' => $modelConfig,
-            'modelPricing' => $modelConfig['pricing'] ?? [],
+            'modelPricing' => $modelConfig['pricing'],
             'defaultMaxTokens' => $defaultMaxTokens,
             'skills' => $this->getPublishedSkills(),
             'voiceLanguages' => $this->voiceLanguages(),
@@ -153,7 +153,13 @@ class Plugin
 
         try {
             $languages = PLL()->model->get_languages_list();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Polylang's languages-list lookup can throw if its model isn't
+            // fully bootstrapped (rare race during plugin activation). Log
+            // instead of swallowing so a real misconfiguration surfaces in
+            // debug.log rather than degrading silently.
+            error_log('[gds-assistant] Polylang voice-language lookup failed: '.$e->getMessage());
+
             return [];
         }
 
@@ -171,10 +177,10 @@ class Plugin
 
     public function registerRestRoutes(): void
     {
-        $chatEndpoint = new Api\ChatEndpoint($this);
+        $chatEndpoint = new Api\ChatEndpoint;
         $chatEndpoint->register();
 
-        $conversationEndpoint = new Api\ConversationEndpoint($this);
+        $conversationEndpoint = new Api\ConversationEndpoint;
         $conversationEndpoint->register();
 
         $mcpAuthEndpoint = new Api\McpAuthEndpoint;
@@ -284,7 +290,7 @@ class Plugin
         // Pass model options to JS
         $modelConfig = Llm\ProviderRegistry::getModelsForFrontend();
         wp_localize_script('gds-assistant-skill-editor', 'gdsAssistantSkill', [
-            'models' => $modelConfig['providers'] ?? [],
+            'models' => $modelConfig['providers'],
         ]);
     }
 
