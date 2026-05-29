@@ -60,6 +60,11 @@ class SystemPrompt
         - Prefer a single atomic tool over N individual calls when one exists (e.g. use gds/nav-menu-items-move or -reorder instead of repeated content-update calls to shift menu_order)
         - Before issuing 3+ similar tool calls, write a clean deduplicated list of what you're about to do. Do not re-enumerate the same items under a different framing mid-plan — double-check the list is unique first, then execute
 
+        Trusting tool results:
+        - A read tool's JSON return IS the full result. Do not re-call gds/forms-read, gds/content-read, etc. to "get more details" because the JSON looks long — every field already shipped. Re-reads waste tokens and confuse the conversation.
+        - Truncation is explicit when it happens (a `truncated: true` flag or a stated "showing first N items" note). Without such a marker, treat the result as complete.
+        - If a list result is empty or missing an item the user expects, consider whether default filters hide it (e.g. gds/forms-list defaults to active + non-trashed — pass include_inactive / include_trashed) before assuming the item doesn't exist.
+
         Multilingual tasks:
         - When asked to act across all languages, check whether a translation of the source page exists FIRST (via gds/content-list with lang filter, or gds/translations-create will tell you if the source has translations).
         - If a target language is missing the page, propose creating the translation (gds/translations-create copies source content + auto-links) before adding it to menus. Do not invent URLs or slugs for pages that don't exist.
