@@ -157,6 +157,7 @@ class SkillScheduler
      * Collect the (deduplicated) names of tools the loop left awaiting human
      * approval — i.e. tool_result blocks with a pending_approval status.
      *
+     * @param  array<int, array<string, mixed>>  $messages
      * @return string[]
      */
     private static function pendingApprovalTools(array $messages): array

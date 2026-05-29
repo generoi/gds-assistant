@@ -27,7 +27,7 @@ class McpClient
         private readonly AuthStrategyInterface $auth,
     ) {}
 
-    /** @return array<int, array{name: string, description?: string, inputSchema?: array}>|\WP_Error */
+    /** @return array<int, array{name: string, description?: string, inputSchema?: array<string, mixed>}>|\WP_Error */
     public function listTools(): array|\WP_Error
     {
         $init = $this->initialize();
@@ -43,7 +43,10 @@ class McpClient
         return $result['tools'] ?? [];
     }
 
-    /** @return mixed|\WP_Error Tool result content (already unwrapped) */
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return mixed|\WP_Error Tool result content (already unwrapped)
+     */
     public function callTool(string $name, array $arguments): mixed
     {
         $init = $this->initialize();
@@ -106,6 +109,7 @@ class McpClient
         return true;
     }
 
+    /** @return array<string, mixed>|\WP_Error */
     private function request(string $method, mixed $params): array|\WP_Error
     {
         $payload = [
@@ -171,6 +175,10 @@ class McpClient
         $this->post($payload);
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|\WP_Error
+     */
     private function post(array $payload): array|\WP_Error
     {
         $headers = array_merge([
@@ -194,6 +202,9 @@ class McpClient
      * an SSE stream. For SSE we return the first `message` event's data
      * (tools/list + tools/call return a single response message; we don't
      * yet support long-running streaming tool results).
+     *
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>|\WP_Error
      */
     private function parseJsonRpcResponse(array $response): array|\WP_Error
     {
@@ -221,6 +232,7 @@ class McpClient
         return $decoded;
     }
 
+    /** @return array<string, mixed>|null */
     private static function firstSseMessage(string $body): ?array
     {
         $buffer = '';
@@ -251,6 +263,7 @@ class McpClient
         return null;
     }
 
+    /** @param array<int, mixed> $content */
     private static function extractText(array $content): ?string
     {
         $parts = [];

@@ -73,7 +73,13 @@ class Encrypt
         return $plain === false ? null : $plain;
     }
 
-    /** Transparently encrypt the given keys in an associative array. */
+    /**
+     * Transparently encrypt the given keys in an associative array.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     * @return array<string, mixed>
+     */
     public static function encryptKeys(array $data, array $keys): array
     {
         foreach ($keys as $key) {
@@ -85,7 +91,13 @@ class Encrypt
         return $data;
     }
 
-    /** Transparently decrypt the given keys in an associative array. */
+    /**
+     * Transparently decrypt the given keys in an associative array.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, string>  $keys
+     * @return array<string, mixed>
+     */
     public static function decryptKeys(array $data, array $keys): array
     {
         foreach ($keys as $key) {

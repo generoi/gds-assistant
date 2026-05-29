@@ -71,6 +71,9 @@ final class AuditCommand
      *     wp gds-assistant audit list --errors
      *
      * @subcommand list
+     *
+     * @param  array<int, string>  $args
+     * @param  array<string, string>  $assoc_args
      */
     public function list_entries($args, $assoc_args): void
     {
@@ -145,6 +148,9 @@ final class AuditCommand
      *
      *     wp gds-assistant audit conversations
      *     wp gds-assistant audit conversations --user=1 --days=1
+     *
+     * @param  array<int, string>  $args
+     * @param  array<string, string>  $assoc_args
      */
     public function conversations($args, $assoc_args): void
     {
@@ -219,6 +225,9 @@ final class AuditCommand
      *
      *     wp gds-assistant audit show abc-123
      *     wp gds-assistant audit show abc-123 --truncate=0
+     *
+     * @param  array<int, string>  $args
+     * @param  array<string, string>  $assoc_args
      */
     public function show($args, $assoc_args): void
     {
@@ -265,6 +274,9 @@ final class AuditCommand
      *
      *     wp gds-assistant audit export abc-123 > debug.json
      *     wp gds-assistant audit export abc-123 --format=yaml
+     *
+     * @param  array<int, string>  $args
+     * @param  array<string, string>  $assoc_args
      */
     public function export($args, $assoc_args): void
     {

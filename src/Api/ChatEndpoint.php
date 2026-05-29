@@ -419,6 +419,7 @@ class ChatEndpoint
      * other than role=user falls through to a single bucket — assistant
      * messages are merged by role alone like before.
      */
+    /** @param array<string, mixed> $msg */
     private static function userKind(array $msg): string
     {
         if (($msg['role'] ?? null) !== 'user') {
@@ -727,6 +728,10 @@ class ChatEndpoint
         return is_array($content) ? array_values($content) : [];
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
+     */
     private function normalizeMessages(array $messages): array
     {
         return array_map(function ($msg) {
@@ -786,6 +791,9 @@ class ChatEndpoint
     /**
      * Check if the incoming messages contain a tool approval/denial response.
      * Returns [toolUseId, approved] or null.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array{0: string, 1: bool}|null
      */
     private function detectToolApproval(array $messages): ?array
     {
@@ -824,6 +832,9 @@ class ChatEndpoint
      * tool_results that came from the same assistant message, because the UI
      * only surfaces one Approve/Deny button per turn and the user expects
      * their one click to cover all prompts they saw.
+     *
+     * @param  array<int, array<string, mixed>>  $storedMessages
+     * @return array<int, array<string, mixed>>
      */
     private function handleToolApproval(
         array $storedMessages,
@@ -977,13 +988,22 @@ class ChatEndpoint
         return $storedMessages;
     }
 
-    /** Append the editor_* client tools (filter on `gds-assistant/tools`). */
+    /**
+     * Append the editor_* client tools (filter on `gds-assistant/tools`).
+     *
+     * @param  array<int, array<string, mixed>>  $tools
+     * @return array<int, array<string, mixed>>
+     */
     public function addEditorTools(array $tools): array
     {
         return array_merge($tools, (new EditorToolProvider)->getTools());
     }
 
-    /** Short system-prompt guidance + a summary of the user's editor selection. */
+    /**
+     * Short system-prompt guidance + a summary of the user's editor selection.
+     *
+     * @param  array<string, mixed>  $ctx
+     */
     private function editorContextPrompt(array $ctx): string
     {
         $out = "\n\n## Open block editor\n";
@@ -1102,6 +1122,10 @@ class ChatEndpoint
      * pending state and can narrate it; this call just makes sure the user
      * has functional buttons to resolve it.
      */
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  callable(string, array<string, mixed>): void  $onEvent
+     */
     private function resurfacePendingApprovals(array $messages, callable $onEvent): void
     {
         $toolInfo = [];
@@ -1147,6 +1171,7 @@ class ChatEndpoint
         }
     }
 
+    /** @param array<int, array<string, mixed>> $messages */
     private function generateTitle(array $messages): string
     {
         // Use the first user message as conversation title
@@ -1183,6 +1208,9 @@ class ChatEndpoint
 
     /**
      * Fix stored messages that have invalid formats (e.g. tool_use input as [] instead of {}).
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function sanitizeMessages(array $messages): array
     {
@@ -1231,6 +1259,9 @@ class ChatEndpoint
      * "user messages must have non-empty content". Can happen when older
      * control messages were stored, or when a block array ended up empty
      * after sanitization, or from other legacy buggy states.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function dropEmptyContentMessages(array $messages): array
     {
@@ -1270,6 +1301,9 @@ class ChatEndpoint
      * from stored history. These are ephemeral server-side tools whose
      * names are validated strictly — replaying them after context compression
      * or provider switches causes 400 errors.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function stripServerToolBlocks(array $messages): array
     {
@@ -1298,6 +1332,9 @@ class ChatEndpoint
      * "text content blocks must be non-empty" when a message has an empty
      * text block alongside other valid blocks (e.g. tool_use). This can
      * happen when the LLM emits tool calls with an empty text prefix.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function stripEmptyTextBlocks(array $messages): array
     {
@@ -1340,6 +1377,9 @@ class ChatEndpoint
      *
      * For any tool_use that has no paired tool_result, inject a synthetic
      * "skipped" tool_result so the conversation replays cleanly.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     * @return array<int, array<string, mixed>>
      */
     private static function patchDanglingToolUses(array $messages): array
     {
@@ -1407,6 +1447,8 @@ class ChatEndpoint
      * Log with Laravel Log (Acorn) when available, error_log for errors.
      *
      * Levels: debug (tool calls/results), info (request lifecycle), warning (tool errors), error (exceptions).
+     *
+     * @param  array<string, mixed>  $context
      */
     private static function log(string $level, string $message, array $context = []): void
     {
@@ -1445,6 +1487,7 @@ class ChatEndpoint
         header('X-Accel-Buffering: no');
     }
 
+    /** @param array<string, mixed> $data */
     private function sendSSE(string $event, array $data): void
     {
         echo "event: {$event}\n";

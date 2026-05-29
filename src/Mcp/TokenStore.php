@@ -36,6 +36,7 @@ class TokenStore
 
     /* ------------------------------ Server meta ------------------------------ */
 
+    /** @return array<string, mixed> */
     public static function getServerMeta(string $serverName): array
     {
         $data = get_option(self::META_OPTION_PREFIX.$serverName, []);
@@ -46,6 +47,10 @@ class TokenStore
         return Encrypt::decryptKeys($data, self::SERVER_META_SECRETS);
     }
 
+    /**
+     * @param  array<string, mixed>  $patch
+     * @return array<string, mixed>
+     */
     public static function mergeServerMeta(string $serverName, array $patch): array
     {
         $current = self::getServerMeta($serverName);
@@ -63,6 +68,7 @@ class TokenStore
 
     /* ------------------------------ User tokens ------------------------------ */
 
+    /** @return array<string, mixed> */
     public static function getUserTokens(string $serverName, int $userId): array
     {
         if ($userId <= 0) {
@@ -76,6 +82,10 @@ class TokenStore
         return Encrypt::decryptKeys($data, self::USER_TOKEN_SECRETS);
     }
 
+    /**
+     * @param  array<string, mixed>  $patch
+     * @return array<string, mixed>
+     */
     public static function mergeUserTokens(string $serverName, int $userId, array $patch): array
     {
         if ($userId <= 0) {

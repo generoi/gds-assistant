@@ -62,6 +62,7 @@ class ConversationStore
         return $uuid;
     }
 
+    /** @return array<string, mixed>|null */
     public function get(string $uuid): ?array
     {
         global $wpdb;
@@ -83,6 +84,7 @@ class ConversationStore
         return $row;
     }
 
+    /** @param array<string, mixed> $data */
     public function update(string $uuid, array $data): bool
     {
         global $wpdb;
@@ -116,6 +118,7 @@ class ConversationStore
         );
     }
 
+    /** @return array<int, array<string, mixed>> */
     public function listForUser(int $userId, int $limit = 50, int $offset = 0, ?bool $archived = null): array
     {
         global $wpdb;
@@ -146,6 +149,8 @@ class ConversationStore
 
     /**
      * List all conversations (admin view).
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function listAll(int $limit = 100, int $offset = 0, ?bool $archived = null): array
     {

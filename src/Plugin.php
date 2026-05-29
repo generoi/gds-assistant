@@ -4,7 +4,7 @@ namespace GeneroWP\Assistant;
 
 class Plugin
 {
-    protected static $instance;
+    protected static ?self $instance = null;
 
     public readonly string $file;
 
@@ -324,6 +324,7 @@ class Plugin
         }
     }
 
+    /** @return array<int, array<string, mixed>> */
     private function getPublishedSkills(): array
     {
         $posts = get_posts([
