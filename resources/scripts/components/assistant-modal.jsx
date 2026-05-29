@@ -7,25 +7,15 @@ import {
   useThreadRuntime,
   useComposerRuntime,
   useMessage,
-} from '@assistant-ui/react';
-import {useVoiceInput} from '../hooks/use-voice-input';
-import {useEditorSelection} from '../hooks/use-editor-selection';
-import {
-  useTtsEnabled,
-  useVoiceMode,
-  ttsSupported,
-  speakAppend,
-  cancelTts,
-  extractAssistantText,
-  readVoiceLang,
-  TTS_EVENTS,
-} from '../hooks/use-tts';
+} from "@assistant-ui/react";
+import { useEditorSelection } from "../hooks/use-editor-selection";
+import { cancelTts } from "../hooks/use-tts";
 import {
   diffLines,
   collapseUnchanged,
   pairModifiedLines,
-} from '../editor/diff';
-import {StreamdownTextPrimitive} from '@assistant-ui/react-streamdown';
+} from "../editor/diff";
+import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import {
   useState,
   useEffect,
@@ -35,7 +25,7 @@ import {
   createContext,
   useContext,
   Fragment,
-} from '@wordpress/element';
+} from "@wordpress/element";
 import {
   onUsageUpdate,
   onRunStatus,
@@ -45,7 +35,9 @@ import {
   getMaxTokens,
   fetchConversations,
   formatMessageTime,
-} from '../hooks/use-runtime-adapter';
+} from "../hooks/use-runtime-adapter";
+import { MicButton } from "./MicButton";
+import { ReadAloudController } from "./ReadAloudController";
 
 // ── Skills ───────────────────────────────────────────────────
 // Cache skills but refresh from REST API periodically
@@ -59,10 +51,10 @@ async function getSkillsFresh() {
     return skillsCache;
   }
   try {
-    const {restBase, nonce} = window.gdsAssistant || {};
+    const { restBase, nonce } = window.gdsAssistant || {};
     const response = await fetch(
       `${restBase}assistant-skills?per_page=100&status=publish&context=edit`,
-      {headers: {'X-WP-Nonce': nonce}},
+      { headers: { "X-WP-Nonce": nonce } },
     );
     if (response.ok) {
       const posts = await response.json();
@@ -70,12 +62,12 @@ async function getSkillsFresh() {
         id: p.id,
         slug: p.slug,
         title: p.title?.rendered || p.title,
-        description: p.excerpt?.rendered?.replace(/<[^>]*>/g, '').trim() || '',
+        description: p.excerpt?.rendered?.replace(/<[^>]*>/g, "").trim() || "",
         // Use raw content (preserves markdown/formatting) when available
         prompt:
           p.content?.raw ||
-          p.content?.rendered?.replace(/<[^>]*>/g, '').trim() ||
-          '',
+          p.content?.rendered?.replace(/<[^>]*>/g, "").trim() ||
+          "",
       }));
       skillsFetchedAt = now;
     }
@@ -94,10 +86,10 @@ const COST_WARNING_THRESHOLD = 0.5; // USD
 
 // ── Prompt suggestions for empty state ──────────────────────
 const SUGGESTIONS = [
-  'List all draft pages',
-  'Audit missing translations',
-  'Show recent form submissions',
-  'How many products are published?',
+  "List all draft pages",
+  "Audit missing translations",
+  "Show recent form submissions",
+  "How many products are published?",
 ];
 
 /**
@@ -120,12 +112,12 @@ const SUGGESTIONS = [
  */
 function getStoredPanelSize() {
   try {
-    const raw = localStorage.getItem('gds-assistant-panel-size');
+    const raw = localStorage.getItem("gds-assistant-panel-size");
     if (!raw) return null;
-    const {width, height} = JSON.parse(raw);
+    const { width, height } = JSON.parse(raw);
     const maxW = window.innerWidth - 48;
     const maxH = window.innerHeight - 120;
-    if (typeof width !== 'number' || typeof height !== 'number') return null;
+    if (typeof width !== "number" || typeof height !== "number") return null;
     return {
       width: Math.max(320, Math.min(maxW, width)),
       height: Math.max(400, Math.min(maxH, height)),
@@ -153,22 +145,22 @@ function getStoredPanelSize() {
  */
 function applyPanelPosition(node, top, left) {
   if (!node) return;
-  node.style.setProperty('--gds-panel-top', `${top}px`);
-  node.style.setProperty('--gds-panel-left', `${left}px`);
+  node.style.setProperty("--gds-panel-top", `${top}px`);
+  node.style.setProperty("--gds-panel-left", `${left}px`);
   // Radix wraps Content in <div data-radix-popper-content-wrapper> that
   // itself has transform. When a parent has transform, our position:fixed
   // on the panel becomes relative to the wrapper, not the viewport — so
   // we tag the wrapper too. CSS rule for this class flattens the wrapper.
-  const wrapper = node.closest('[data-radix-popper-content-wrapper]');
-  if (wrapper) wrapper.classList.add('gds-assistant__panel-wrapper--moved');
+  const wrapper = node.closest("[data-radix-popper-content-wrapper]");
+  if (wrapper) wrapper.classList.add("gds-assistant__panel-wrapper--moved");
 }
 
 function clearPanelPosition(node) {
   if (!node) return;
-  node.style.removeProperty('--gds-panel-top');
-  node.style.removeProperty('--gds-panel-left');
-  const wrapper = node.closest('[data-radix-popper-content-wrapper]');
-  if (wrapper) wrapper.classList.remove('gds-assistant__panel-wrapper--moved');
+  node.style.removeProperty("--gds-panel-top");
+  node.style.removeProperty("--gds-panel-left");
+  const wrapper = node.closest("[data-radix-popper-content-wrapper]");
+  if (wrapper) wrapper.classList.remove("gds-assistant__panel-wrapper--moved");
 }
 
 /**
@@ -178,10 +170,10 @@ function clearPanelPosition(node) {
  */
 function getStoredPanelPosition() {
   try {
-    const raw = localStorage.getItem('gds-assistant-panel-position');
+    const raw = localStorage.getItem("gds-assistant-panel-position");
     if (!raw) return null;
-    const {top, left} = JSON.parse(raw);
-    if (typeof top !== 'number' || typeof left !== 'number') return null;
+    const { top, left } = JSON.parse(raw);
+    if (typeof top !== "number" || typeof left !== "number") return null;
     // Keep at least 40px of the panel on-screen at all edges so the user
     // can always grab the drag handle.
     return {
@@ -232,14 +224,14 @@ export function AssistantModal({
   // records every subsequent toggle.
   const initialOpen = useMemo(() => {
     try {
-      return localStorage.getItem('gds-assistant-open') === '1';
+      return localStorage.getItem("gds-assistant-open") === "1";
     } catch {
       return false;
     }
   }, []);
   const handleOpenChange = useCallback((open) => {
     try {
-      localStorage.setItem('gds-assistant-open', open ? '1' : '0');
+      localStorage.setItem("gds-assistant-open", open ? "1" : "0");
     } catch {
       // Ignore storage failures (private mode, quota).
     }
@@ -258,7 +250,7 @@ export function AssistantModal({
   const panelClassName = useMemo(
     () =>
       `gds-assistant gds-assistant__panel${
-        isMoved ? ' gds-assistant__panel--moved' : ''
+        isMoved ? " gds-assistant__panel--moved" : ""
       }`,
     [isMoved],
   );
@@ -290,7 +282,7 @@ export function AssistantModal({
   const onHeaderMouseDown = useCallback((e) => {
     if (e.button !== 0) return;
     const target = e.target;
-    if (target.closest('button, input, textarea, select, a')) return;
+    if (target.closest("button, input, textarea, select, a")) return;
 
     e.preventDefault();
     const panel = panelRef.current;
@@ -318,24 +310,24 @@ export function AssistantModal({
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      const {top, left} = clamp(startTop + dy, startLeft + dx);
+      const { top, left } = clamp(startTop + dy, startLeft + dx);
       applyPanelPosition(panel, top, left);
     };
     const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
       try {
         const r = panel.getBoundingClientRect();
         localStorage.setItem(
-          'gds-assistant-panel-position',
-          JSON.stringify({top: r.top, left: r.left}),
+          "gds-assistant-panel-position",
+          JSON.stringify({ top: r.top, left: r.left }),
         );
       } catch {
         // noop
       }
     };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }, []);
 
   // Reset position/size to defaults (clears both localStorage keys and
@@ -343,8 +335,8 @@ export function AssistantModal({
   // can be called from console.
   const resetPanelPosition = useCallback(() => {
     try {
-      localStorage.removeItem('gds-assistant-panel-position');
-      localStorage.removeItem('gds-assistant-panel-size');
+      localStorage.removeItem("gds-assistant-panel-position");
+      localStorage.removeItem("gds-assistant-panel-size");
     } catch {
       // noop
     }
@@ -352,8 +344,8 @@ export function AssistantModal({
     const panel = panelRef.current;
     if (panel) {
       clearPanelPosition(panel);
-      panel.style.width = '';
-      panel.style.height = '';
+      panel.style.width = "";
+      panel.style.height = "";
     }
   }, []);
 
@@ -383,11 +375,11 @@ export function AssistantModal({
       panel.style.height = `${h}px`;
     };
     const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
       try {
         localStorage.setItem(
-          'gds-assistant-panel-size',
+          "gds-assistant-panel-size",
           JSON.stringify({
             width: panel.offsetWidth,
             height: panel.offsetHeight,
@@ -397,12 +389,12 @@ export function AssistantModal({
         // Private browsing etc. — non-fatal.
       }
     };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }, []);
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         triggerRef.current?.click();
       }
@@ -412,11 +404,11 @@ export function AssistantModal({
       // Small delay to let loadConversation complete first
       setTimeout(() => triggerRef.current?.click(), 100);
     };
-    window.addEventListener('gds-assistant-resume', resumeHandler);
-    document.addEventListener('keydown', handler);
+    window.addEventListener("gds-assistant-resume", resumeHandler);
+    document.addEventListener("keydown", handler);
     return () => {
-      document.removeEventListener('keydown', handler);
-      window.removeEventListener('gds-assistant-resume', resumeHandler);
+      document.removeEventListener("keydown", handler);
+      window.removeEventListener("gds-assistant-resume", resumeHandler);
     };
   }, []);
 
@@ -468,7 +460,7 @@ export function AssistantModal({
  * @param msgs
  */
 function transcriptToMarkdown(msgs) {
-  if (!msgs?.length) return '';
+  if (!msgs?.length) return "";
 
   const lines = [
     `# Conversation Export\n`,
@@ -477,14 +469,14 @@ function transcriptToMarkdown(msgs) {
   ];
 
   for (const msg of msgs) {
-    lines.push(`\n${msg.role === 'user' ? '## User' : '## Assistant'}\n`);
+    lines.push(`\n${msg.role === "user" ? "## User" : "## Assistant"}\n`);
 
     for (const part of msg.content || []) {
-      if (part.type === 'text') {
-        lines.push(part.text || '');
-      } else if (part.type === 'image') {
-        lines.push('\n[Image attached]\n');
-      } else if (part.type === 'tool-call') {
+      if (part.type === "text") {
+        lines.push(part.text || "");
+      } else if (part.type === "image") {
+        lines.push("\n[Image attached]\n");
+      } else if (part.type === "tool-call") {
         lines.push(`\n**Tool:** \`${part.toolName}\``);
         if (part.args && Object.keys(part.args).length > 0) {
           lines.push(
@@ -492,20 +484,20 @@ function transcriptToMarkdown(msgs) {
           );
         }
         if (part.result !== undefined) {
-          const status = part.isError ? 'Error' : 'Result';
+          const status = part.isError ? "Error" : "Result";
           const body =
-            typeof part.result === 'string' ?
-              part.result
-            : JSON.stringify(part.result);
+            typeof part.result === "string"
+              ? part.result
+              : JSON.stringify(part.result);
           lines.push(`\n_${status}:_ ${body}`);
         }
-        lines.push('\n');
+        lines.push("\n");
       }
     }
-    lines.push('\n\n---\n');
+    lines.push("\n\n---\n");
   }
 
-  return lines.join('');
+  return lines.join("");
 }
 
 function Thread({
@@ -522,7 +514,7 @@ function Thread({
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [conversations, setConversations] = useState([]);
-  const [activeTitle, setActiveTitle] = useState('');
+  const [activeTitle, setActiveTitle] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -536,8 +528,8 @@ function Thread({
         setShowMore(false);
       }
     };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
   }, [showMore]);
 
   const toggleHistory = useCallback(async () => {
@@ -566,14 +558,14 @@ function Thread({
   const handleSelect = useCallback(
     (conv) => {
       onLoadConversation(conv.uuid);
-      setActiveTitle(conv.title || 'Untitled');
+      setActiveTitle(conv.title || "Untitled");
       setShowHistory(false);
     },
     [onLoadConversation],
   );
 
   const handleNewChat = useCallback(() => {
-    setActiveTitle('');
+    setActiveTitle("");
     onNewChat();
   }, [onNewChat]);
 
@@ -582,9 +574,9 @@ function Thread({
   const handleExport = useCallback(() => {
     const md = transcriptToMarkdown(threadRuntime.getState()?.messages || []);
     if (!md) return;
-    const blob = new Blob([md], {type: 'text/markdown'});
+    const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `conversation-${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
@@ -609,7 +601,7 @@ function Thread({
         // Auto-focus composer input when thread mounts
         if (el) {
           setTimeout(() => {
-            el.querySelector('.gds-assistant__input')?.focus();
+            el.querySelector(".gds-assistant__input")?.focus();
           }, 100);
         }
       }}
@@ -619,18 +611,20 @@ function Thread({
         onMouseDown={onHeaderMouseDown}
         onDoubleClick={(e) => {
           // Double-click empty header area to reset panel position/size
-          if (e.target.closest('button, input, textarea, select, a')) return;
+          if (e.target.closest("button, input, textarea, select, a")) return;
           resetPanelPosition?.();
         }}
         title="Drag to move — double-click to reset"
       >
         <span className="gds-assistant__title">
-          {activeTitle || 'AI Assistant'}
+          {activeTitle || "AI Assistant"}
         </span>
         <div className="gds-assistant__header-actions">
           <button
             type="button"
-            className={`gds-assistant__header-btn ${showSkills ? 'gds-assistant__header-btn--active' : ''}`}
+            className={`gds-assistant__header-btn ${
+              showSkills ? "gds-assistant__header-btn--active" : ""
+            }`}
             onClick={toggleSkills}
             title="Skills"
           >
@@ -672,7 +666,9 @@ function Thread({
           <div className="gds-assistant__more" ref={moreRef}>
             <button
               type="button"
-              className={`gds-assistant__header-btn ${showMore ? 'gds-assistant__header-btn--active' : ''}`}
+              className={`gds-assistant__header-btn ${
+                showMore ? "gds-assistant__header-btn--active" : ""
+              }`}
               onClick={() => setShowMore((v) => !v)}
               title="More"
               aria-haspopup="menu"
@@ -713,7 +709,7 @@ function Thread({
                     setShowMore(false);
                   }}
                 >
-                  {showContext ? 'Hide system context' : 'Edit system context'}
+                  {showContext ? "Hide system context" : "Edit system context"}
                 </button>
                 <button
                   type="button"
@@ -734,7 +730,7 @@ function Thread({
                   title="Copy chat to clipboard"
                   onClick={handleCopyChat}
                 >
-                  {chatCopied ? 'Copied!' : 'Copy chat to clipboard'}
+                  {chatCopied ? "Copied!" : "Copy chat to clipboard"}
                 </button>
               </div>
             )}
@@ -802,22 +798,22 @@ function Thread({
       {pendingApprovals && pendingApprovals.length > 0 && (
         <div className="gds-assistant__approval-bar">
           <span>
-            {pendingApprovals.length === 1 ?
-              'Approve this action?'
-            : `${pendingApprovals.length} pending actions — approve all?`}
+            {pendingApprovals.length === 1
+              ? "Approve this action?"
+              : `${pendingApprovals.length} pending actions — approve all?`}
           </span>
           <button
             className="gds-assistant__approval-btn gds-assistant__approval-btn--approve"
             onClick={() => onApproveToolCall()}
           >
-            {pendingApprovals.length > 1 ?
-              `Approve (${pendingApprovals.length})`
-            : 'Approve'}
+            {pendingApprovals.length > 1
+              ? `Approve (${pendingApprovals.length})`
+              : "Approve"}
           </button>
           {pendingApprovals[0]?.trustableHost && (
             <button
               className="gds-assistant__approval-btn gds-assistant__approval-btn--trust"
-              onClick={() => onApproveToolCall({trustHost: true})}
+              onClick={() => onApproveToolCall({ trustHost: true })}
               title={`Approve and never ask again for ${pendingApprovals[0].trustableHost}`}
             >
               Approve & trust {pendingApprovals[0].trustableHost}
@@ -857,8 +853,8 @@ function EmptyState() {
   const handleSuggestion = useCallback(
     (text) => {
       threadRuntime.append({
-        role: 'user',
-        content: [{type: 'text', text}],
+        role: "user",
+        content: [{ type: "text", text }],
       });
     },
     [threadRuntime],
@@ -893,7 +889,7 @@ function EmptyState() {
 // each one carries its own title and an unambiguous close (×) — the panels are
 // opened from the "⋯" menu, so without this there's no visible way to dismiss
 // them.
-function PanelHeader({title, onClose}) {
+function PanelHeader({ title, onClose }) {
   return (
     <div className="gds-assistant__panel-head">
       <span className="gds-assistant__panel-head-title">{title}</span>
@@ -921,14 +917,14 @@ function PanelHeader({title, onClose}) {
   );
 }
 
-function SystemContextInput({value, onChange, onClose}) {
+function SystemContextInput({ value, onChange, onClose }) {
   return (
     <div className="gds-assistant__context">
       <PanelHeader title="System context" onClose={onClose} />
       <textarea
         className="gds-assistant__context-input"
         placeholder='Add context for this chat, e.g. "You&apos;re helping me restructure the Finnish product pages"'
-        value={value || ''}
+        value={value || ""}
         onChange={(e) => onChange(e.target.value)}
         rows={2}
       />
@@ -945,7 +941,7 @@ function SystemContextInput({value, onChange, onClose}) {
  * @return {string} Formatted cost string.
  */
 function formatCost(dollars) {
-  if (dollars < 0.001) return '<$0.001';
+  if (dollars < 0.001) return "<$0.001";
   return `~$${dollars.toFixed(3)}`;
 }
 
@@ -956,26 +952,26 @@ function formatCost(dollars) {
  * @return {string} Formatted relative time.
  */
 function relativeTime(dateStr) {
-  const date = new Date(dateStr + 'Z');
+  const date = new Date(dateStr + "Z");
   const now = new Date();
   const diffMs = now - date;
   const diffMin = Math.floor(diffMs / 60000);
   const diffHr = Math.floor(diffMs / 3600000);
 
-  if (diffMin < 1) return 'just now';
+  if (diffMin < 1) return "just now";
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHr < 24) return `${diffHr}h ago`;
 
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
-  return date.toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ── Skills list panel ────────────────────────────────────────
 
-function SkillsList({onUsed, onClose}) {
+function SkillsList({ onUsed, onClose }) {
   const [skills, setSkills] = useState(getSkills);
   const threadRuntime = useThreadRuntime();
 
@@ -990,8 +986,8 @@ function SkillsList({onUsed, onClose}) {
         setModel(skill.model);
       }
       threadRuntime.append({
-        role: 'user',
-        content: [{type: 'text', text: skill.prompt}],
+        role: "user",
+        content: [{ type: "text", text: skill.prompt }],
       });
       onUsed?.();
     },
@@ -1029,8 +1025,8 @@ function SkillsList({onUsed, onClose}) {
               {skill.description}
               {skill.model && (
                 <span className="gds-assistant__skill-model">
-                  {' '}
-                  ({skill.model.split(':').pop()})
+                  {" "}
+                  ({skill.model.split(":").pop()})
                 </span>
               )}
             </span>
@@ -1048,7 +1044,7 @@ function TypingIndicator() {
   const [isRunning, setIsRunning] = useState(false);
   // What's happening right now ("Reading the editor…", "Editing the document…")
   // so a slow turn shows progress instead of three blind dots.
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
     return threadRuntime.subscribe(() => {
@@ -1062,9 +1058,9 @@ function TypingIndicator() {
 
   return (
     <div className="gds-assistant__typing">
-      {status ?
+      {status ? (
         <span className="gds-assistant__typing-status">{status}</span>
-      : null}
+      ) : null}
       <span className="gds-assistant__typing-dot" />
       <span className="gds-assistant__typing-dot" />
       <span className="gds-assistant__typing-dot" />
@@ -1074,7 +1070,7 @@ function TypingIndicator() {
 
 // ── Slash command autocomplete ───────────────────────────────
 
-function SlashAutocomplete({query, onSelect, onDismiss}) {
+function SlashAutocomplete({ query, onSelect, onDismiss }) {
   const [skills, setSkills] = useState(getSkills);
 
   useEffect(() => {
@@ -1089,10 +1085,10 @@ function SlashAutocomplete({query, onSelect, onDismiss}) {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === 'Escape') onDismiss();
+      if (e.key === "Escape") onDismiss();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, [onDismiss]);
 
   if (!filtered.length) return null;
@@ -1123,12 +1119,11 @@ function SlashAutocomplete({query, onSelect, onDismiss}) {
 
 // ── Conversation history list ───────────────────────────────
 
-function ConversationList({conversations, onSelect, onClose}) {
-  const [search, setSearch] = useState('');
-  const filtered =
-    search ?
-      conversations.filter((c) =>
-        (c.title || '').toLowerCase().includes(search.toLowerCase()),
+function ConversationList({ conversations, onSelect, onClose }) {
+  const [search, setSearch] = useState("");
+  const filtered = search
+    ? conversations.filter((c) =>
+        (c.title || "").toLowerCase().includes(search.toLowerCase()),
       )
     : conversations;
 
@@ -1159,7 +1154,7 @@ function ConversationList({conversations, onSelect, onClose}) {
           onClick={() => onSelect(conv)}
         >
           <span className="gds-assistant__history-title">
-            {conv.title || 'Untitled'}
+            {conv.title || "Untitled"}
           </span>
           <span className="gds-assistant__history-meta">
             {(conv.total_input_tokens > 0 || conv.total_output_tokens > 0) && (
@@ -1181,11 +1176,11 @@ function ConversationList({conversations, onSelect, onClose}) {
 // ── Model / token selectors ─────────────────────────────────
 
 function getModelConfig() {
-  return window.gdsAssistant?.models || {providers: [], default: null};
+  return window.gdsAssistant?.models || { providers: [], default: null };
 }
 
 function getDefaultModelKey() {
-  return getModelConfig().default || '';
+  return getModelConfig().default || "";
 }
 
 function ModelSelector() {
@@ -1211,9 +1206,9 @@ function ModelSelector() {
         <optgroup key={provider.name} label={provider.label}>
           {provider.models.map((m) => (
             <option key={m.value} value={m.value}>
-              {m.label} {m.tier || ''}
-              {m.capabilityTier === 'read' ? ' (read-only)' : ''}
-              {m.capabilityTier === 'full' ? ' (full access)' : ''}
+              {m.label} {m.tier || ""}
+              {m.capabilityTier === "read" ? " (read-only)" : ""}
+              {m.capabilityTier === "full" ? " (full access)" : ""}
             </option>
           ))}
         </optgroup>
@@ -1227,10 +1222,10 @@ function getMaxTokensOptions() {
   const presets = [4096, 8192, 16384, 32768];
   const formatK = (v) => `${Math.round(v / 1024)}K`;
   return [
-    {value: 0, label: formatK(def)},
+    { value: 0, label: formatK(def) },
     ...presets
       .filter((v) => v !== def)
-      .map((v) => ({value: v, label: formatK(v)})),
+      .map((v) => ({ value: v, label: formatK(v) })),
   ];
 }
 
@@ -1278,450 +1273,15 @@ function UsageBar() {
   return (
     <div className="gds-assistant__usage">
       <span
-        className={overBudget ? 'gds-assistant__usage--warn' : ''}
-        title={`Input: ${usage.inputTokens.toLocaleString()} / Output: ${usage.outputTokens.toLocaleString()} · ${formatCost(usage.cost)}`}
+        className={overBudget ? "gds-assistant__usage--warn" : ""}
+        title={`Input: ${usage.inputTokens.toLocaleString()} / Output: ${usage.outputTokens.toLocaleString()} · ${formatCost(
+          usage.cost,
+        )}`}
       >
-        {total.toLocaleString()} tokens{overBudget ? ' ⚠' : ''}
+        {total.toLocaleString()} tokens{overBudget ? " ⚠" : ""}
       </span>
     </div>
   );
-}
-
-// ── Voice-to-text mic ───────────────────────────────────────
-
-// Pick the initial dictation language: a remembered choice, else the page
-// language (matched against the available codes), else the first available.
-function pickInitialVoiceLang(langs) {
-  if (!langs.length) return undefined;
-  const codes = langs.map((l) => l.code);
-  try {
-    const saved = localStorage.getItem('gds-assistant-voice-lang');
-    if (saved && codes.includes(saved)) return saved;
-  } catch {
-    // storage unavailable
-  }
-  const page = (
-    document.documentElement.lang ||
-    navigator.language ||
-    ''
-  ).toLowerCase();
-  const exact = codes.find((c) => c.toLowerCase() === page);
-  if (exact) return exact;
-  const primary = page.split('-')[0];
-  return (
-    codes.find((c) => c.toLowerCase().split('-')[0] === primary) || codes[0]
-  );
-}
-
-function MicButton() {
-  const composer = useComposerRuntime();
-  // The text already in the composer when dictation starts — the transcript is
-  // appended to it so we never clobber what the user typed.
-  const baseRef = useRef('');
-  // Web Speech can't auto-detect language; offer the site's languages (from
-  // Polylang via the localized config) so a user can dictate in one that
-  // differs from the admin UI language.
-  const langs = window.gdsAssistant?.voiceLanguages || [];
-  const [lang, setLang] = useState(() => pickInitialVoiceLang(langs));
-  const [langOpen, setLangOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const [readAloud, setReadAloud] = useTtsEnabled();
-  const [voiceMode, setVoiceMode] = useVoiceMode();
-  const ttsAvail = ttsSupported();
-  // Silence-based auto-send timer for Voice mode. ref so it isn't recreated
-  // every render and so its handlers see the freshest composer/threadRuntime
-  // values.
-  const silenceTimerRef = useRef(null);
-  const voiceModeRef = useRef(voiceMode);
-  const hasFinalRef = useRef(false);
-  useEffect(() => {
-    voiceModeRef.current = voiceMode;
-  }, [voiceMode]);
-  const {supported, listening, start, stop} = useVoiceInput({
-    lang,
-    onResult: (transcript, isFinal) => {
-      const base = baseRef.current;
-      const sep = base && !/\s$/.test(base) ? ' ' : '';
-      composer.setText(base + sep + transcript);
-
-      if (isFinal) hasFinalRef.current = true;
-
-      // Voice mode: any result event (interim or final) resets the silence
-      // window; if no further events arrive within SEND_AFTER_SILENCE_MS the
-      // composer auto-sends. We only arm after we've seen at least one final
-      // so the user has to actually say something.
-      if (voiceModeRef.current) {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = null;
-        }
-        silenceTimerRef.current = setTimeout(() => {
-          silenceTimerRef.current = null;
-          if (!hasFinalRef.current) return;
-          const text = composer.getState?.()?.text || '';
-          if (!text.trim()) return;
-          hasFinalRef.current = false;
-          baseRef.current = '';
-          composer.send?.();
-        }, 1500);
-      }
-    },
-  });
-
-  // Close the language popover on an outside click.
-  useEffect(() => {
-    if (!langOpen) return undefined;
-    const onDoc = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setLangOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [langOpen]);
-
-  // Skype-style half-duplex: while the user "wants the mic on" we shuttle it
-  // off during the AI's turn (so we don't transcribe its own voice back in)
-  // and turn it back on once the AI is done. The user's intent flips only on
-  // explicit mic taps — auto pause/resume keeps it consistent across replies.
-  const intendsRef = useRef(false);
-  const listeningRef = useRef(false);
-  const readAloudRef = useRef(readAloud);
-  const threadRuntime = useThreadRuntime();
-  useEffect(() => {
-    listeningRef.current = listening;
-  }, [listening]);
-  useEffect(() => {
-    readAloudRef.current = readAloud;
-  }, [readAloud]);
-
-  const tryRestart = useCallback(() => {
-    if (!intendsRef.current) return;
-    if (listeningRef.current) return;
-    // Don't restart while TTS is still draining (cancel/end race).
-    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
-    baseRef.current = composer.getState?.()?.text || '';
-    start();
-  }, [start, composer]);
-
-  // TTS start → drop the mic; TTS end → bring it back if the user still wants it.
-  useEffect(() => {
-    if (!supported) return undefined;
-    const onTtsStart = () => {
-      if (listeningRef.current) stop();
-    };
-    const onTtsEnd = () => {
-      // Small delay so the cancel-drained queue settles before we re-listen.
-      setTimeout(tryRestart, 80);
-    };
-    window.addEventListener(TTS_EVENTS.start, onTtsStart);
-    window.addEventListener(TTS_EVENTS.end, onTtsEnd);
-    return () => {
-      window.removeEventListener(TTS_EVENTS.start, onTtsStart);
-      window.removeEventListener(TTS_EVENTS.end, onTtsEnd);
-    };
-  }, [supported, stop, tryRestart]);
-
-  // Mute the mic for the assistant's turn (so a user mid-sentence doesn't get
-  // recorded talking over the run), and resume on turn-end when read-aloud is
-  // OFF (when it's ON, the TTS_END handler above takes care of resuming).
-  useEffect(() => {
-    if (!supported) return undefined;
-    let prevRunning = false;
-    return threadRuntime.subscribe(() => {
-      const running = !!threadRuntime.getState?.()?.isRunning;
-      if (running && !prevRunning && listeningRef.current) {
-        stop();
-      }
-      if (!running && prevRunning && !readAloudRef.current) {
-        setTimeout(tryRestart, 80);
-      }
-      prevRunning = running;
-    });
-  }, [supported, stop, tryRestart, threadRuntime]);
-
-  if (!supported) return null;
-
-  const handle = () => {
-    if (listening) {
-      intendsRef.current = false;
-      // Explicit stop overrides any pending auto-send timer.
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-      stop();
-      return;
-    }
-    intendsRef.current = true;
-    hasFinalRef.current = false;
-    // User taking a turn — shut the AI up so we don't transcribe its voice.
-    cancelTts();
-    baseRef.current = composer.getState?.()?.text || '';
-    start();
-  };
-
-  const choose = (code) => {
-    setLang(code);
-    setLangOpen(false);
-    try {
-      localStorage.setItem('gds-assistant-voice-lang', code);
-    } catch {
-      // storage unavailable
-    }
-  };
-
-  // Chevron + popover are useful when there's >1 dictation language OR when
-  // TTS is supported (so the user can flip the read-aloud toggle); hide the
-  // chevron only when neither is true.
-  const showPopoverToggle = langs.length > 1 || ttsAvail;
-
-  return (
-    <div className="gds-assistant__voice" ref={wrapRef}>
-      {/* Popover opens upward (composer is pinned to the panel bottom). */}
-      {showPopoverToggle && langOpen && (
-        <div className="gds-assistant__voice-langs" role="menu">
-          {langs.length > 1 &&
-            langs.map((l) => (
-              <button
-                key={l.code}
-                type="button"
-                role="menuitemradio"
-                aria-checked={l.code === lang}
-                className={`gds-assistant__voice-langs-item${l.code === lang ? ' is-active' : ''}`}
-                onClick={() => choose(l.code)}
-              >
-                <span>{l.name}</span>
-                {l.code === lang && (
-                  <span
-                    className="gds-assistant__voice-langs-check"
-                    aria-hidden="true"
-                  >
-                    ✓
-                  </span>
-                )}
-              </button>
-            ))}
-          {ttsAvail && langs.length > 1 && (
-            <div
-              className="gds-assistant__voice-langs-sep"
-              aria-hidden="true"
-            />
-          )}
-          {ttsAvail && (
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={readAloud}
-              className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${readAloud ? ' is-active' : ''}`}
-              onClick={() => setReadAloud(!readAloud)}
-              title="Read assistant replies aloud using Web Speech"
-            >
-              <span>Read replies aloud</span>
-              <span
-                className={`gds-assistant__voice-switch${readAloud ? ' is-on' : ''}`}
-                aria-hidden="true"
-              >
-                <span className="gds-assistant__voice-switch-knob" />
-              </span>
-            </button>
-          )}
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={voiceMode}
-            className={`gds-assistant__voice-langs-item gds-assistant__voice-langs-toggle${voiceMode ? ' is-active' : ''}`}
-            onClick={() => setVoiceMode(!voiceMode)}
-            title="Auto-send the message after a short pause when dictating"
-          >
-            <span>Voice mode (auto-send)</span>
-            <span
-              className={`gds-assistant__voice-switch${voiceMode ? ' is-on' : ''}`}
-              aria-hidden="true"
-            >
-              <span className="gds-assistant__voice-switch-knob" />
-            </span>
-          </button>
-        </div>
-      )}
-      <button
-        type="button"
-        className={`gds-assistant__mic${listening ? ' gds-assistant__mic--listening' : ''}`}
-        onClick={handle}
-        title={listening ? 'Stop dictation' : 'Dictate (voice to text)'}
-        aria-pressed={listening}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      </button>
-      {showPopoverToggle && (
-        <button
-          type="button"
-          className="gds-assistant__voice-lang"
-          onClick={() => setLangOpen((v) => !v)}
-          disabled={listening}
-          title={
-            langs.length > 1
-              ? 'Voice settings (dictation language + read aloud)'
-              : 'Voice settings'
-          }
-          aria-haspopup="menu"
-          aria-expanded={langOpen}
-        >
-          <svg
-            className="gds-assistant__voice-chevron"
-            width="9"
-            height="9"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Read-aloud controller ───────────────────────────────────
-//
-// Side-effect component (renders nothing). Subscribes to the thread runtime
-// and, when the toggle is on, reads each completed assistant message aloud
-// via the Web Speech API. Speech is cancelled when:
-//   - a new run starts (user sent the next message)
-//   - the toggle is flipped off
-//   - the component unmounts (chat panel closes)
-
-function ReadAloudController() {
-  const [enabled] = useTtsEnabled();
-  const threadRuntime = useThreadRuntime();
-
-  useEffect(() => {
-    if (!enabled || !ttsSupported()) return undefined;
-
-    let wasRunning = false;
-    // Per-message bookkeeping for streaming reads. We track the offset into
-    // the message's plain text that we've already queued for speech, so each
-    // tick we only enqueue the *new* fully-formed sentences. Map keyed by a
-    // stable per-message key so an interim id changing to a final id (which
-    // assistant-ui sometimes does on completion) doesn't reset progress.
-    const progress = new Map(); // key -> {offset, lastTextLen, finalised}
-
-    const speakUpTo = (key, text, lang, atEnd) => {
-      const state = progress.get(key) || {offset: 0, lastTextLen: 0, finalised: false};
-      const remainder = text.slice(state.offset);
-      if (!remainder.length) {
-        progress.set(key, {...state, lastTextLen: text.length});
-        return;
-      }
-
-      // Mid-stream: only queue *complete* sentences so we don't speak a half
-      // word the engine then re-pronounces when the next token arrives. At
-      // the end of the run, just speak everything that's left regardless.
-      let consume = 0;
-      if (atEnd) {
-        consume = remainder.length;
-      } else {
-        // Last sentence-terminator in the remainder. JS regex doesn't expose
-        // lastIndexOf for patterns, so iterate.
-        const re = /[.!?。！？]["')\]]?(?=\s|$)/g;
-        let m;
-        let lastEnd = -1;
-        while ((m = re.exec(remainder)) !== null) {
-          lastEnd = m.index + m[0].length;
-        }
-        if (lastEnd < 0) return;
-        // Don't speak less than a few words; avoids machine-gun queueing
-        // when the model emits short fragments token-by-token.
-        if (lastEnd < 16) return;
-        consume = lastEnd;
-      }
-
-      const chunk = remainder.slice(0, consume).trim();
-      if (chunk) speakAppend(chunk, lang);
-      progress.set(key, {
-        offset: state.offset + consume,
-        lastTextLen: text.length,
-        finalised: atEnd,
-      });
-    };
-
-    // Has the user actually started a run in *this* mount? Until they do,
-    // every assistant message we see is loaded history — never to be
-    // narrated. This is the only reliable refresh-safety check: seeding
-    // messages on mount doesn't help because the runtime loads them
-    // asynchronously *after* the controller has subscribed.
-    let armed = false;
-
-    const tick = () => {
-      const state = threadRuntime.getState?.();
-      if (!state) return;
-      const running = !!state.isRunning;
-      const messages = state.messages || [];
-
-      // A false → true transition is the user-initiated signal that turns on
-      // narration. Until then we silently track state and never speak.
-      if (running && !wasRunning) {
-        armed = true;
-        cancelTts();
-      }
-
-      if (!armed) {
-        wasRunning = running;
-        return;
-      }
-
-      // Only narrate when the most recent message in the thread is an
-      // assistant message. After a user send the tail is the user's message,
-      // so falling back to the *previous* assistant would speak the prior
-      // reply. The tail index doubles as the key so an id change between
-      // interim and final doesn't reset the spoken offset.
-      const tail = messages[messages.length - 1];
-      if (tail?.role !== 'assistant') {
-        wasRunning = running;
-        return;
-      }
-
-      const tailIdx = messages.length - 1;
-      const key = tail.id || `idx:${tailIdx}`;
-      const text = extractAssistantText(tail);
-      if (text) speakUpTo(key, text, readVoiceLang(), !running);
-
-      wasRunning = running;
-    };
-
-    // Seed `wasRunning` from the current state so a refresh that lands
-    // mid-stream doesn't fire a spurious "run just started" cancel on the
-    // first tick. (The `armed` gate above takes care of the "don't narrate
-    // history" guarantee.)
-    wasRunning = !!threadRuntime.getState?.()?.isRunning;
-
-    const unsub = threadRuntime.subscribe(tick);
-    return () => {
-      if (typeof unsub === 'function') unsub();
-      cancelTts();
-    };
-  }, [enabled, threadRuntime]);
-
-  return null;
 }
 
 // ── Editor-selection chip ───────────────────────────────────
@@ -1737,9 +1297,9 @@ function ReadAloudController() {
 // the tooltip on huge documents. CSS (-webkit-line-clamp) handles the visual
 // truncation; this is just a backstop.
 function clampSnippet(text, max = 280) {
-  if (typeof text !== 'string') return '';
+  if (typeof text !== "string") return "";
   if (text.length <= max) return text;
-  return text.slice(0, max - 1).trimEnd() + '…';
+  return text.slice(0, max - 1).trimEnd() + "…";
 }
 
 const SelectionIcon = (
@@ -1768,16 +1328,16 @@ function SelectionChip() {
   let snippet;
   let title;
 
-  if (selection.mode === 'multi-block') {
+  if (selection.mode === "multi-block") {
     const labels = selection.blockLabels || [];
-    const head = labels.slice(0, 3).join(', ');
-    const more = labels.length > 3 ? ` +${labels.length - 3} more` : '';
+    const head = labels.slice(0, 3).join(", ");
+    const more = labels.length > 3 ? ` +${labels.length - 3} more` : "";
     label = `Selected ${selection.count} blocks`;
-    snippet = labels.length ? `${head}${more}` : '';
-    title = `Selected ${selection.count} blocks: ${labels.join(', ')}`;
+    snippet = labels.length ? `${head}${more}` : "";
+    title = `Selected ${selection.count} blocks: ${labels.join(", ")}`;
   } else {
     const text =
-      selection.mode === 'text-range'
+      selection.mode === "text-range"
         ? selection.selectedText
         : selection.blockText;
     label = `Selected ${selection.blockLabel}`;
@@ -1792,7 +1352,7 @@ function SelectionChip() {
       {SelectionIcon}
       <span className="gds-assistant__selection-chip-label">
         {label}
-        {snippet ? ':' : ''}
+        {snippet ? ":" : ""}
       </span>
       {snippet && (
         <span className="gds-assistant__selection-chip-text">“{snippet}”</span>
@@ -1831,22 +1391,22 @@ function Composer() {
     const composer = threadRuntime.composer;
     if (!composer?.subscribe || !composer.getState) return undefined;
     try {
-      const saved = localStorage.getItem('gds-assistant-draft');
+      const saved = localStorage.getItem("gds-assistant-draft");
       if (saved && !composer.getState().text && composer.setText) {
         composer.setText(saved);
       }
     } catch {
       // Ignore storage failures (private mode, quota).
     }
-    setHasText(!!(composer.getState().text || '').trim());
+    setHasText(!!(composer.getState().text || "").trim());
     return composer.subscribe(() => {
-      const text = composer.getState().text || '';
+      const text = composer.getState().text || "";
       setHasText(!!text.trim());
       try {
         if (text) {
-          localStorage.setItem('gds-assistant-draft', text);
+          localStorage.setItem("gds-assistant-draft", text);
         } else {
-          localStorage.removeItem('gds-assistant-draft');
+          localStorage.removeItem("gds-assistant-draft");
         }
       } catch {
         // Ignore storage failures.
@@ -1864,7 +1424,7 @@ function Composer() {
 
   const handleInputChange = useCallback((e) => {
     const val = e.target?.value ?? e;
-    if (typeof val === 'string' && val.startsWith('/')) {
+    if (typeof val === "string" && val.startsWith("/")) {
       setSlashQuery(val.slice(1));
     } else {
       setSlashQuery(null);
@@ -1878,8 +1438,8 @@ function Composer() {
         setModel(skill.model);
       }
       threadRuntime.append({
-        role: 'user',
-        content: [{type: 'text', text: skill.prompt}],
+        role: "user",
+        content: [{ type: "text", text: skill.prompt }],
       });
     },
     [threadRuntime],
@@ -1928,7 +1488,7 @@ function Composer() {
         onChange={handleInputChange}
       />
       <MicButton />
-      {isRunning ?
+      {isRunning ? (
         <button
           type="button"
           className="gds-assistant__cancel"
@@ -1939,7 +1499,7 @@ function Composer() {
             <rect x="4" y="4" width="16" height="16" rx="2" />
           </svg>
         </button>
-      : hasText ?
+      ) : hasText ? (
         <ComposerPrimitive.Send className="gds-assistant__send" title="Send">
           <svg
             width="16"
@@ -1955,7 +1515,7 @@ function Composer() {
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
         </ComposerPrimitive.Send>
-      : null}
+      ) : null}
       {wasStopped && !isRunning && (
         <span className="gds-assistant__stopped">Stopped</span>
       )}
@@ -1965,8 +1525,8 @@ function Composer() {
 
 // ── Composer attachment chip ─────────────────────────────────
 
-function ComposerAttachment({attachment}) {
-  const thumbSrc = attachment?.content?.[0]?.image || '';
+function ComposerAttachment({ attachment }) {
+  const thumbSrc = attachment?.content?.[0]?.image || "";
 
   return (
     <AttachmentPrimitive.Root className="gds-assistant__attachment-chip">
@@ -1987,7 +1547,7 @@ function ComposerAttachment({attachment}) {
 
 // ── Message components ──────────────────────────────────────
 
-function MessageImage({image}) {
+function MessageImage({ image }) {
   if (!image) return null;
   return (
     <img src={image} alt="Attached" className="gds-assistant__message-image" />
@@ -1997,14 +1557,14 @@ function MessageImage({image}) {
 // Out-of-band notes (e.g. the Undo button's "↩ Reverted…") are stored as user
 // messages so the model sees them, but render as a centered system line rather
 // than a user bubble. The leading ↩ is our marker.
-const SYSTEM_NOTE_MARKER = '↩';
+const SYSTEM_NOTE_MARKER = "↩";
 
 function UserMessage() {
   const systemNote = useMessage((s) => {
     const text = (s.content || [])
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text || '')
-      .join('')
+      .filter((p) => p.type === "text")
+      .map((p) => p.text || "")
+      .join("")
       .trim();
     return text.startsWith(SYSTEM_NOTE_MARKER) ? text : null;
   });
@@ -2016,7 +1576,7 @@ function UserMessage() {
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--user">
       <MessagePrimitive.Content
-        components={{Text: UserMessageText, Image: MessageImage}}
+        components={{ Text: UserMessageText, Image: MessageImage }}
       />
       <MessageTimestamp />
     </MessagePrimitive.Root>
@@ -2036,19 +1596,19 @@ function UserMessage() {
  */
 function MessageTimestamp() {
   const createdAt = useMessage((s) => s.createdAt);
-  const isRunning = useMessage((s) => s.status?.type === 'running');
+  const isRunning = useMessage((s) => s.status?.type === "running");
   const isLast = useMessage((s) => s.isLast);
   const role = useMessage((s) => s.role);
 
   // Streaming assistant message: no time yet — TypingIndicator covers it.
-  if (isRunning && isLast && role === 'assistant') return null;
+  if (isRunning && isLast && role === "assistant") return null;
 
   if (!createdAt || new Date(createdAt).getTime() < 100000) return null;
   const date = new Date(createdAt);
   return (
     <span
       className="gds-assistant__message-time"
-      title={date.toLocaleString('sv-SE')}
+      title={date.toLocaleString("sv-SE")}
     >
       {formatMessageTime(date.getTime())}
     </span>
@@ -2068,29 +1628,30 @@ function MessageTimestamp() {
 const BLOCK_REF_RE =
   /\((?:block|clientId)[:\s]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s+[—–-]\s+([^)]+))?\)/gi;
 
-function BlockChip({clientId, cachedLabel}) {
+function BlockChip({ clientId, cachedLabel }) {
   const liveName =
-    window.wp?.data?.select?.('core/block-editor')?.getBlockName?.(clientId) || '';
-  const label =
-    liveName ?
-      liveName.replace(/^core\//, '').replace(/-/g, ' ')
+    window.wp?.data?.select?.("core/block-editor")?.getBlockName?.(clientId) ||
+    "";
+  const label = liveName
+    ? liveName.replace(/^core\//, "").replace(/-/g, " ")
     : cachedLabel
-      ? cachedLabel.trim()
-      : 'block';
+    ? cachedLabel.trim()
+    : "block";
   const onClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       const sel = `[data-block="${clientId}"]`;
       const inMain = document.querySelector(sel);
-      if (inMain) inMain.scrollIntoView({behavior: 'smooth', block: 'center'});
+      if (inMain)
+        inMain.scrollIntoView({ behavior: "smooth", block: "center" });
       else {
         const iframe = document.querySelector('iframe[name="editor-canvas"]');
         iframe?.contentDocument
           ?.querySelector(sel)
-          ?.scrollIntoView({behavior: 'smooth', block: 'center'});
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      window.wp?.data?.dispatch?.('core/block-editor')?.selectBlock?.(clientId);
+      window.wp?.data?.dispatch?.("core/block-editor")?.selectBlock?.(clientId);
     } catch {
       // Ignore — block may be gone after later edits.
     }
@@ -2129,15 +1690,15 @@ function renderTextWithBlockChips(text) {
   BLOCK_REF_RE.lastIndex = 0;
   while ((m = BLOCK_REF_RE.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
-    out.push({chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}`});
+    out.push({ chip: m[1], cached: m[2] || null, key: `${m.index}-${m[1]}` });
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push(text.slice(last));
-  if (out.length === 1 && typeof out[0] === 'string') return null;
+  if (out.length === 1 && typeof out[0] === "string") return null;
   return out;
 }
 
-function UserMessageText({text}) {
+function UserMessageText({ text }) {
   // Long skill prompts: show collapsed with expand toggle
   const isLong = text.length > 200;
   const [expanded, setExpanded] = useState(!isLong);
@@ -2146,14 +1707,16 @@ function UserMessageText({text}) {
     const parts = renderTextWithBlockChips(raw);
     if (!parts) return raw;
     return parts.map((p, i) =>
-      typeof p === 'string' ?
+      typeof p === "string" ? (
         <span key={i}>{p}</span>
-      : <BlockChip key={p.key} clientId={p.chip} cachedLabel={p.cached} />,
+      ) : (
+        <BlockChip key={p.key} clientId={p.chip} cachedLabel={p.cached} />
+      ),
     );
   };
 
   if (!isLong) {
-    return <p style={{whiteSpace: 'pre-wrap'}}>{renderText(text)}</p>;
+    return <p style={{ whiteSpace: "pre-wrap" }}>{renderText(text)}</p>;
   }
 
   // Also strip block clientIds from the truncated preview — otherwise long
@@ -2162,17 +1725,15 @@ function UserMessageText({text}) {
   // gracefully degrades to plain text instead of breaking layout.
   return (
     <div>
-      <p style={{whiteSpace: 'pre-wrap'}}>
-        {expanded ?
-          renderText(text)
-        : renderText(text.slice(0, 120) + '...')}
+      <p style={{ whiteSpace: "pre-wrap" }}>
+        {expanded ? renderText(text) : renderText(text.slice(0, 120) + "...")}
       </p>
       <button
         type="button"
         className="gds-assistant__expand-btn"
         onClick={() => setExpanded((v) => !v)}
       >
-        {expanded ? 'Show less' : 'Show full prompt'}
+        {expanded ? "Show less" : "Show full prompt"}
       </button>
     </div>
   );
@@ -2187,9 +1748,9 @@ function AssistantMessage() {
     const parts = s.content || [];
     return !parts.some(
       (p) =>
-        (p.type === 'text' && p.text && p.text.trim()) ||
-        p.type === 'tool-call' ||
-        p.type === 'image',
+        (p.type === "text" && p.text && p.text.trim()) ||
+        p.type === "tool-call" ||
+        p.type === "image",
     );
   });
   if (isEmpty) return null;
@@ -2203,7 +1764,7 @@ function AssistantMessage() {
           // assistant-ui routes tool-call parts through `tools.Fallback`
           // (not `ToolCallUI` — that key was a no-op, which is why tool calls
           // previously only appeared as the adapter's inline text).
-          tools: {Fallback: ToolCallFallback},
+          tools: { Fallback: ToolCallFallback },
         }}
       />
       <MessageTimestamp />
@@ -2216,10 +1777,10 @@ function AssistantMessage() {
 // the attributes we use. We hover-style the tool-call `<abbr>` via CSS so
 // the native browser tooltip still appears on the title attribute.
 const STREAMDOWN_ALLOWED_TAGS = {
-  abbr: ['class', 'title'],
+  abbr: ["class", "title"],
 };
 
-function AssistantMessageText({text}) {
+function AssistantMessageText({ text }) {
   return (
     <StreamdownTextPrimitive
       text={text}
@@ -2240,26 +1801,26 @@ function AssistantMessageText({text}) {
 function messageToCopyText(parts) {
   return (parts || [])
     .map((p) => {
-      if (p.type === 'text') return p.text || '';
-      if (p.type === 'tool-call') {
-        const lines = [`Tool: ${p.toolName || 'unknown'}`];
+      if (p.type === "text") return p.text || "";
+      if (p.type === "tool-call") {
+        const lines = [`Tool: ${p.toolName || "unknown"}`];
         const args = p.args || {};
         if (Object.keys(args).length > 0) {
           lines.push(`Request:\n${JSON.stringify(args, null, 2)}`);
         }
         if (p.result !== undefined) {
           const result =
-            typeof p.result === 'string' ?
-              p.result
-            : JSON.stringify(p.result, null, 2);
+            typeof p.result === "string"
+              ? p.result
+              : JSON.stringify(p.result, null, 2);
           lines.push(`Response:\n${result}`);
         }
-        return lines.join('\n');
+        return lines.join("\n");
       }
-      return '';
+      return "";
     })
     .filter(Boolean)
-    .join('\n\n');
+    .join("\n\n");
 }
 
 /**
@@ -2277,14 +1838,14 @@ function copyToClipboard(text) {
   // first await, so using it as the *fallback* (after a rejection) no-ops in
   // headless CI. Deprecated but still works everywhere, including headless.
   try {
-    const ta = document.createElement('textarea');
+    const ta = document.createElement("textarea");
     ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.top = '-9999px';
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    const ok = document.execCommand('copy');
+    const ok = document.execCommand("copy");
     document.body.removeChild(ta);
     if (ok) return Promise.resolve(true);
   } catch {
@@ -2319,7 +1880,7 @@ function CopyMessageButton() {
       onClick={handleCopy}
       title="Copy message"
     >
-      {copied ? '✓' : '⎘'}
+      {copied ? "✓" : "⎘"}
     </button>
   );
 }
@@ -2333,27 +1894,27 @@ function CopyMessageButton() {
  * @param args
  */
 function summarizeArgs(args) {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return '';
+  if (!args || typeof args !== "object" || Array.isArray(args)) return "";
   const entries = Object.entries(args);
-  if (entries.length === 0) return '';
+  if (entries.length === 0) return "";
 
   // Prioritize fields that identify what the call targets.
   const preferred = [
-    'id',
-    'post_id',
-    'term_id',
-    'menu_id',
-    'parent_item_id',
-    'conversation_uuid',
-    'type',
-    'post_type',
-    'taxonomy',
-    'title',
-    'name',
-    'slug',
-    'position',
-    'menu_order',
-    'status',
+    "id",
+    "post_id",
+    "term_id",
+    "menu_id",
+    "parent_item_id",
+    "conversation_uuid",
+    "type",
+    "post_type",
+    "taxonomy",
+    "title",
+    "name",
+    "slug",
+    "position",
+    "menu_order",
+    "status",
   ];
   const sorted = entries.slice().sort(([a], [b]) => {
     const ai = preferred.indexOf(a);
@@ -2368,20 +1929,20 @@ function summarizeArgs(args) {
     .slice(0, 3)
     .map(([k, v]) => {
       let str;
-      if (typeof v === 'string') {
+      if (typeof v === "string") {
         str = v.length > 24 ? `${v.slice(0, 21)}…` : v;
-      } else if (typeof v === 'number' || typeof v === 'boolean') {
+      } else if (typeof v === "number" || typeof v === "boolean") {
         str = String(v);
       } else if (v === null) {
-        str = 'null';
+        str = "null";
       } else if (Array.isArray(v)) {
         str = `[${v.length}]`;
       } else {
-        str = '{…}';
+        str = "{…}";
       }
       return `${k}=${str}`;
     })
-    .join(' ');
+    .join(" ");
 }
 
 /**
@@ -2390,11 +1951,11 @@ function summarizeArgs(args) {
  * line-level +/- with surrounding context collapsed to "…" stubs. Pure
  * presentation; no buttons, no state.
  */
-function DiffViewer({diff}) {
+function DiffViewer({ diff }) {
   const rows = useMemo(() => {
     if (!diff) return [];
     const lines = collapseUnchanged(
-      diffLines(diff.before || '', diff.after || ''),
+      diffLines(diff.before || "", diff.after || ""),
       2,
     );
     return pairModifiedLines(lines);
@@ -2410,12 +1971,12 @@ function DiffViewer({diff}) {
           indentation without dragging the dark colour scheme in. */}
       <div className="gds-assistant__edit-diff-unified">
         {rows.map((row, i) => {
-          if (row.type === 'mod') {
+          if (row.type === "mod") {
             // Render the pair as two rows (red + green) with inline word
             // highlighting — git's --word-diff. Unchanged tokens stay on the
             // row's light tint; changed tokens light up darker.
-            const delTokens = row.words.filter((w) => w.type !== 'add');
-            const addTokens = row.words.filter((w) => w.type !== 'del');
+            const delTokens = row.words.filter((w) => w.type !== "add");
+            const addTokens = row.words.filter((w) => w.type !== "del");
             return (
               <Fragment key={i}>
                 <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--del">
@@ -2425,9 +1986,9 @@ function DiffViewer({diff}) {
                       <span
                         key={k}
                         className={
-                          tok.type === 'del'
-                            ? 'gds-assistant__edit-diff-word--del'
-                            : 'gds-assistant__edit-diff-word--eq'
+                          tok.type === "del"
+                            ? "gds-assistant__edit-diff-word--del"
+                            : "gds-assistant__edit-diff-word--eq"
                         }
                       >
                         {tok.text}
@@ -2442,9 +2003,9 @@ function DiffViewer({diff}) {
                       <span
                         key={k}
                         className={
-                          tok.type === 'add'
-                            ? 'gds-assistant__edit-diff-word--add'
-                            : 'gds-assistant__edit-diff-word--eq'
+                          tok.type === "add"
+                            ? "gds-assistant__edit-diff-word--add"
+                            : "gds-assistant__edit-diff-word--eq"
                         }
                       >
                         {tok.text}
@@ -2457,20 +2018,23 @@ function DiffViewer({diff}) {
           }
           // Solo line: eq / add / del / gap — same as before.
           const cls =
-            row.type === 'add' ? 'gds-assistant__edit-diff-line--add'
-            : row.type === 'del' ? 'gds-assistant__edit-diff-line--del'
-            : row.type === 'gap' ? 'gds-assistant__edit-diff-line--gap'
-            : 'gds-assistant__edit-diff-line--eq';
+            row.type === "add"
+              ? "gds-assistant__edit-diff-line--add"
+              : row.type === "del"
+              ? "gds-assistant__edit-diff-line--del"
+              : row.type === "gap"
+              ? "gds-assistant__edit-diff-line--gap"
+              : "gds-assistant__edit-diff-line--eq";
           const prefix =
-            row.type === 'add' ? '+'
-            : row.type === 'del' ? '-'
-            : row.type === 'gap' ? '⋮'
-            : ' ';
+            row.type === "add"
+              ? "+"
+              : row.type === "del"
+              ? "-"
+              : row.type === "gap"
+              ? "⋮"
+              : " ";
           return (
-            <div
-              key={i}
-              className={`gds-assistant__edit-diff-line ${cls}`}
-            >
+            <div key={i} className={`gds-assistant__edit-diff-line ${cls}`}>
               <span className="gds-assistant__edit-diff-prefix">{prefix}</span>
               <span className="gds-assistant__edit-diff-text">{row.text}</span>
             </div>
@@ -2481,17 +2045,19 @@ function DiffViewer({diff}) {
   );
 }
 
-function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
+function ToolCallFallback({ toolCallId, toolName, args, result, isError }) {
   const argsHint = summarizeArgs(args);
   const ctx = useContext(UndoContext);
-  const {undoableActions, onUndo, pendingApprovalIds} = ctx;
+  const { undoableActions, onUndo, pendingApprovalIds } = ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
-  const diff = result && typeof result === 'object' ? result.diff : null;
+  const diff = result && typeof result === "object" ? result.diff : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
 
   return (
     <div
-      className={`gds-assistant__tool-call ${isError ? 'gds-assistant__tool-call--error' : ''} ${needsApproval ? 'gds-assistant__tool-call--approval' : ''}`}
+      className={`gds-assistant__tool-call ${
+        isError ? "gds-assistant__tool-call--error" : ""
+      } ${needsApproval ? "gds-assistant__tool-call--approval" : ""}`}
     >
       <details open={!!diff || undefined}>
         <summary className="gds-assistant__tool-call-summary">
@@ -2524,11 +2090,12 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
             onUndo &&
             !needsApproval &&
             !isError &&
-            (undo.undone ?
+            (undo.undone ? (
               <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--undone">
                 Undone
               </span>
-            : <button
+            ) : (
+              <button
                 type="button"
                 className="gds-assistant__tool-undo-btn"
                 disabled={undo.pending}
@@ -2540,8 +2107,9 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
                   onUndo(toolCallId, undo.auditId);
                 }}
               >
-                {undo.pending ? 'Undoing…' : '↩ Undo'}
-              </button>)}
+                {undo.pending ? "Undoing…" : "↩ Undo"}
+              </button>
+            ))}
         </summary>
         {diff && <DiffViewer diff={diff} />}
         {/* Args + raw JSON result are redundant once the diff is rendered —
@@ -2554,9 +2122,9 @@ function ToolCallFallback({toolCallId, toolName, args, result, isError}) {
         )}
         {!needsApproval && result !== undefined && !diff && (
           <pre className="gds-assistant__tool-call-result">
-            {typeof result === 'string' ?
-              result
-            : JSON.stringify(result, null, 2)}
+            {typeof result === "string"
+              ? result
+              : JSON.stringify(result, null, 2)}
           </pre>
         )}
         {undo?.undone && undo.caveats?.length > 0 && (
