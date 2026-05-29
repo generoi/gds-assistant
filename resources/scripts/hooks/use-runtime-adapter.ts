@@ -20,27 +20,8 @@ import type {
 } from "../types/runtime";
 
 // ── Globals + session state ────────────────────────────────
-
-/**
- * Localised config injected by `wp_localize_script` plus the public hooks
- * we expose on the same object for cross-script integration (the Gutenberg
- * toolbar's "send to chat" button reads these).
- */
-interface GdsAssistantGlobal {
-  restUrl?: string;
-  restBase?: string;
-  nonce?: string;
-  /** `model_key → [input, output, cache_read?, cache_write?]` price array (USD/MTok). */
-  modelPricing?: Record<string, number[]>;
-  sendChatMessage?: (text: string) => void;
-  openChat?: () => void;
-}
-
-declare global {
-  interface Window {
-    gdsAssistant?: GdsAssistantGlobal;
-  }
-}
+// `window.gdsAssistant` shape lives in `types/globals.d.ts` so every module
+// sees the same merged declaration.
 
 let currentConversationId: string | null = null;
 let currentModel: string = localStorage.getItem("gds-assistant-model") || "";

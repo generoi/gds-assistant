@@ -24,12 +24,25 @@ import { setModel } from "../hooks/use-runtime-adapter";
 import { cancelTts } from "../hooks/use-tts";
 import { MicButton } from "./MicButton";
 import { ReadAloudController } from "./ReadAloudController";
-import { getSkills, getSkillsFresh } from "./skills-cache";
+import { getSkills, getSkillsFresh, type Skill } from "./skills-cache";
 
 // ── Slash command autocomplete ───────────────────────────────
 
-function SlashAutocomplete({ query, onSelect, onDismiss }) {
-  const [skills, setSkills] = useState(getSkills);
+interface SlashAutocompleteProps {
+  query: string;
+  onSelect: (skill: SkillWithMaybeModel) => void;
+  onDismiss: () => void;
+}
+
+/** Skills carry a `model` field on some installs (set via post meta). */
+type SkillWithMaybeModel = Skill & { model?: string };
+
+function SlashAutocomplete({
+  query,
+  onSelect,
+  onDismiss,
+}: SlashAutocompleteProps): JSX.Element | null {
+  const [skills, setSkills] = useState<Skill[]>(getSkills);
 
   useEffect(() => {
     getSkillsFresh().then(setSkills);
@@ -42,7 +55,7 @@ function SlashAutocomplete({ query, onSelect, onDismiss }) {
   );
 
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onDismiss();
       }
@@ -91,7 +104,7 @@ function SlashAutocomplete({ query, onSelect, onDismiss }) {
 // Hard cap on snippet length sent to the chip so we don't ship megabytes into
 // the tooltip on huge documents. CSS (-webkit-line-clamp) handles the visual
 // truncation; this is just a backstop.
-function clampSnippet(text, max = 280) {
+function clampSnippet(text: unknown, max = 280): string {
   if (typeof text !== "string") {
     return "";
   }
@@ -119,18 +132,18 @@ const SelectionIcon = (
   </svg>
 );
 
-function SelectionChip() {
+function SelectionChip(): JSX.Element | null {
   const selection = useEditorSelection();
   if (!selection) {
     return null;
   }
 
-  let label;
-  let snippet;
-  let title;
+  let label: string;
+  let snippet: string;
+  let title: string;
 
   if (selection.mode === "multi-block") {
-    const labels = selection.blockLabels || [];
+    const labels: string[] = selection.blockLabels || [];
     const head = labels.slice(0, 3).join(", ");
     const more = labels.length > 3 ? ` +${labels.length - 3} more` : "";
     label = `Selected ${selection.count} blocks`;
@@ -164,7 +177,13 @@ function SelectionChip() {
 
 // ── Composer attachment chip ─────────────────────────────────
 
-function ComposerAttachment({ attachment }) {
+interface ComposerAttachmentProps {
+  attachment?: { content?: Array<{ image?: string }> };
+}
+
+function ComposerAttachment({
+  attachment,
+}: ComposerAttachmentProps): JSX.Element {
   const thumbSrc = attachment?.content?.[0]?.image || "";
 
   return (
@@ -189,7 +208,11 @@ function ComposerAttachment({ attachment }) {
 // Renders the trailing action button: Stop while a turn is streaming,
 // Send when the composer has text, nothing otherwise. Extracted so the
 // state machine reads as a flat if/else instead of a nested ternary in JSX.
-function renderActionButton(isRunning, hasText, handleCancel) {
+function renderActionButton(
+  isRunning: boolean,
+  hasText: boolean,
+  handleCancel: () => void,
+): JSX.Element | null {
   if (isRunning) {
     return (
       <button
@@ -226,14 +249,14 @@ function renderActionButton(isRunning, hasText, handleCancel) {
   return null;
 }
 
-export function Composer() {
+export function Composer(): JSX.Element {
   const threadRuntime = useThreadRuntime();
   const [isRunning, setIsRunning] = useState(false);
   const [wasStopped, setWasStopped] = useState(false);
-  const [slashQuery, setSlashQuery] = useState(null);
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
   // Whether the composer has any text — drives the Send button reveal.
   const [hasText, setHasText] = useState(false);
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     return threadRuntime.subscribe(() => {
@@ -243,6 +266,7 @@ export function Composer() {
         const timer = setTimeout(() => setWasStopped(false), 2000);
         return () => clearTimeout(timer);
       }
+      return undefined;
     });
   }, [threadRuntime, wasStopped]);
 
@@ -287,17 +311,20 @@ export function Composer() {
     setWasStopped(true);
   }, [threadRuntime]);
 
-  const handleInputChange = useCallback((e) => {
-    const val = e.target?.value ?? e;
-    if (typeof val === "string" && val.startsWith("/")) {
-      setSlashQuery(val.slice(1));
-    } else {
-      setSlashQuery(null);
-    }
-  }, []);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement> | string) => {
+      const val = typeof e === "string" ? e : e.target?.value ?? "";
+      if (typeof val === "string" && val.startsWith("/")) {
+        setSlashQuery(val.slice(1));
+      } else {
+        setSlashQuery(null);
+      }
+    },
+    [],
+  );
 
   const handleSkillSelect = useCallback(
-    (skill) => {
+    (skill: SkillWithMaybeModel) => {
       setSlashQuery(null);
       if (skill.model) {
         setModel(skill.model);

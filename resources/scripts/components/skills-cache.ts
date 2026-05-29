@@ -12,14 +12,31 @@
  * resolves.
  */
 
-let skillsCache = window.gdsAssistant?.skills || [];
+export interface Skill {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  prompt: string;
+}
+
+/** Raw skill row as returned by the REST API; trimmed by {@link getSkillsFresh}. */
+interface RestSkillRow {
+  id: number;
+  slug: string;
+  title?: { rendered?: string } | string;
+  excerpt?: { rendered?: string };
+  content?: { raw?: string; rendered?: string };
+}
+
+let skillsCache: Skill[] = window.gdsAssistant?.skills || [];
 let skillsFetchedAt = 0;
 
 /**
  * Return the cached list synchronously. Use this for first-paint of UI that
  * can re-render once {@link getSkillsFresh} resolves.
  */
-export function getSkills() {
+export function getSkills(): Skill[] {
   return skillsCache;
 }
 
@@ -28,7 +45,7 @@ export function getSkills() {
  * Falls back to the cache silently on network errors so the UI stays
  * functional offline / when the endpoint is misbehaving.
  */
-export async function getSkillsFresh() {
+export async function getSkillsFresh(): Promise<Skill[]> {
   const now = Date.now();
   if (now - skillsFetchedAt < 30000 && skillsCache.length > 0) {
     return skillsCache;
@@ -37,14 +54,15 @@ export async function getSkillsFresh() {
     const { restBase, nonce } = window.gdsAssistant || {};
     const response = await fetch(
       `${restBase}assistant-skills?per_page=100&status=publish&context=edit`,
-      { headers: { "X-WP-Nonce": nonce } },
+      { headers: { "X-WP-Nonce": nonce || "" } },
     );
     if (response.ok) {
-      const posts = await response.json();
+      const posts = (await response.json()) as RestSkillRow[];
       skillsCache = posts.map((p) => ({
         id: p.id,
         slug: p.slug,
-        title: p.title?.rendered || p.title,
+        title:
+          typeof p.title === "string" ? p.title : p.title?.rendered || "",
         description: p.excerpt?.rendered?.replace(/<[^>]*>/g, "").trim() || "",
         // Use raw content (preserves markdown/formatting) when available
         prompt:
