@@ -254,7 +254,9 @@ class GeminiProvider implements LlmProviderInterface
                             // Download and inline — Gemini can't fetch arbitrary URLs
                             $imageData = @file_get_contents($source['url']);
                             if ($imageData) {
-                                $mimeType = 'image/'.pathinfo(parse_url($source['url'], PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpeg';
+                                // pathinfo returns '' when there's no extension — fall back to jpeg.
+                                $ext = pathinfo(parse_url($source['url'], PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'jpeg';
+                                $mimeType = 'image/'.$ext;
                                 $parts[] = [
                                     'inlineData' => [
                                         'mimeType' => $mimeType,
@@ -281,12 +283,19 @@ class GeminiProvider implements LlmProviderInterface
                         // JSON. If decode fails, fall back to sending the
                         // raw content as a string so the LLM at least sees
                         // what it can instead of receiving null.
-                        $raw = $block['content'] ?? '';
-                        $decoded = $raw !== '' ? json_decode($raw, true) : [];
-                        if ($decoded === null && $raw !== '') {
-                            $decoded = ['result' => $raw];
-                        } elseif (! is_array($decoded) || array_is_list($decoded)) {
-                            $decoded = ['result' => $decoded];
+                        // `content` is normally a non-empty JSON string;
+                        // missing/empty falls through as an empty object.
+                        $raw = (string) ($block['content'] ?? '');
+                        if ($raw === '') {
+                            $decoded = [];
+                        } else {
+                            $decoded = json_decode($raw, true);
+                            if ($decoded === null) {
+                                // Invalid JSON — forward the raw text.
+                                $decoded = ['result' => $raw];
+                            } elseif (! is_array($decoded) || array_is_list($decoded)) {
+                                $decoded = ['result' => $decoded];
+                            }
                         }
                         $parts[] = [
                             'functionResponse' => [

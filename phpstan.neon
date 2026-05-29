@@ -1,0 +1,31 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - src
+
+    # The Polylang / GFAPI patterns below are forward-protective — they
+    # won't necessarily match on every run, and that's fine.
+    reportUnmatchedIgnoredErrors: false
+
+    bootstrapFiles:
+        # WP-CLI stubs — the AuditCommand class uses WP_CLI::* but only runs
+        # under `wp` CLI invocations. The stubs expose the class to the
+        # analyser without dragging in WP-CLI at runtime.
+        - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+
+    ignoreErrors:
+        # Polylang's PLL() global is only called behind function_exists.
+        - '#Function PLL not found\.#'
+        # Gravity Forms' GFAPI is only called behind class_exists.
+        - '#Class GFAPI not found\.#'
+        # `wp_ai_client_prompt()` is the experimental WP AI Client API,
+        # available since WP 6.7 alpha. Gated via Llm\AiSupport::isEnabled()
+        # before any provider that uses it is registered.
+        - '#Function wp_ai_client_prompt not found\.#'
+
+    excludePaths:
+        - vendor/*
+        - build/*

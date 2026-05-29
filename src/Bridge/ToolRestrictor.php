@@ -51,7 +51,7 @@ class ToolRestrictor
             }
         }
 
-        return array_values($filtered);
+        return $filtered;
     }
 
     /**

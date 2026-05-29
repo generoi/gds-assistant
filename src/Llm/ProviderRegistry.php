@@ -10,7 +10,23 @@ use GeneroWP\Assistant\Plugin;
  */
 class ProviderRegistry
 {
-    /** @var array<string, array{env: string|string[], models: array, factory: callable}> */
+    /**
+     * Registered providers, keyed by short name (anthropic, openai, etc.).
+     *
+     * Each entry holds: credential discovery hints (env var names, optional
+     * connector id), the model catalog, a factory to instantiate, and
+     * optional metadata (`label`, `default` model id, `base_url`).
+     *
+     * @var array<string, array{
+     *   env: string|array<int, string>,
+     *   models: array<string, mixed>,
+     *   factory: callable,
+     *   connector_id?: string,
+     *   label?: string,
+     *   base_url?: string,
+     *   default?: string,
+     * }>
+     */
     private static array $providers = [];
 
     private static bool $registered = false;
@@ -220,7 +236,7 @@ class ProviderRegistry
 
         return CredentialResolver::resolve(
             $providerName,
-            (array) ($config['env'] ?? []),
+            (array) $config['env'],
             $config['connector_id'] ?? null,
         );
     }
@@ -267,7 +283,7 @@ class ProviderRegistry
     /**
      * Resolve a model key (e.g. "anthropic:sonnet") to a provider instance.
      *
-     * @return array{provider: LlmProviderInterface, modelId: string, label: string}|null
+     * @return array{provider: LlmProviderInterface, modelId: string, label: string, tier: string}|null
      */
     public static function resolve(string $modelKey, int $maxTokens = 4096): ?array
     {
@@ -432,7 +448,7 @@ class ProviderRegistry
     /**
      * Get available models grouped by provider for the JS frontend.
      *
-     * @return array{providers: array, default: string|null}
+     * @return array{providers: list<array{name: string, label: string, models: list<array<string, mixed>>}>, default: string|null, pricing: array<string, array<int, float|int>>}
      */
     public static function getModelsForFrontend(): array
     {

@@ -21,9 +21,7 @@ use WP_REST_Response;
 
 class ChatEndpoint
 {
-    public function __construct(
-        private readonly Plugin $plugin,
-    ) {}
+    public function __construct() {}
 
     public function register(): void
     {
@@ -126,7 +124,7 @@ class ChatEndpoint
 
         $provider = $resolved['provider'];
         $modelId = $resolved['modelId'];
-        $modelTier = $resolved['tier'] ?? 'standard';
+        $modelTier = $resolved['tier'];
 
         // Filter tools based on model tier
         add_filter('gds-assistant/tools', fn (array $tools) => ToolRestrictor::filter($tools, $modelTier));
@@ -890,7 +888,7 @@ class ChatEndpoint
                     $conversationUuid,
                     $userId,
                     AbilitiesToolProvider::toAbilityName($info['name']),
-                    $info['input'] ?? [],
+                    is_array($info['input']) ? $info['input'] : [],
                     $approved ? $resultContent : ['decision' => 'denied'],
                     $isError,
                     true, // approval is only required for destructive/gated tools
@@ -1004,9 +1002,6 @@ class ChatEndpoint
         $resolved = [];
         $auditLog = new AuditLog;
         foreach ($clientResults as $clientResult) {
-            if (! is_array($clientResult)) {
-                continue;
-            }
             $toolUseId = (string) ($clientResult['tool_use_id'] ?? '');
             if ($toolUseId === '') {
                 continue;
@@ -1380,13 +1375,11 @@ class ChatEndpoint
             error_log($prefixed.($context ? ' '.json_encode($context) : ''));
         }
 
-        // Laravel Log for structured logging at all levels
+        // Laravel Log for structured logging at all levels. The class_exists
+        // check covers "Acorn not booted" — once the facade is in place the
+        // static call doesn't throw, so no try/catch is needed.
         if (class_exists(Log::class)) {
-            try {
-                Log::$level($prefixed, $context);
-            } catch (\Throwable) {
-                // Acorn not booted
-            }
+            Log::$level($prefixed, $context);
         }
     }
 

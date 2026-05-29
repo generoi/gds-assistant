@@ -107,8 +107,11 @@ class Encrypt
         if (! function_exists('openssl_encrypt') || ! function_exists('hash_hkdf')) {
             return null;
         }
+        // wp_salt() always returns string. The empty-string case (no
+        // AUTH_KEY / AUTH_SALT defined yet during install) is the only one
+        // we need to bail on.
         $salt = function_exists('wp_salt') ? wp_salt('auth') : '';
-        if ($salt === '' || $salt === false) {
+        if ($salt === '') {
             return null;
         }
 

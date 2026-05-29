@@ -7,7 +7,12 @@ interface ToolProviderInterface
     /**
      * Get tool definitions in LLM-compatible format.
      *
-     * @return array<string, array{name: string, description: string, input_schema: array}>
+     * Providers may return a numerically-indexed list (most do) or a
+     * name-keyed map — callers downstream merge into a single tool list
+     * either way. Schemas can carry extra keys (min_tier, etc.); the
+     * shape below is the minimum contract.
+     *
+     * @return list<array{name: string, description: string, input_schema: array<string, mixed>}>
      */
     public function getTools(): array;
 

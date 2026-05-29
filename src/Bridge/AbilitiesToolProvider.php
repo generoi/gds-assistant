@@ -9,7 +9,7 @@ class AbilitiesToolProvider implements ToolProviderInterface
     /** Tool name separator (replaces / which is invalid in LLM tool names) */
     private const SEPARATOR = '__';
 
-    /** @var array<string, array> Cached tool definitions */
+    /** @var list<array{name: string, description: string, input_schema: array<string, mixed>, min_tier?: string}>|null */
     private ?array $toolCache = null;
 
     public function getTools(): array

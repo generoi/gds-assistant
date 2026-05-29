@@ -145,7 +145,7 @@ class ServerRegistry
         try {
             $config = new McpServerConfig(
                 name: $name,
-                url: (string) ($entry['url'] ?? ''),
+                url: (string) $entry['url'],
                 auth: is_array($entry['auth'] ?? null) ? $entry['auth'] : ['type' => 'none'],
                 label: isset($entry['label']) ? (string) $entry['label'] : null,
                 enabled: ($entry['enabled'] ?? true) !== false,

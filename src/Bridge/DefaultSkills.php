@@ -49,6 +49,9 @@ class DefaultSkills
         $post = self::collapseDuplicates($skill['slug']);
 
         if (! $post) {
+            // Pass true so insert errors surface as WP_Error rather than 0 —
+            // the WP_Error branch is the one we actually want to skip the
+            // hash-stamp on.
             $postId = wp_insert_post([
                 'post_type' => 'assistant_skill',
                 'post_title' => $skill['title'],
@@ -56,8 +59,8 @@ class DefaultSkills
                 'post_content' => $skill['prompt'],
                 'post_excerpt' => $skill['description'],
                 'post_status' => 'publish',
-            ]);
-            if ($postId && ! is_wp_error($postId)) {
+            ], true);
+            if (is_int($postId)) {
                 update_post_meta($postId, self::BUNDLED_HASH_META, $newHash);
             }
 

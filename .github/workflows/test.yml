@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ env.PHP_VERSION }}
@@ -24,6 +29,12 @@ jobs:
       - run: composer install --no-interaction
 
       - run: composer lint
+
+      - run: composer stan
+
+      - run: npm ci
+
+      - run: npm run test:unit
 
   test:
     name: PHPUnit

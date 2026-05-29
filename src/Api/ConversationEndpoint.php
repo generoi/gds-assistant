@@ -2,16 +2,13 @@
 
 namespace GeneroWP\Assistant\Api;
 
-use GeneroWP\Assistant\Plugin;
 use GeneroWP\Assistant\Storage\ConversationStore;
 use WP_REST_Request;
 use WP_REST_Response;
 
 class ConversationEndpoint
 {
-    public function __construct(
-        private readonly Plugin $plugin,
-    ) {}
+    public function __construct() {}
 
     public function register(): void
     {

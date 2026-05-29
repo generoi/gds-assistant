@@ -381,7 +381,10 @@ class ImageGenerationToolProvider implements ToolProviderInterface
             'post_excerpt' => $alt,
             'post_status' => 'inherit',
         ];
-        $attachmentId = wp_insert_attachment($attachment, $sideloaded['file']);
+        // Pass true for $wp_error so failures surface as WP_Error — without
+        // it, wp_insert_attachment returns 0 on failure and the error path
+        // becomes a silent no-op.
+        $attachmentId = wp_insert_attachment($attachment, $sideloaded['file'], 0, true);
         if (is_wp_error($attachmentId)) {
             return $attachmentId;
         }

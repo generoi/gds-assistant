@@ -209,7 +209,7 @@ class McpClient
             return $data;
         }
 
-        if ($body === '' || $body === null) {
+        if ($body === '') {
             return ['result' => []];
         }
 

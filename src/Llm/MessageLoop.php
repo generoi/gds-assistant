@@ -74,12 +74,17 @@ class MessageLoop
 
         // Track token usage across iterations. All providers now emit
         // unified field names: cache_read_tokens / cache_write_tokens.
+        // Explicit (int) casts: a provider that ever emits a string ("1024")
+        // instead of an int would silently accumulate to 0 with the bare
+        // `+= ($data[...] ?? 0)`, breaking budget tracking. Cast at the
+        // boundary so accounting matches the type the rest of the loop
+        // expects.
         $wrappedOnEvent = function (string $type, array $data) use ($onEvent) {
             if ($type === 'usage') {
-                $this->inputTokens += $data['input_tokens'] ?? 0;
-                $this->outputTokens += $data['output_tokens'] ?? 0;
-                $this->cacheCreationTokens += $data['cache_write_tokens'] ?? 0;
-                $this->cacheReadTokens += $data['cache_read_tokens'] ?? 0;
+                $this->inputTokens += (int) ($data['input_tokens'] ?? 0);
+                $this->outputTokens += (int) ($data['output_tokens'] ?? 0);
+                $this->cacheCreationTokens += (int) ($data['cache_write_tokens'] ?? 0);
+                $this->cacheReadTokens += (int) ($data['cache_read_tokens'] ?? 0);
             }
             $onEvent($type, $data);
         };

@@ -55,18 +55,18 @@ final class CoreAiProvider implements LlmProviderInterface
         }
 
         $toolCallsAdded = 0;
-        foreach (($result['tool_calls'] ?? []) as $toolCall) {
-            $name = (string) ($toolCall['name'] ?? '');
+        foreach ($result['tool_calls'] as $toolCall) {
+            $name = (string) $toolCall['name'];
             if (! self::toolExists($name, $tools)) {
                 continue;
             }
 
-            $input = $toolCall['input'] ?? [];
+            $input = $toolCall['input'];
             $block = [
                 'type' => 'tool_use',
                 'id' => 'wpai_'.wp_generate_uuid4(),
                 'name' => $name,
-                'input' => is_array($input) && $input !== [] ? $input : new \stdClass,
+                'input' => $input !== [] ? $input : new \stdClass,
             ];
             $blocks[] = $block;
             $toolCallsAdded++;
