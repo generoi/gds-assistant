@@ -5,6 +5,7 @@ namespace GeneroWP\Assistant\Api;
 use GeneroWP\Assistant\Bridge\UndoToolProvider;
 use GeneroWP\Assistant\Storage\AuditLog;
 use GeneroWP\Assistant\Storage\ConversationStore;
+use GeneroWP\Assistant\Storage\Records\AuditEntry;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -65,31 +66,30 @@ class UndoEndpoint
      * Append a "↩ Reverted…" note to the originating conversation and log the
      * undo to the audit trail.
      *
-     * @param  array<string, mixed>|null  $row  The reverted audit row.
      * @param  array<string, mixed>  $result  UndoToolProvider's result.
      */
-    private function record(?array $row, array $result): void
+    private function record(?AuditEntry $row, array $result): void
     {
         if (! $row) {
             return;
         }
 
         $userId = get_current_user_id();
-        $label = (string) ($result['detail'] ?? '') ?: (string) ($row['tool_name'] ?? 'a previous action');
+        $label = (string) ($result['detail'] ?? '') ?: ($row->toolName !== '' ? $row->toolName : 'a previous action');
         $caveats = is_array($result['caveats'] ?? null) ? $result['caveats'] : [];
         $note = '↩ Reverted: '.$label;
         if ($caveats) {
             $note .= ' — '.implode(' ', array_map('strval', $caveats));
         }
 
-        $uuid = (string) ($row['conversation_uuid'] ?? '');
+        $uuid = $row->conversationUuid;
 
         // Audit the undo itself (not undoable — no snapshot).
         (new AuditLog)->log(
             $uuid,
             $userId,
             'assistant/undo',
-            ['id' => (int) ($row['id'] ?? 0), 'reverted' => $row['tool_name'] ?? ''],
+            ['id' => $row->id, 'reverted' => $row->toolName],
             $result,
         );
 

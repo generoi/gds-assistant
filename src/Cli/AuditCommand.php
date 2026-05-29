@@ -243,18 +243,19 @@ final class AuditCommand
 
         foreach ($rows as $i => $row) {
             $num = $i + 1;
-            $status = $row['is_error'] ? WP_CLI::colorize('%R[ERROR]%n') : WP_CLI::colorize('%G[ok]%n');
+            $status = $row->isError ? WP_CLI::colorize('%R[ERROR]%n') : WP_CLI::colorize('%G[ok]%n');
             WP_CLI::log(sprintf(
                 "\n── %2d. %s  %s  %s",
                 $num,
-                $row['created_at'],
-                $row['tool_name'],
+                $row->createdAt,
+                $row->toolName,
                 $status,
             ));
 
-            WP_CLI::log('  input:  '.self::snippet($row['tool_input'], $truncate));
-            if ($row['tool_result']) {
-                WP_CLI::log('  result: '.self::snippet($row['tool_result'], $truncate));
+            WP_CLI::log('  input:  '.self::snippet(json_encode($row->toolInput), $truncate));
+            if ($row->toolResult !== null) {
+                $resultStr = is_string($row->toolResult) ? $row->toolResult : (string) json_encode($row->toolResult);
+                WP_CLI::log('  result: '.self::snippet($resultStr, $truncate));
             }
         }
     }
@@ -288,14 +289,9 @@ final class AuditCommand
             WP_CLI::error("No audit log entries found for conversation {$uuid}.");
         }
 
-        $decoded = array_map(function (array $r) {
-            $r['tool_input'] = json_decode($r['tool_input'], true);
-            $r['tool_result'] = $r['tool_result'] !== null ? json_decode($r['tool_result'], true) : null;
-            $r['is_error'] = (bool) $r['is_error'];
-            $r['is_destructive'] = (bool) $r['is_destructive'];
-
-            return $r;
-        }, $rows);
+        // toArray() already returns the decoded shape (input/result as
+        // arrays, bool flags real bools) — no per-row massage needed.
+        $decoded = array_map(static fn ($r) => $r->toArray(), $rows);
 
         if ($format === 'yaml') {
             WP_CLI::log(WP_CLI\Utils\format_items('yaml', $decoded, array_keys($decoded[0])));
