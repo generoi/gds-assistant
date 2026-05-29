@@ -1,4 +1,8 @@
-import { DataViews } from "@wordpress/dataviews";
+import {
+  DataViews,
+  type Field,
+  type View,
+} from "@wordpress/dataviews";
 import { useEntityRecords } from "@wordpress/core-data";
 import { useState, useCallback, useRef } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
@@ -6,17 +10,49 @@ import { pencil, trash, plus, download, upload } from "@wordpress/icons";
 import { Button, Modal, SelectControl } from "@wordpress/components";
 import apiFetch from "@wordpress/api-fetch";
 
+// ── Types ──────────────────────────────────────────────────
+
+/** Raw skill row as returned by `/wp/v2/assistant-skills` with `context=edit`. */
+interface SkillRow {
+  id: number;
+  slug?: string;
+  title?: { raw?: string; rendered?: string } | string;
+  excerpt?: { raw?: string; rendered?: string };
+  content?: { raw?: string; rendered?: string };
+  meta?: {
+    _assistant_model?: string;
+    _assistant_schedule?: string;
+  };
+  date?: string;
+}
+
+/** Portable skill record used by Export / Import. */
+interface ExportedSkill {
+  title: string;
+  slug: string;
+  description: string;
+  prompt: string;
+  model: string;
+}
+
+interface EditingSkill {
+  id: number;
+  title: string;
+  model: string;
+  schedule: string;
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
-/**
- * Convert a skill record to export format.
- *
- * @param {Object} item Skill record from REST API.
- * @return {Object} Portable skill object.
- */
-function toExportFormat(item) {
+/** Convert a skill record to export format. */
+function toExportFormat(item: SkillRow): ExportedSkill {
+  const titleField = item.title;
+  const title =
+    typeof titleField === "string"
+      ? titleField
+      : titleField?.raw || titleField?.rendered || "";
   return {
-    title: item.title?.raw || item.title?.rendered || item.title || "",
+    title,
     slug: item.slug || "",
     description:
       item.excerpt?.raw ||
@@ -30,13 +66,8 @@ function toExportFormat(item) {
   };
 }
 
-/**
- * Download JSON as a file.
- *
- * @param {Object|Array} data     Data to export.
- * @param {string}       filename Filename.
- */
-function downloadJson(data, filename) {
+/** Download JSON as a file. */
+function downloadJson(data: unknown, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
   });
@@ -50,13 +81,18 @@ function downloadJson(data, filename) {
 
 // ── Fields ──────────────────────────────────────────────────
 
-const FIELDS = [
+const FIELDS: Field<SkillRow>[] = [
   {
     id: "title",
     label: __("Title", "gds-assistant"),
     enableSorting: true,
     enableGlobalSearch: true,
-    render: ({ item }) => <strong>{item.title?.rendered || item.title}</strong>,
+    render: ({ item }) => {
+      const t = item.title;
+      const text =
+        typeof t === "string" ? t : t?.rendered || t?.raw || "";
+      return <strong>{text}</strong>;
+    },
   },
   {
     id: "slug",
@@ -110,7 +146,7 @@ const FIELDS = [
   },
 ];
 
-const DEFAULT_VIEW = {
+const DEFAULT_VIEW: View = {
   type: "table",
   search: "",
   page: 1,
@@ -122,11 +158,11 @@ const DEFAULT_VIEW = {
 
 // ── Component ───────────────────────────────────────────────
 
-export function SkillsDataView() {
-  const [view, setView] = useState(DEFAULT_VIEW);
-  const [editingSkill, setEditingSkill] = useState(null);
+export function SkillsDataView(): JSX.Element {
+  const [view, setView] = useState<View>(DEFAULT_VIEW);
+  const [editingSkill, setEditingSkill] = useState<EditingSkill | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const queryArgs = {
     per_page: view.perPage,
@@ -145,7 +181,7 @@ export function SkillsDataView() {
     queryArgs,
   );
 
-  const handleDelete = useCallback(async (items) => {
+  const handleDelete = useCallback(async (items: SkillRow[]) => {
     for (const item of items) {
       await apiFetch({
         path: `/wp/v2/assistant-skills/${item.id}?force=true`,
@@ -157,19 +193,20 @@ export function SkillsDataView() {
 
   // Export all skills
   const handleExportAll = useCallback(async () => {
-    const allSkills = await apiFetch({
+    // apiFetch returns the parsed JSON body by default; cast to our row shape.
+    const allSkills = (await apiFetch({
       path: "/wp/v2/assistant-skills?per_page=100&context=edit",
-    });
+    })) as SkillRow[];
     const exported = allSkills.map(toExportFormat);
     downloadJson(exported, "gds-assistant-skills.json");
   }, []);
 
   // Export selected skills (single or bulk)
-  const handleExport = useCallback((items) => {
+  const handleExport = useCallback((items: SkillRow[]) => {
     const exported = items.map(toExportFormat);
     const filename =
       items.length === 1
-        ? `skill-${items[0].slug || items[0].id}.json`
+        ? `skill-${items[0]!.slug || items[0]!.id}.json`
         : `gds-assistant-skills-${items.length}.json`;
     downloadJson(exported, filename);
   }, []);
@@ -179,52 +216,55 @@ export function SkillsDataView() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      let skills = JSON.parse(text);
-
-      // Support both single skill and array
-      if (!Array.isArray(skills)) {
-        skills = [skills];
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) {
+        return;
       }
 
-      let imported = 0;
-      for (const skill of skills) {
-        if (!skill.title || !skill.prompt) {
-          continue;
+      try {
+        const text = await file.text();
+        const parsed: unknown = JSON.parse(text);
+        // Support both single skill and array
+        const skills: ExportedSkill[] = Array.isArray(parsed)
+          ? (parsed as ExportedSkill[])
+          : [parsed as ExportedSkill];
+
+        let imported = 0;
+        for (const skill of skills) {
+          if (!skill.title || !skill.prompt) {
+            continue;
+          }
+
+          await apiFetch({
+            path: "/wp/v2/assistant-skills",
+            method: "POST",
+            data: {
+              title: skill.title,
+              slug: skill.slug || "",
+              content: skill.prompt,
+              excerpt: skill.description || "",
+              status: "publish",
+            },
+          });
+          imported++;
         }
 
-        await apiFetch({
-          path: "/wp/v2/assistant-skills",
-          method: "POST",
-          data: {
-            title: skill.title,
-            slug: skill.slug || "",
-            content: skill.prompt,
-            excerpt: skill.description || "",
-            status: "publish",
-          },
-        });
-        imported++;
+        // eslint-disable-next-line no-alert
+        window.alert(`Imported ${imported} skill${imported !== 1 ? "s" : ""}.`);
+        setRefreshKey((k) => k + 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-alert
+        window.alert(`Import failed: ${message}`);
       }
 
-      // eslint-disable-next-line no-alert
-      window.alert(`Imported ${imported} skill${imported !== 1 ? "s" : ""}.`);
-      setRefreshKey((k) => k + 1);
-    } catch (err) {
-      // eslint-disable-next-line no-alert
-      window.alert(`Import failed: ${err.message}`);
-    }
-
-    // Reset file input
-    e.target.value = "";
-  }, []);
+      // Reset file input
+      e.target.value = "";
+    },
+    [],
+  );
 
   const actions = [
     {
@@ -232,19 +272,22 @@ export function SkillsDataView() {
       label: __("Edit", "gds-assistant"),
       icon: pencil,
       isPrimary: true,
-      callback: ([item]) => {
-        window.location.href = `post.php?post=${item.id}&action=edit`;
+      callback: ([item]: SkillRow[]) => {
+        window.location.href = `post.php?post=${item!.id}&action=edit`;
       },
     },
     {
       id: "settings",
       label: __("Model & Schedule", "gds-assistant"),
-      callback: ([item]) => {
+      callback: ([item]: SkillRow[]) => {
+        const t = item!.title;
+        const title =
+          typeof t === "string" ? t : t?.raw || t?.rendered || "";
         setEditingSkill({
-          id: item.id,
-          title: item.title?.raw || item.title?.rendered || "",
-          model: item.meta?._assistant_model || "",
-          schedule: item.meta?._assistant_schedule || "",
+          id: item!.id,
+          title,
+          model: item!.meta?._assistant_model || "",
+          schedule: item!.meta?._assistant_schedule || "",
         });
       },
     },
@@ -297,7 +340,7 @@ export function SkillsDataView() {
         />
       </div>
       <DataViews
-        data={records || []}
+        data={(records as SkillRow[] | undefined) || []}
         fields={FIELDS}
         view={view}
         onChangeView={setView}
@@ -307,7 +350,7 @@ export function SkillsDataView() {
         }}
         isLoading={isResolving}
         actions={actions}
-        getItemId={(item) => String(item.id)}
+        getItemId={(item: SkillRow) => String(item.id)}
         defaultLayouts={{ table: {} }}
       />
       {editingSkill && (
@@ -334,15 +377,40 @@ export function SkillsDataView() {
   );
 }
 
-function SkillEditModal({ skill, onClose, onSave }) {
+interface SkillEditModalProps {
+  skill: EditingSkill;
+  onClose: () => void;
+  onSave: (data: EditingSkill) => Promise<void> | void;
+}
+
+function SkillEditModal({
+  skill,
+  onClose,
+  onSave,
+}: SkillEditModalProps): JSX.Element {
   const [model, setModel] = useState(skill.model);
   const [schedule, setSchedule] = useState(skill.schedule);
   const [saving, setSaving] = useState(false);
 
-  const modelOptions = [
+  const modelOptions: Array<{ label: string; value: string }> = [
     { label: __("Default (user selection)", "gds-assistant"), value: "" },
   ];
-  const providers = window.gdsAssistant?.models?.providers || [];
+  // `models` lives on the window global; surface what we read here. (The
+  // canonical shape is duplicated locally rather than augmenting the global
+  // type to avoid coupling this file to other entry points.)
+  const providers =
+    (
+      window.gdsAssistant as
+        | {
+            models?: {
+              providers?: Array<{
+                label: string;
+                models?: Array<{ label: string; value: string }>;
+              }>;
+            };
+          }
+        | undefined
+    )?.models?.providers || [];
   for (const provider of providers) {
     for (const m of provider.models || []) {
       modelOptions.push({
@@ -360,9 +428,12 @@ function SkillEditModal({ skill, onClose, onSave }) {
         options={modelOptions}
         onChange={setModel}
       />
+      {/* SelectControl narrows `value` to the literal-union of option values;
+          our stored `schedule` is a plain string from REST so cast at the
+          boundary rather than threading the literal union through state. */}
       <SelectControl
         label={__("Schedule", "gds-assistant")}
-        value={schedule}
+        value={schedule as "" | "hourly" | "daily" | "weekly"}
         options={[
           { label: __("None", "gds-assistant"), value: "" },
           { label: __("Hourly", "gds-assistant"), value: "hourly" },
@@ -387,7 +458,7 @@ function SkillEditModal({ skill, onClose, onSave }) {
           isBusy={saving}
           onClick={async () => {
             setSaving(true);
-            await onSave({ id: skill.id, model, schedule });
+            await onSave({ id: skill.id, title: skill.title, model, schedule });
             setSaving(false);
           }}
         >
