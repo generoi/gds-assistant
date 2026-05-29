@@ -10,11 +10,6 @@ import {
 } from "@assistant-ui/react";
 import { useEditorSelection } from "../hooks/use-editor-selection";
 import { cancelTts } from "../hooks/use-tts";
-import {
-  diffLines,
-  collapseUnchanged,
-  pairModifiedLines,
-} from "../editor/diff";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import {
   useState,
@@ -22,9 +17,6 @@ import {
   useCallback,
   useRef,
   useMemo,
-  createContext,
-  useContext,
-  Fragment,
 } from "@wordpress/element";
 import {
   onUsageUpdate,
@@ -38,6 +30,8 @@ import {
 } from "../hooks/use-runtime-adapter";
 import { MicButton } from "./MicButton";
 import { ReadAloudController } from "./ReadAloudController";
+import { ToolCallFallback } from "./ToolCallFallback";
+import { UndoContext } from "./UndoContext";
 
 // ── Skills ───────────────────────────────────────────────────
 // Cache skills but refresh from REST API periodically
@@ -184,15 +178,6 @@ function getStoredPanelPosition() {
     return null;
   }
 }
-
-// Carries per-tool undo state ({toolCallId -> {auditId,label,undone,...}}) and
-// the undo trigger down to ToolCallFallback, which assistant-ui instantiates
-// deep in the tree (so props can't reach it directly).
-const UndoContext = createContext({
-  undoableActions: {},
-  onUndo: null,
-  pendingApprovalIds: new Set(),
-});
 
 export function AssistantModal({
   onNewChat,
@@ -1882,264 +1867,5 @@ function CopyMessageButton() {
     >
       {copied ? "✓" : "⎘"}
     </button>
-  );
-}
-
-// ── Tool call fallback UI ───────────────────────────────────
-
-/**
- * Short one-line hint shown next to the tool name in the collapsed summary.
- * Picks up to 3 identifying args so a bulk sequence of the same tool is
- * distinguishable at a glance (e.g. `id=26520 menu_order=6`).
- * @param args
- */
-function summarizeArgs(args) {
-  if (!args || typeof args !== "object" || Array.isArray(args)) return "";
-  const entries = Object.entries(args);
-  if (entries.length === 0) return "";
-
-  // Prioritize fields that identify what the call targets.
-  const preferred = [
-    "id",
-    "post_id",
-    "term_id",
-    "menu_id",
-    "parent_item_id",
-    "conversation_uuid",
-    "type",
-    "post_type",
-    "taxonomy",
-    "title",
-    "name",
-    "slug",
-    "position",
-    "menu_order",
-    "status",
-  ];
-  const sorted = entries.slice().sort(([a], [b]) => {
-    const ai = preferred.indexOf(a);
-    const bi = preferred.indexOf(b);
-    if (ai === -1 && bi === -1) return 0;
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
-
-  return sorted
-    .slice(0, 3)
-    .map(([k, v]) => {
-      let str;
-      if (typeof v === "string") {
-        str = v.length > 24 ? `${v.slice(0, 21)}…` : v;
-      } else if (typeof v === "number" || typeof v === "boolean") {
-        str = String(v);
-      } else if (v === null) {
-        str = "null";
-      } else if (Array.isArray(v)) {
-        str = `[${v.length}]`;
-      } else {
-        str = "{…}";
-      }
-      return `${k}=${str}`;
-    })
-    .join(" ");
-}
-
-/**
- * Unified diff display for an editor write tool's result. Reads `diff` from
- * the tool result (set by editor-bridge after the mutation applied) — shows
- * line-level +/- with surrounding context collapsed to "…" stubs. Pure
- * presentation; no buttons, no state.
- */
-function DiffViewer({ diff }) {
-  const rows = useMemo(() => {
-    if (!diff) return [];
-    const lines = collapseUnchanged(
-      diffLines(diff.before || "", diff.after || ""),
-      2,
-    );
-    return pairModifiedLines(lines);
-  }, [diff]);
-  if (!diff) return null;
-  return (
-    <div className="gds-assistant__edit-diff">
-      {diff.summary && (
-        <div className="gds-assistant__edit-diff-title">{diff.summary}</div>
-      )}
-      {/* `<div>` not `<pre>` so we don't inherit the assistant-message-scoped
-          dark `pre` theme; `white-space: pre-wrap` on each text span preserves
-          indentation without dragging the dark colour scheme in. */}
-      <div className="gds-assistant__edit-diff-unified">
-        {rows.map((row, i) => {
-          if (row.type === "mod") {
-            // Render the pair as two rows (red + green) with inline word
-            // highlighting — git's --word-diff. Unchanged tokens stay on the
-            // row's light tint; changed tokens light up darker.
-            const delTokens = row.words.filter((w) => w.type !== "add");
-            const addTokens = row.words.filter((w) => w.type !== "del");
-            return (
-              <Fragment key={i}>
-                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--del">
-                  <span className="gds-assistant__edit-diff-prefix">-</span>
-                  <span className="gds-assistant__edit-diff-text">
-                    {delTokens.map((tok, k) => (
-                      <span
-                        key={k}
-                        className={
-                          tok.type === "del"
-                            ? "gds-assistant__edit-diff-word--del"
-                            : "gds-assistant__edit-diff-word--eq"
-                        }
-                      >
-                        {tok.text}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-                <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--add">
-                  <span className="gds-assistant__edit-diff-prefix">+</span>
-                  <span className="gds-assistant__edit-diff-text">
-                    {addTokens.map((tok, k) => (
-                      <span
-                        key={k}
-                        className={
-                          tok.type === "add"
-                            ? "gds-assistant__edit-diff-word--add"
-                            : "gds-assistant__edit-diff-word--eq"
-                        }
-                      >
-                        {tok.text}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              </Fragment>
-            );
-          }
-          // Solo line: eq / add / del / gap — same as before.
-          const cls =
-            row.type === "add"
-              ? "gds-assistant__edit-diff-line--add"
-              : row.type === "del"
-              ? "gds-assistant__edit-diff-line--del"
-              : row.type === "gap"
-              ? "gds-assistant__edit-diff-line--gap"
-              : "gds-assistant__edit-diff-line--eq";
-          const prefix =
-            row.type === "add"
-              ? "+"
-              : row.type === "del"
-              ? "-"
-              : row.type === "gap"
-              ? "⋮"
-              : " ";
-          return (
-            <div key={i} className={`gds-assistant__edit-diff-line ${cls}`}>
-              <span className="gds-assistant__edit-diff-prefix">{prefix}</span>
-              <span className="gds-assistant__edit-diff-text">{row.text}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ToolCallFallback({ toolCallId, toolName, args, result, isError }) {
-  const argsHint = summarizeArgs(args);
-  const ctx = useContext(UndoContext);
-  const { undoableActions, onUndo, pendingApprovalIds } = ctx;
-  const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
-  const diff = result && typeof result === "object" ? result.diff : null;
-  const undo = toolCallId ? undoableActions?.[toolCallId] : null;
-
-  return (
-    <div
-      className={`gds-assistant__tool-call ${
-        isError ? "gds-assistant__tool-call--error" : ""
-      } ${needsApproval ? "gds-assistant__tool-call--approval" : ""}`}
-    >
-      <details open={!!diff || undefined}>
-        <summary className="gds-assistant__tool-call-summary">
-          <span className="gds-assistant__tool-call-name">{toolName}</span>
-          {argsHint && (
-            <span className="gds-assistant__tool-call-args-hint">
-              {argsHint}
-            </span>
-          )}
-          {needsApproval && (
-            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--approval">
-              Approval required
-            </span>
-          )}
-          {!needsApproval && result === undefined && (
-            <span className="gds-assistant__tool-call-status">Running...</span>
-          )}
-          {!needsApproval && result !== undefined && !isError && (
-            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--done">
-              Done
-            </span>
-          )}
-          {!needsApproval && isError && (
-            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--error">
-              Error
-            </span>
-          )}
-          {/* Per-action Undo (only for reversible, successful actions). */}
-          {undo &&
-            onUndo &&
-            !needsApproval &&
-            !isError &&
-            (undo.undone ? (
-              <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--undone">
-                Undone
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="gds-assistant__tool-undo-btn"
-                disabled={undo.pending}
-                title={undo.label}
-                onClick={(e) => {
-                  // Inside <summary>: don't toggle the details on click.
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onUndo(toolCallId, undo.auditId);
-                }}
-              >
-                {undo.pending ? "Undoing…" : "↩ Undo"}
-              </button>
-            ))}
-        </summary>
-        {diff && <DiffViewer diff={diff} />}
-        {/* Args + raw JSON result are redundant once the diff is rendered —
-            the diff already shows the same information in a much more
-            readable form. */}
-        {!diff && args && Object.keys(args).length > 0 && (
-          <pre className="gds-assistant__tool-call-args">
-            {JSON.stringify(args, null, 2)}
-          </pre>
-        )}
-        {!needsApproval && result !== undefined && !diff && (
-          <pre className="gds-assistant__tool-call-result">
-            {typeof result === "string"
-              ? result
-              : JSON.stringify(result, null, 2)}
-          </pre>
-        )}
-        {undo?.undone && undo.caveats?.length > 0 && (
-          <div className="gds-assistant__tool-undo-caveats">
-            {undo.caveats.map((c, i) => (
-              <div key={i}>⚠ {c}</div>
-            ))}
-          </div>
-        )}
-        {undo?.error && (
-          <div className="gds-assistant__tool-undo-error">
-            Undo failed: {undo.error}
-          </div>
-        )}
-      </details>
-    </div>
   );
 }
