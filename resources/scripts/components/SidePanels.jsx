@@ -165,7 +165,6 @@ function relativeTime(dateStr) {
   const now = new Date();
   const diffMs = now - date;
   const diffMin = Math.floor(diffMs / 60000);
-  const diffHr = Math.floor(diffMs / 3600000);
 
   if (diffMin < 1) {
     return "just now";
@@ -173,6 +172,7 @@ function relativeTime(dateStr) {
   if (diffMin < 60) {
     return `${diffMin}m ago`;
   }
+  const diffHr = Math.floor(diffMs / 3600000);
   if (diffHr < 24) {
     return `${diffHr}h ago`;
   }

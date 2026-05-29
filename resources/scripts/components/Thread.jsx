@@ -191,6 +191,11 @@ export function Thread({
         }
       }}
     >
+      {/* Drag-and-double-click are mouse-only affordances on a pure layout
+          element — the panel is also keyboard-resizable via the dedicated
+          buttons in the header actions, so the static-interaction warning
+          doesn't apply in the way the lint rule assumes. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         className="gds-assistant__header"
         onMouseDown={onHeaderMouseDown}

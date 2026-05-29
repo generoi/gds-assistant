@@ -253,7 +253,13 @@ export function ConversationsDataView() {
     const dir = view.sort?.direction === "asc" ? 1 : -1;
     const aVal = a[field] || "";
     const bVal = b[field] || "";
-    return aVal > bVal ? dir : aVal < bVal ? -dir : 0;
+    if (aVal > bVal) {
+      return dir;
+    }
+    if (aVal < bVal) {
+      return -dir;
+    }
+    return 0;
   });
 
   const start = (view.page - 1) * view.perPage;

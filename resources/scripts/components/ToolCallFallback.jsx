@@ -99,6 +99,18 @@ function summarizeArgs(args) {
  * @param root0
  * @param root0.diff
  */
+// Map a row type (add / del / gap / eq) to its CSS modifier + glyph. Extracted
+// from the DiffViewer JSX to keep that switch as flat one-liners.
+const DIFF_ROW_CLASS = {
+  add: "gds-assistant__edit-diff-line--add",
+  del: "gds-assistant__edit-diff-line--del",
+  gap: "gds-assistant__edit-diff-line--gap",
+};
+const DIFF_ROW_PREFIX = { add: "+", del: "-", gap: "⋮" };
+const diffRowClass = (type) =>
+  DIFF_ROW_CLASS[type] || "gds-assistant__edit-diff-line--eq";
+const diffRowPrefix = (type) => DIFF_ROW_PREFIX[type] || " ";
+
 function DiffViewer({ diff }) {
   const rows = useMemo(() => {
     if (!diff) {
@@ -169,22 +181,8 @@ function DiffViewer({ diff }) {
             );
           }
           // Solo line: eq / add / del / gap — same as before.
-          const cls =
-            row.type === "add"
-              ? "gds-assistant__edit-diff-line--add"
-              : row.type === "del"
-              ? "gds-assistant__edit-diff-line--del"
-              : row.type === "gap"
-              ? "gds-assistant__edit-diff-line--gap"
-              : "gds-assistant__edit-diff-line--eq";
-          const prefix =
-            row.type === "add"
-              ? "+"
-              : row.type === "del"
-              ? "-"
-              : row.type === "gap"
-              ? "⋮"
-              : " ";
+          const cls = diffRowClass(row.type);
+          const prefix = diffRowPrefix(row.type);
           return (
             <div key={i} className={`gds-assistant__edit-diff-line ${cls}`}>
               <span className="gds-assistant__edit-diff-prefix">{prefix}</span>

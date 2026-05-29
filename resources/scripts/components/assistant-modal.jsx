@@ -279,6 +279,10 @@ export function AssistantModal({
         className={panelClassName}
         sideOffset={16}
       >
+        {/* Resize is a mouse-only affordance for a pure-layout element; the
+            panel has dedicated keyboard-reachable size controls in the
+            header actions, so the static-interaction warning doesn't apply. */}
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
         <div
           className="gds-assistant__resize-handle"
           onMouseDown={onResizeStart}

@@ -967,14 +967,18 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
           return acc;
         }
 
-        // Assistant: build structured parts from stored content
+        // Assistant: build structured parts from stored content.
+        // Stored content may be either a plain string (legacy) or the
+        // blocks array; normalise both into a blocks list.
         const parts: UiContentPart[] = [];
-        const blocks: WireContentBlock[] =
-          typeof m.content === "string"
-            ? [{ type: "text", text: m.content }]
-            : Array.isArray(m.content)
-            ? m.content
-            : [];
+        let blocks: WireContentBlock[];
+        if (typeof m.content === "string") {
+          blocks = [{ type: "text", text: m.content }];
+        } else if (Array.isArray(m.content)) {
+          blocks = m.content;
+        } else {
+          blocks = [];
+        }
 
         for (const block of blocks) {
           if (block.type === "text" && block.text) {
