@@ -62,30 +62,7 @@ final class SseStreamReader
                     return strlen($chunk);
                 }
 
-                $lineBuffer .= $chunk;
-                while (($pos = strpos($lineBuffer, "\n")) !== false) {
-                    $line = trim(substr($lineBuffer, 0, $pos));
-                    $lineBuffer = substr($lineBuffer, $pos + 1);
-
-                    // Standard SSE defaults: skip empty lines, comments (`:`),
-                    // and `event:` headers. Providers can drop additional
-                    // lines (e.g. OpenAI's `data: [DONE]`) via lineSkipper.
-                    if ($line === '' || str_starts_with($line, ':') || str_starts_with($line, 'event: ')) {
-                        continue;
-                    }
-                    if ($lineSkipper !== null && $lineSkipper($line)) {
-                        continue;
-                    }
-                    if (! str_starts_with($line, 'data: ')) {
-                        continue;
-                    }
-
-                    $event = json_decode(substr($line, 6), true);
-                    if (! is_array($event)) {
-                        continue;
-                    }
-                    $onEvent($event);
-                }
+                self::processChunk($chunk, $lineBuffer, $onEvent, $lineSkipper);
 
                 return strlen($chunk);
             },
@@ -101,6 +78,56 @@ final class SseStreamReader
             'errorBody' => $errorBody,
             'curlError' => $curlError,
         ];
+    }
+
+    /**
+     * Process a single chunk against a persistent line buffer, dispatching
+     * any newly-completed SSE events. Extracted so unit tests can drive the
+     * parser directly without standing up a real HTTP server.
+     *
+     *  - Empty lines, `:` comments, and `event: …` headers are dropped
+     *    (standard SSE).
+     *  - `$lineSkipper` (if provided) is an additional pre-filter — return
+     *    true to drop. OpenAI uses this for `data: [DONE]`.
+     *  - Lines that don't start with `data: ` are ignored.
+     *  - The remainder is JSON-decoded; non-array decoded values are
+     *    silently dropped (malformed events shouldn't crash the stream).
+     *
+     * @param  string  $chunk  New bytes from the wire.
+     * @param  string  $lineBuffer  In-out buffer carrying a partial line across calls.
+     * @param  callable(array<string, mixed>): void  $onEvent  Called per decoded event.
+     * @param  callable(string): bool|null  $lineSkipper  Optional pre-filter.
+     */
+    public static function processChunk(
+        string $chunk,
+        string &$lineBuffer,
+        callable $onEvent,
+        ?callable $lineSkipper = null,
+    ): void {
+        $lineBuffer .= $chunk;
+        while (($pos = strpos($lineBuffer, "\n")) !== false) {
+            $line = trim(substr($lineBuffer, 0, $pos));
+            $lineBuffer = substr($lineBuffer, $pos + 1);
+
+            // Standard SSE defaults: skip empty lines, comments (`:`), and
+            // `event:` headers. Providers can drop additional lines (e.g.
+            // OpenAI's `data: [DONE]`) via lineSkipper.
+            if ($line === '' || str_starts_with($line, ':') || str_starts_with($line, 'event: ')) {
+                continue;
+            }
+            if ($lineSkipper !== null && $lineSkipper($line)) {
+                continue;
+            }
+            if (! str_starts_with($line, 'data: ')) {
+                continue;
+            }
+
+            $event = json_decode(substr($line, 6), true);
+            if (! is_array($event)) {
+                continue;
+            }
+            $onEvent($event);
+        }
     }
 
     /**
