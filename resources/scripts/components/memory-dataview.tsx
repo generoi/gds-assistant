@@ -1,4 +1,9 @@
-import { DataViews } from "@wordpress/dataviews";
+import {
+  DataViews,
+  type View,
+  type Operator,
+  type Field,
+} from "@wordpress/dataviews";
 import { useEntityRecords } from "@wordpress/core-data";
 import { useState, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
@@ -6,19 +11,38 @@ import { pencil, trash, plus } from "@wordpress/icons";
 import { Button } from "@wordpress/components";
 import apiFetch from "@wordpress/api-fetch";
 
-const FIELDS = [
+/** A row in `assistant_memory` as fetched from `/wp/v2/assistant-memory`. */
+interface MemoryRecord {
+  id: number;
+  title?: { rendered?: string } | string;
+  content?: { raw?: string; rendered?: string };
+  meta?: { _memory_source?: "auto" | "manual" };
+  date?: string;
+}
+
+interface FieldRenderArgs {
+  item: MemoryRecord;
+}
+
+const FIELDS: Field<MemoryRecord>[] = [
   {
     id: "title",
     label: __("Title", "gds-assistant"),
     enableSorting: true,
     enableGlobalSearch: true,
-    render: ({ item }) => <strong>{item.title?.rendered || item.title}</strong>,
+    render: ({ item }: FieldRenderArgs) => (
+      <strong>
+        {typeof item.title === "string"
+          ? item.title
+          : item.title?.rendered || ""}
+      </strong>
+    ),
   },
   {
     id: "content",
     label: __("Content", "gds-assistant"),
     enableGlobalSearch: true,
-    render: ({ item }) => {
+    render: ({ item }: FieldRenderArgs) => {
       const text =
         item.content?.raw ||
         item.content?.rendered?.replace(/<[^>]*>/g, "") ||
@@ -31,7 +55,7 @@ const FIELDS = [
   {
     id: "source",
     label: __("Source", "gds-assistant"),
-    render: ({ item }) => {
+    render: ({ item }: FieldRenderArgs) => {
       const source = item.meta?._memory_source || "manual";
       return (
         <span className={`gds-assistant-badge gds-assistant-badge--${source}`}>
@@ -43,18 +67,18 @@ const FIELDS = [
       { value: "auto", label: __("Auto-learned", "gds-assistant") },
       { value: "manual", label: __("Manual", "gds-assistant") },
     ],
-    filterBy: { operators: ["isAny"] },
+    filterBy: { operators: ["isAny"] as Operator[] },
   },
   {
     id: "date",
     label: __("Date", "gds-assistant"),
     type: "datetime",
     enableSorting: true,
-    getValue: ({ item }) => item.date,
+    getValue: ({ item }: FieldRenderArgs) => item.date,
   },
 ];
 
-const DEFAULT_VIEW = {
+const DEFAULT_VIEW: View = {
   type: "table",
   search: "",
   page: 1,
@@ -64,8 +88,8 @@ const DEFAULT_VIEW = {
   fields: ["title", "content", "source", "date"],
 };
 
-export function MemoryDataView() {
-  const [view, setView] = useState(DEFAULT_VIEW);
+export function MemoryDataView(): JSX.Element {
+  const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const queryArgs = {
@@ -85,7 +109,7 @@ export function MemoryDataView() {
     queryArgs,
   );
 
-  const handleDelete = useCallback(async (items) => {
+  const handleDelete = useCallback(async (items: MemoryRecord[]) => {
     for (const item of items) {
       await apiFetch({
         path: `/wp/v2/assistant-memory/${item.id}?force=true`,
@@ -101,8 +125,8 @@ export function MemoryDataView() {
       label: __("Edit", "gds-assistant"),
       icon: pencil,
       isPrimary: true,
-      callback: ([item]) => {
-        window.location.href = `post.php?post=${item.id}&action=edit`;
+      callback: ([item]: MemoryRecord[]) => {
+        window.location.href = `post.php?post=${item!.id}&action=edit`;
       },
     },
     {
@@ -127,7 +151,7 @@ export function MemoryDataView() {
         </Button>
       </div>
       <DataViews
-        data={records || []}
+        data={(records as MemoryRecord[] | undefined) || []}
         fields={FIELDS}
         view={view}
         onChangeView={setView}
@@ -137,7 +161,7 @@ export function MemoryDataView() {
         }}
         isLoading={isResolving}
         actions={actions}
-        getItemId={(item) => String(item.id)}
+        getItemId={(item: MemoryRecord) => String(item.id)}
         defaultLayouts={{ table: {} }}
       />
     </>

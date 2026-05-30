@@ -1,4 +1,4 @@
-import { DataViews } from "@wordpress/dataviews";
+import { DataViews, type Field, type View } from "@wordpress/dataviews";
 import { useState, useEffect, useCallback } from "@wordpress/element";
 import { __ } from "@wordpress/i18n";
 import {
@@ -10,6 +10,45 @@ import {
 } from "@wordpress/components";
 import apiFetch from "@wordpress/api-fetch";
 
+// ── Types ───────────────────────────────────────────────────
+
+type AuthType = "none" | "oauth" | "bearer";
+
+/** Sub-object exposed on a server row when editing — describes its auth config. */
+interface AuthDetail {
+  type?: AuthType;
+  scopes?: string[];
+  env?: string;
+  client_id?: string;
+  has_client_secret?: boolean;
+}
+
+/** Row shape returned by `/gds-assistant/v1/mcp/servers`. */
+interface ServerRow {
+  /** Slug identifier — also used as the row id for DataViews. */
+  id?: string;
+  name: string;
+  label: string;
+  url: string;
+  auth_type: AuthType | string;
+  origin?: "builtin" | "code" | "env" | "admin" | string;
+  requires_oauth?: boolean;
+  connected?: boolean;
+  editable?: boolean;
+  deletable?: boolean;
+  auth_detail?: AuthDetail;
+  [key: string]: unknown;
+}
+
+interface ConnectResponse {
+  authorization_url?: string;
+}
+
+interface NoticeState {
+  type: "success" | "error" | "info";
+  text: string;
+}
+
 /**
  * List + connect/disconnect + add/delete UI for MCP servers.
  *
@@ -19,20 +58,28 @@ import apiFetch from "@wordpress/api-fetch";
  *   - admin: added through this UI, persisted to wp_options
  * Only `admin`-origin servers can be edited or deleted from the UI.
  */
-export function McpServersDataView() {
-  const [servers, setServers] = useState([]);
+export function McpServersDataView(): JSX.Element {
+  const [servers, setServers] = useState<ServerRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(null);
-  const [notice, setNotice] = useState(() => readInitialNotice());
-  const [editing, setEditing] = useState(null); // null = closed, {} = add, server-row = edit
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<NoticeState | null>(() =>
+    readInitialNotice(),
+  );
+  // null = closed, {} = add, server-row = edit
+  const [editing, setEditing] = useState<
+    ServerRow | Record<string, never> | null
+  >(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch({ path: "/gds-assistant/v1/mcp/servers" });
-      setServers(Array.isArray(data) ? data : []);
+      const data = (await apiFetch({
+        path: "/gds-assistant/v1/mcp/servers",
+      })) as ServerRow[] | unknown;
+      setServers(Array.isArray(data) ? (data as ServerRow[]) : []);
     } catch (e) {
-      setNotice({ type: "error", text: e.message || "Failed to load" });
+      const message = e instanceof Error ? e.message : String(e);
+      setNotice({ type: "error", text: message || "Failed to load" });
     } finally {
       setLoading(false);
     }
@@ -42,27 +89,28 @@ export function McpServersDataView() {
     load();
   }, [load]);
 
-  const connect = useCallback(async (name) => {
+  const connect = useCallback(async (name: string) => {
     setBusy(name);
     try {
-      const res = await apiFetch({
+      const res = (await apiFetch({
         path: `/gds-assistant/v1/mcp/${name}/connect`,
         method: "POST",
-      });
+      })) as ConnectResponse;
       if (res?.authorization_url) {
         window.location.href = res.authorization_url;
         return;
       }
       setNotice({ type: "error", text: "No authorization URL returned" });
     } catch (e) {
-      setNotice({ type: "error", text: e.message || "Connect failed" });
+      const message = e instanceof Error ? e.message : String(e);
+      setNotice({ type: "error", text: message || "Connect failed" });
     } finally {
       setBusy(null);
     }
   }, []);
 
   const disconnect = useCallback(
-    async (name) => {
+    async (name: string) => {
       // eslint-disable-next-line no-alert
       if (!window.confirm(__("Disconnect this MCP server?", "gds-assistant"))) {
         return;
@@ -79,7 +127,8 @@ export function McpServersDataView() {
         });
         load();
       } catch (e) {
-        setNotice({ type: "error", text: e.message || "Disconnect failed" });
+        const message = e instanceof Error ? e.message : String(e);
+        setNotice({ type: "error", text: message || "Disconnect failed" });
       } finally {
         setBusy(null);
       }
@@ -88,7 +137,7 @@ export function McpServersDataView() {
   );
 
   const remove = useCallback(
-    async (name) => {
+    async (name: string) => {
       // Quick destructive confirmation. Worth a real dialog UI eventually
       // (see .eslintrc.js — no-alert is acknowledged as a warning, not a
       // blocker); for now `window.confirm` keeps the data-view delete cell
@@ -110,7 +159,8 @@ export function McpServersDataView() {
         setNotice({ type: "success", text: __("Removed.", "gds-assistant") });
         load();
       } catch (e) {
-        setNotice({ type: "error", text: e.message || "Delete failed" });
+        const text = e instanceof Error ? e.message : String(e);
+        setNotice({ type: "error", text: text || "Delete failed" });
       } finally {
         setBusy(null);
       }
@@ -118,7 +168,7 @@ export function McpServersDataView() {
     [load],
   );
 
-  const fields = [
+  const fields: Field<ServerRow>[] = [
     {
       id: "label",
       label: __("Server", "gds-assistant"),
@@ -217,7 +267,7 @@ export function McpServersDataView() {
     },
   ];
 
-  const view = {
+  const view: View = {
     type: "table",
     fields: ["label", "url", "auth_type", "connected", "actions"],
     layout: {},
@@ -246,10 +296,13 @@ export function McpServersDataView() {
       </div>
 
       {notice && (
+        // @types/wordpress__components omits `style` on Notice even though
+        // it's forwarded to the wrapper div at runtime. Cast to keep the
+        // exact rendered DOM unchanged.
         <Notice
           status={notice.type}
           onRemove={() => setNotice(null)}
-          style={{ marginBottom: 16 }}
+          {...({ style: { marginBottom: 16 } } as unknown as object)}
         >
           {notice.text}
         </Notice>
@@ -259,10 +312,10 @@ export function McpServersDataView() {
 
       {editing && (
         <ServerModal
-          initial={editing}
+          initial={editing as ServerRow}
           onClose={() => setEditing(null)}
           onSaved={() => {
-            const wasEdit = !!editing.name;
+            const wasEdit = !!(editing as ServerRow).name;
             setEditing(null);
             setNotice({
               type: "success",
@@ -281,7 +334,12 @@ export function McpServersDataView() {
 // Three-state list body extracted to keep the JSX flat: "loading" /
 // "empty state" / "render the table". Lives outside the component because it
 // only depends on its args.
-function renderListBody(loading, servers, fields, view) {
+function renderListBody(
+  loading: boolean,
+  servers: ServerRow[],
+  fields: Field<ServerRow>[],
+  view: View,
+): JSX.Element {
   if (loading) {
     return <p>{__("Loading…", "gds-assistant")}</p>;
   }
@@ -302,7 +360,7 @@ function renderListBody(loading, servers, fields, view) {
       view={view}
       onChangeView={() => {}}
       defaultLayouts={{ table: {} }}
-      getItemId={(item) => item.id}
+      getItemId={(item: ServerRow) => item.id || item.name}
       paginationInfo={{ totalItems: servers.length, totalPages: 1 }}
       search={false}
       actions={[]}
@@ -312,7 +370,7 @@ function renderListBody(loading, servers, fields, view) {
 
 // Map a server-origin key to its translated label. Falls through to the raw
 // key so an unknown origin surfaces something rather than nothing.
-function originLabel(origin) {
+function originLabel(origin: string): string {
   if (origin === "code") {
     return __("code", "gds-assistant");
   }
@@ -325,7 +383,11 @@ function originLabel(origin) {
   return origin;
 }
 
-function OriginBadge({ origin }) {
+interface OriginBadgeProps {
+  origin?: string;
+}
+
+function OriginBadge({ origin }: OriginBadgeProps): JSX.Element | null {
   if (!origin || origin === "admin") {
     return null;
   }
@@ -353,16 +415,35 @@ function OriginBadge({ origin }) {
   );
 }
 
-function ServerModal({ initial, onClose, onSaved }) {
-  // initial = {} for add, or a server row (with auth_detail) for edit.
-  const isEdit = !!initial?.name;
-  const detail = initial?.auth_detail || {};
+interface ServerModalProps {
+  initial: ServerRow | Record<string, never>;
+  onClose: () => void;
+  onSaved: () => void;
+}
 
-  const [name, setName] = useState(initial?.name || "");
-  const [label, setLabel] = useState(initial?.label || "");
-  const [url, setUrl] = useState(initial?.url || "");
-  const [authType, setAuthType] = useState(
-    initial?.auth_type || detail.type || "oauth",
+interface AuthPayload {
+  type: AuthType;
+  scopes?: string[];
+  client_id?: string;
+  client_secret?: string;
+  env?: string;
+}
+
+function ServerModal({
+  initial,
+  onClose,
+  onSaved,
+}: ServerModalProps): JSX.Element {
+  // initial = {} for add, or a server row (with auth_detail) for edit.
+  const initialRow = initial as ServerRow;
+  const isEdit = !!initialRow?.name;
+  const detail: AuthDetail = initialRow?.auth_detail || {};
+
+  const [name, setName] = useState(initialRow?.name || "");
+  const [label, setLabel] = useState(initialRow?.label || "");
+  const [url, setUrl] = useState(initialRow?.url || "");
+  const [authType, setAuthType] = useState<AuthType>(
+    (initialRow?.auth_type as AuthType) || detail.type || "oauth",
   );
   const [scopes, setScopes] = useState(
     Array.isArray(detail.scopes) ? detail.scopes.join(" ") : "",
@@ -371,7 +452,7 @@ function ServerModal({ initial, onClose, onSaved }) {
   const [clientId, setClientId] = useState(detail.client_id || "");
   const [clientSecret, setClientSecret] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Callback URL for this server-to-be. Shown so admins can copy it into
   // the OAuth provider's redirect-URI field when registering the app.
@@ -385,7 +466,7 @@ function ServerModal({ initial, onClose, onSaved }) {
       setError(__("Name and URL are required.", "gds-assistant"));
       return;
     }
-    const auth = { type: authType };
+    const auth: AuthPayload = { type: authType };
     if (authType === "oauth") {
       if (scopes.trim()) {
         auth.scopes = scopes
@@ -419,7 +500,8 @@ function ServerModal({ initial, onClose, onSaved }) {
       });
       onSaved();
     } catch (e) {
-      setError(e.message || "Save failed");
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -454,7 +536,9 @@ function ServerModal({ initial, onClose, onSaved }) {
               )
         }
         value={name}
-        onChange={(v) => setName(v.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+        onChange={(v: string) =>
+          setName(v.toLowerCase().replace(/[^a-z0-9_]/g, ""))
+        }
         disabled={isEdit}
         readOnly={isEdit}
       />
@@ -477,6 +561,8 @@ function ServerModal({ initial, onClose, onSaved }) {
         onChange={setUrl}
         type="url"
       />
+      {/* SelectControl narrows `value` to its option literal-union; cast our
+          string-typed state so the typings line up at the boundary. */}
       <SelectControl
         label={__("Authentication", "gds-assistant")}
         value={authType}
@@ -491,7 +577,7 @@ function ServerModal({ initial, onClose, onSaved }) {
             label: __("Bearer token (static)", "gds-assistant"),
           },
         ]}
-        onChange={setAuthType}
+        onChange={(v) => setAuthType(v as AuthType)}
       />
       {authType === "oauth" && (
         <>
@@ -556,7 +642,7 @@ function ServerModal({ initial, onClose, onSaved }) {
             "gds-assistant",
           )}
           value={envName}
-          onChange={(v) =>
+          onChange={(v: string) =>
             setEnvName(v.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
           }
           placeholder="INTERNAL_MCP_TOKEN"
@@ -575,7 +661,7 @@ function ServerModal({ initial, onClose, onSaved }) {
 }
 
 // Save-button label tracks two booleans without nesting ternaries inline.
-function saveLabel(saving, isEdit) {
+function saveLabel(saving: boolean, isEdit: boolean): string {
   if (saving) {
     return __("Saving…", "gds-assistant");
   }
@@ -586,7 +672,7 @@ function saveLabel(saving, isEdit) {
 }
 
 /** Convert ?mcp_connect=success|error query args from the OAuth callback into a Notice. */
-function readInitialNotice() {
+function readInitialNotice(): NoticeState | null {
   const params = new URLSearchParams(window.location.search);
   const status = params.get("mcp_connect");
   if (status === "success") {

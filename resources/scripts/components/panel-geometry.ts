@@ -19,12 +19,22 @@
  *   so we tag the wrapper too.
  */
 
+export interface PanelSize {
+  width: number;
+  height: number;
+}
+
+export interface PanelPosition {
+  top: number;
+  left: number;
+}
+
 /**
  * Read persisted panel size from localStorage, guarding against stale or
  * out-of-bounds values (user resized their window smaller, changed monitors,
  * etc.). Falls back to null → CSS defaults apply.
  */
-export function getStoredPanelSize() {
+export function getStoredPanelSize(): PanelSize | null {
   try {
     const raw = localStorage.getItem("gds-assistant-panel-size");
     if (!raw) {
@@ -51,7 +61,7 @@ export function getStoredPanelSize() {
  * on-screen after window resizes / monitor changes (40px sliver always
  * grabbable).
  */
-export function getStoredPanelPosition() {
+export function getStoredPanelPosition(): PanelPosition | null {
   try {
     const raw = localStorage.getItem("gds-assistant-panel-position");
     if (!raw) {
@@ -78,7 +88,11 @@ export function getStoredPanelPosition() {
  * @param top
  * @param left
  */
-export function applyPanelPosition(node, top, left) {
+export function applyPanelPosition(
+  node: HTMLElement | null,
+  top: number,
+  left: number,
+): void {
   if (!node) {
     return;
   }
@@ -96,7 +110,7 @@ export function applyPanelPosition(node, top, left) {
  * position" or closes the panel.
  * @param node
  */
-export function clearPanelPosition(node) {
+export function clearPanelPosition(node: HTMLElement | null): void {
   if (!node) {
     return;
   }

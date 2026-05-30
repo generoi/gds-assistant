@@ -22,18 +22,24 @@ import {
 } from "../editor/diff";
 import { UndoContext } from "./UndoContext";
 
+interface ToolDiff {
+  before?: string;
+  after?: string;
+  summary?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Short one-line hint shown next to the tool name in the collapsed summary.
  * Picks up to 3 identifying args so a bulk sequence of the same tool is
  * distinguishable at a glance (e.g. `id=26520 menu_order=6`).
- *
  * @param args
  */
-function summarizeArgs(args) {
+function summarizeArgs(args: unknown): string {
   if (!args || typeof args !== "object" || Array.isArray(args)) {
     return "";
   }
-  const entries = Object.entries(args);
+  const entries = Object.entries(args as Record<string, unknown>);
   if (entries.length === 0) {
     return "";
   }
@@ -74,7 +80,7 @@ function summarizeArgs(args) {
   return sorted
     .slice(0, 3)
     .map(([k, v]) => {
-      let str;
+      let str: string;
       if (typeof v === "string") {
         str = v.length > 24 ? `${v.slice(0, 21)}…` : v;
       } else if (typeof v === "number" || typeof v === "boolean") {
@@ -91,6 +97,26 @@ function summarizeArgs(args) {
     .join(" ");
 }
 
+// Map a row type (add / del / gap / eq) to its CSS modifier + glyph. Extracted
+// from the DiffViewer JSX to keep that switch as flat one-liners.
+const DIFF_ROW_CLASS: Record<string, string> = {
+  add: "gds-assistant__edit-diff-line--add",
+  del: "gds-assistant__edit-diff-line--del",
+  gap: "gds-assistant__edit-diff-line--gap",
+};
+const DIFF_ROW_PREFIX: Record<string, string> = {
+  add: "+",
+  del: "-",
+  gap: "⋮",
+};
+const diffRowClass = (type: string): string =>
+  DIFF_ROW_CLASS[type] || "gds-assistant__edit-diff-line--eq";
+const diffRowPrefix = (type: string): string => DIFF_ROW_PREFIX[type] || " ";
+
+interface DiffViewerProps {
+  diff: ToolDiff | null;
+}
+
 /**
  * Unified diff display for an editor write tool's result. Reads `diff` from
  * the tool result (set by editor-bridge after the mutation applied) — shows
@@ -99,19 +125,7 @@ function summarizeArgs(args) {
  * @param root0
  * @param root0.diff
  */
-// Map a row type (add / del / gap / eq) to its CSS modifier + glyph. Extracted
-// from the DiffViewer JSX to keep that switch as flat one-liners.
-const DIFF_ROW_CLASS = {
-  add: "gds-assistant__edit-diff-line--add",
-  del: "gds-assistant__edit-diff-line--del",
-  gap: "gds-assistant__edit-diff-line--gap",
-};
-const DIFF_ROW_PREFIX = { add: "+", del: "-", gap: "⋮" };
-const diffRowClass = (type) =>
-  DIFF_ROW_CLASS[type] || "gds-assistant__edit-diff-line--eq";
-const diffRowPrefix = (type) => DIFF_ROW_PREFIX[type] || " ";
-
-function DiffViewer({ diff }) {
+function DiffViewer({ diff }: DiffViewerProps): JSX.Element | null {
   const rows = useMemo(() => {
     if (!diff) {
       return [];
@@ -139,42 +153,50 @@ function DiffViewer({ diff }) {
             // Render the pair as two rows (red + green) with inline word
             // highlighting — git's --word-diff. Unchanged tokens stay on the
             // row's light tint; changed tokens light up darker.
-            const delTokens = row.words.filter((w) => w.type !== "add");
-            const addTokens = row.words.filter((w) => w.type !== "del");
+            const delTokens = row.words.filter(
+              (w: { type: string }) => w.type !== "add",
+            );
+            const addTokens = row.words.filter(
+              (w: { type: string }) => w.type !== "del",
+            );
             return (
               <Fragment key={i}>
                 <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--del">
                   <span className="gds-assistant__edit-diff-prefix">-</span>
                   <span className="gds-assistant__edit-diff-text">
-                    {delTokens.map((tok, k) => (
-                      <span
-                        key={k}
-                        className={
-                          tok.type === "del"
-                            ? "gds-assistant__edit-diff-word--del"
-                            : "gds-assistant__edit-diff-word--eq"
-                        }
-                      >
-                        {tok.text}
-                      </span>
-                    ))}
+                    {delTokens.map(
+                      (tok: { type: string; text: string }, k: number) => (
+                        <span
+                          key={k}
+                          className={
+                            tok.type === "del"
+                              ? "gds-assistant__edit-diff-word--del"
+                              : "gds-assistant__edit-diff-word--eq"
+                          }
+                        >
+                          {tok.text}
+                        </span>
+                      ),
+                    )}
                   </span>
                 </div>
                 <div className="gds-assistant__edit-diff-line gds-assistant__edit-diff-line--add">
                   <span className="gds-assistant__edit-diff-prefix">+</span>
                   <span className="gds-assistant__edit-diff-text">
-                    {addTokens.map((tok, k) => (
-                      <span
-                        key={k}
-                        className={
-                          tok.type === "add"
-                            ? "gds-assistant__edit-diff-word--add"
-                            : "gds-assistant__edit-diff-word--eq"
-                        }
-                      >
-                        {tok.text}
-                      </span>
-                    ))}
+                    {addTokens.map(
+                      (tok: { type: string; text: string }, k: number) => (
+                        <span
+                          key={k}
+                          className={
+                            tok.type === "add"
+                              ? "gds-assistant__edit-diff-word--add"
+                              : "gds-assistant__edit-diff-word--eq"
+                          }
+                        >
+                          {tok.text}
+                        </span>
+                      ),
+                    )}
                   </span>
                 </div>
               </Fragment>
@@ -195,19 +217,30 @@ function DiffViewer({ diff }) {
   );
 }
 
+export interface ToolCallFallbackProps {
+  toolCallId?: string;
+  toolName: string;
+  args?: Record<string, unknown>;
+  result?: string | Record<string, unknown>;
+  isError?: boolean;
+}
+
 export function ToolCallFallback({
   toolCallId,
   toolName,
   args,
   result,
   isError,
-}) {
+}: ToolCallFallbackProps): JSX.Element {
   const argsHint = summarizeArgs(args);
   const ctx = useContext(UndoContext);
   const { undoableActions, onUndo, onRetry, retryingIds, pendingApprovalIds } =
     ctx;
   const needsApproval = !!(toolCallId && pendingApprovalIds?.has(toolCallId));
-  const diff = result && typeof result === "object" ? result.diff : null;
+  const diff: ToolDiff | null =
+    result && typeof result === "object" && "diff" in result
+      ? (result as { diff?: ToolDiff }).diff ?? null
+      : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
   const isRetrying = !!(toolCallId && retryingIds?.has(toolCallId));
 
@@ -247,7 +280,7 @@ export function ToolCallFallback({
               handler decides whether the tool is actually re-runnable; for
               server-side tools we alert that re-running isn't supported yet.
               See use-runtime-adapter `retryToolCall`. */}
-          {isError && onRetry && !needsApproval && (
+          {isError && onRetry && !needsApproval && toolCallId && (
             <button
               type="button"
               className="gds-assistant__tool-retry-btn"
@@ -265,6 +298,7 @@ export function ToolCallFallback({
           {/* Per-action Undo (only for reversible, successful actions). */}
           {undo &&
             onUndo &&
+            toolCallId &&
             !needsApproval &&
             !isError &&
             (undo.undone ? (
@@ -304,7 +338,7 @@ export function ToolCallFallback({
               : JSON.stringify(result, null, 2)}
           </pre>
         )}
-        {undo?.undone && undo.caveats?.length > 0 && (
+        {undo?.undone && undo.caveats?.length && undo.caveats.length > 0 && (
           <div className="gds-assistant__tool-undo-caveats">
             {undo.caveats.map((c, i) => (
               <div key={i}>⚠ {c}</div>

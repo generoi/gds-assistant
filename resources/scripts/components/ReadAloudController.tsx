@@ -20,7 +20,13 @@ import {
   useTtsEnabled,
 } from "../hooks/use-tts";
 
-export function ReadAloudController() {
+interface ProgressState {
+  offset: number;
+  lastTextLen: number;
+  finalised: boolean;
+}
+
+export function ReadAloudController(): null {
   const [enabled] = useTtsEnabled();
   const threadRuntime = useThreadRuntime();
 
@@ -35,9 +41,14 @@ export function ReadAloudController() {
     // tick we only enqueue the *new* fully-formed sentences. Map keyed by a
     // stable per-message key so an interim id changing to a final id (which
     // assistant-ui sometimes does on completion) doesn't reset progress.
-    const progress = new Map(); // key -> {offset, lastTextLen, finalised}
+    const progress = new Map<string, ProgressState>();
 
-    const speakUpTo = (key, text, lang, atEnd) => {
+    const speakUpTo = (
+      key: string,
+      text: string,
+      lang: string,
+      atEnd: boolean,
+    ): void => {
       const state = progress.get(key) || {
         offset: 0,
         lastTextLen: 0,
@@ -59,7 +70,7 @@ export function ReadAloudController() {
         // Last sentence-terminator in the remainder. JS regex doesn't expose
         // lastIndexOf for patterns, so iterate.
         const re = /[.!?。！？]["')\]]?(?=\s|$)/g;
-        let m;
+        let m: RegExpExecArray | null;
         let lastEnd = -1;
         while ((m = re.exec(remainder)) !== null) {
           lastEnd = m.index + m[0].length;
@@ -93,7 +104,7 @@ export function ReadAloudController() {
     // asynchronously *after* the controller has subscribed.
     let armed = false;
 
-    const tick = () => {
+    const tick = (): void => {
       const state = threadRuntime.getState?.();
       if (!state) {
         return;

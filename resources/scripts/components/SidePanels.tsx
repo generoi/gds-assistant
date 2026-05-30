@@ -29,8 +29,10 @@ import {
   onUsageUpdate,
   setMaxTokens,
   setModel,
+  type ConversationSummary,
 } from "../hooks/use-runtime-adapter";
-import { getSkills, getSkillsFresh } from "./skills-cache";
+import type { SessionUsageSnapshot } from "../types/runtime";
+import { getSkills, getSkillsFresh, type Skill } from "./skills-cache";
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -45,13 +47,38 @@ export const SUGGESTIONS = [
   "How many products are published?",
 ];
 
+// ── Local types ─────────────────────────────────────────────
+
+/**
+ * Some skills carry a preferred model in post-meta — not part of the cache
+ * `Skill` shape so widen locally rather than mutate the source type.
+ */
+type SkillWithMaybeModel = Skill & { model?: string };
+
+/** Shape of `window.gdsAssistant.models` consumed by the model selector. */
+interface ModelOption {
+  label: string;
+  value: string;
+  tier?: string;
+  capabilityTier?: "read" | "full" | string;
+}
+interface ModelProvider {
+  name: string;
+  label: string;
+  models: ModelOption[];
+}
+interface ModelsConfig {
+  providers: ModelProvider[];
+  default: string | null;
+}
+
 // ── Empty state with prompt suggestions ─────────────────────
 
-export function EmptyState() {
+export function EmptyState(): JSX.Element {
   const threadRuntime = useThreadRuntime();
 
   const handleSuggestion = useCallback(
-    (text) => {
+    (text: string) => {
       threadRuntime.append({
         role: "user",
         content: [{ type: "text", text }],
@@ -85,16 +112,16 @@ export function EmptyState() {
 
 // ── Panel header ────────────────────────────────────────────
 
-/**
- * Small header for the slide-in panels (skills, history, system context) so
- * each one carries its own title and an unambiguous close (×) — the panels
- * are opened from the "⋯" menu, so without this there's no visible way to
- * dismiss them.
- * @param root0
- * @param root0.title
- * @param root0.onClose
- */
-export function PanelHeader({ title, onClose }) {
+export interface PanelHeaderProps {
+  title: string;
+  onClose: () => void;
+}
+
+// Small header for the slide-in panels (skills, history, system context) so
+// each one carries its own title and an unambiguous close (×) — the panels
+// are opened from the "⋯" menu, so without this there's no visible way to
+// dismiss them.
+export function PanelHeader({ title, onClose }: PanelHeaderProps): JSX.Element {
   return (
     <div className="gds-assistant__panel-head">
       <span className="gds-assistant__panel-head-title">{title}</span>
@@ -124,7 +151,17 @@ export function PanelHeader({ title, onClose }) {
 
 // ── System context input ────────────────────────────────────
 
-export function SystemContextInput({ value, onChange, onClose }) {
+export interface SystemContextInputProps {
+  value?: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+}
+
+export function SystemContextInput({
+  value,
+  onChange,
+  onClose,
+}: SystemContextInputProps): JSX.Element {
   return (
     <div className="gds-assistant__context">
       <PanelHeader title="System context" onClose={onClose} />
@@ -143,11 +180,9 @@ export function SystemContextInput({ value, onChange, onClose }) {
 
 /**
  * Format a dollar amount for display.
- *
- * @param {number} dollars Dollar amount.
- * @return {string} Formatted cost string.
+ * @param dollars
  */
-function formatCost(dollars) {
+function formatCost(dollars: number): string {
   if (dollars < 0.001) {
     return "<$0.001";
   }
@@ -156,14 +191,12 @@ function formatCost(dollars) {
 
 /**
  * Format a date as relative time (5m ago, 2h ago, Yesterday, Apr 10).
- *
- * @param {string} dateStr UTC datetime string.
- * @return {string} Formatted relative time.
+ * @param dateStr
  */
-function relativeTime(dateStr) {
+function relativeTime(dateStr: string): string {
   const date = new Date(dateStr + "Z");
   const now = new Date();
-  const diffMs = now - date;
+  const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
 
   if (diffMin < 1) {
@@ -188,8 +221,13 @@ function relativeTime(dateStr) {
 
 // ── Skills list panel ────────────────────────────────────────
 
-export function SkillsList({ onUsed, onClose }) {
-  const [skills, setSkills] = useState(getSkills);
+export interface SkillsListProps {
+  onUsed?: () => void;
+  onClose: () => void;
+}
+
+export function SkillsList({ onUsed, onClose }: SkillsListProps): JSX.Element {
+  const [skills, setSkills] = useState<Skill[]>(getSkills);
   const threadRuntime = useThreadRuntime();
 
   useEffect(() => {
@@ -197,7 +235,7 @@ export function SkillsList({ onUsed, onClose }) {
   }, []);
 
   const handleUse = useCallback(
-    (skill) => {
+    (skill: SkillWithMaybeModel) => {
       // Auto-switch model if skill has a preferred one
       if (skill.model) {
         setModel(skill.model);
@@ -225,38 +263,41 @@ export function SkillsList({ onUsed, onClose }) {
   return (
     <div className="gds-assistant__skills-list">
       <PanelHeader title="Skills" onClose={onClose} />
-      {skills.map((skill) => (
-        <button
-          key={skill.id}
-          type="button"
-          className="gds-assistant__skill-item"
-          onClick={() => handleUse(skill)}
-          title={skill.prompt}
-        >
-          <div className="gds-assistant__skill-info">
-            <span className="gds-assistant__skill-name">/{skill.slug}</span>
-            <span className="gds-assistant__skill-title">{skill.title}</span>
-          </div>
-          {(skill.description || skill.model) && (
-            <span className="gds-assistant__skill-desc">
-              {skill.description}
-              {skill.model && (
-                <span className="gds-assistant__skill-model">
-                  {" "}
-                  ({skill.model.split(":").pop()})
-                </span>
-              )}
-            </span>
-          )}
-        </button>
-      ))}
+      {skills.map((skill) => {
+        const s = skill as SkillWithMaybeModel;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            className="gds-assistant__skill-item"
+            onClick={() => handleUse(s)}
+            title={s.prompt}
+          >
+            <div className="gds-assistant__skill-info">
+              <span className="gds-assistant__skill-name">/{s.slug}</span>
+              <span className="gds-assistant__skill-title">{s.title}</span>
+            </div>
+            {(s.description || s.model) && (
+              <span className="gds-assistant__skill-desc">
+                {s.description}
+                {s.model && (
+                  <span className="gds-assistant__skill-model">
+                    {" "}
+                    ({s.model.split(":").pop()})
+                  </span>
+                )}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // ── Typing indicator ────────────────────────────────────────
 
-export function TypingIndicator() {
+export function TypingIndicator(): JSX.Element | null {
   const threadRuntime = useThreadRuntime();
   const [isRunning, setIsRunning] = useState(false);
   // What's happening right now ("Reading the editor…", "Editing the document…")
@@ -289,7 +330,17 @@ export function TypingIndicator() {
 
 // ── Conversation history list ───────────────────────────────
 
-export function ConversationList({ conversations, onSelect, onClose }) {
+export interface ConversationListProps {
+  conversations: ConversationSummary[];
+  onSelect: (conv: ConversationSummary) => void;
+  onClose: () => void;
+}
+
+export function ConversationList({
+  conversations,
+  onSelect,
+  onClose,
+}: ConversationListProps): JSX.Element {
   const [search, setSearch] = useState("");
   const filtered = search
     ? conversations.filter((c) =>
@@ -316,54 +367,63 @@ export function ConversationList({ conversations, onSelect, onClose }) {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-      {filtered.map((conv) => (
-        <button
-          key={conv.uuid}
-          type="button"
-          className="gds-assistant__history-item"
-          onClick={() => onSelect(conv)}
-        >
-          <span className="gds-assistant__history-title">
-            {conv.title || "Untitled"}
-          </span>
-          <span className="gds-assistant__history-meta">
-            {(conv.total_input_tokens > 0 || conv.total_output_tokens > 0) && (
-              <span className="gds-assistant__history-cost">
-                {formatCost(
-                  ((Number(conv.total_input_tokens) || 0) / 1e6) * 3 +
-                    ((Number(conv.total_output_tokens) || 0) / 1e6) * 15,
-                )}
-              </span>
-            )}
-            {relativeTime(conv.updated_at)}
-          </span>
-        </button>
-      ))}
+      {filtered.map((conv) => {
+        const inputTokens = Number(conv.total_input_tokens) || 0;
+        const outputTokens = Number(conv.total_output_tokens) || 0;
+        return (
+          <button
+            key={conv.uuid}
+            type="button"
+            className="gds-assistant__history-item"
+            onClick={() => onSelect(conv)}
+          >
+            <span className="gds-assistant__history-title">
+              {conv.title || "Untitled"}
+            </span>
+            <span className="gds-assistant__history-meta">
+              {(inputTokens > 0 || outputTokens > 0) && (
+                <span className="gds-assistant__history-cost">
+                  {formatCost(
+                    (inputTokens / 1e6) * 3 + (outputTokens / 1e6) * 15,
+                  )}
+                </span>
+              )}
+              {conv.updated_at ? relativeTime(conv.updated_at) : ""}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // ── Model / token selectors ─────────────────────────────────
 
-function getModelConfig() {
-  return window.gdsAssistant?.models || { providers: [], default: null };
+function getModelConfig(): ModelsConfig {
+  // `models` lives on the window global; read with a local cast rather than
+  // extending the global type (it's used only here + skills-dataview).
+  const g = window.gdsAssistant as { models?: ModelsConfig } | undefined;
+  return g?.models || { providers: [], default: null };
 }
 
-function getDefaultModelKey() {
+function getDefaultModelKey(): string {
   return getModelConfig().default || "";
 }
 
-export function ModelSelector() {
-  const [model, setModelState] = useState(
+export function ModelSelector(): JSX.Element {
+  const [model, setModelState] = useState<string>(
     () => getModel() || getDefaultModelKey(),
   );
   const config = getModelConfig();
 
-  const handleChange = useCallback((e) => {
-    const value = e.target.value;
-    setModelState(value);
-    setModel(value);
-  }, []);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const value = e.target.value;
+      setModelState(value);
+      setModel(value);
+    },
+    [],
+  );
 
   return (
     <select
@@ -387,10 +447,17 @@ export function ModelSelector() {
   );
 }
 
-function getMaxTokensOptions() {
-  const def = window.gdsAssistant?.defaultMaxTokens || 4096;
+interface MaxTokensOption {
+  value: number;
+  label: string;
+}
+
+function getMaxTokensOptions(): MaxTokensOption[] {
+  // `defaultMaxTokens` is a window global; read with a local cast.
+  const g = window.gdsAssistant as { defaultMaxTokens?: number } | undefined;
+  const def = g?.defaultMaxTokens || 4096;
   const presets = [4096, 8192, 16384, 32768];
-  const formatK = (v) => `${Math.round(v / 1024)}K`;
+  const formatK = (v: number) => `${Math.round(v / 1024)}K`;
   return [
     { value: 0, label: formatK(def) },
     ...presets
@@ -399,14 +466,17 @@ function getMaxTokensOptions() {
   ];
 }
 
-export function MaxTokensSelector() {
-  const [tokens, setTokensState] = useState(getMaxTokens);
+export function MaxTokensSelector(): JSX.Element {
+  const [tokens, setTokensState] = useState<number>(getMaxTokens);
 
-  const handleChange = useCallback((e) => {
-    const value = parseInt(e.target.value, 10);
-    setTokensState(value);
-    setMaxTokens(value);
-  }, []);
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const value = parseInt(e.target.value, 10);
+      setTokensState(value);
+      setMaxTokens(value);
+    },
+    [],
+  );
 
   return (
     <select
@@ -426,8 +496,8 @@ export function MaxTokensSelector() {
 
 // ── Usage bar with cost warning ─────────────────────────────
 
-export function UsageBar() {
-  const [usage, setUsage] = useState({
+export function UsageBar(): JSX.Element | null {
+  const [usage, setUsage] = useState<SessionUsageSnapshot>({
     inputTokens: 0,
     outputTokens: 0,
     cost: 0,
