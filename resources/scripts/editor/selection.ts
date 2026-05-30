@@ -8,8 +8,51 @@
  * a hard `Requires at least` floor higher than 6.5.
  */
 
+// ── wp.* surface used here ──────────────────────────────────
+// Local types for the narrow `window.wp` API this module touches. The shape
+// is read via a `window as { wp?: ... }` cast at the call site rather than
+// `declare global` so we don't race with editor-bridge.ts's own
+// (intentionally different) `wp.data` overloads.
+
+interface SelectionPoint {
+  clientId?: string;
+  offset?: number;
+  attributeKey?: string;
+}
+
+interface Block {
+  clientId: string;
+  name: string;
+  attributes?: Record<string, unknown>;
+}
+
+interface BlockEditorSelect {
+  getSelectedBlockClientIds?: () => string[];
+  getBlockName?: (clientId: string) => string | undefined;
+  getBlock?: (clientId: string) => Block | undefined;
+  getSelectionStart?: () => SelectionPoint | undefined;
+  getSelectionEnd?: () => SelectionPoint | undefined;
+}
+
+interface RichTextValue {
+  text?: string;
+}
+
+interface WpSurface {
+  data?: {
+    select?: (key: "core/block-editor") => BlockEditorSelect | undefined;
+  };
+  richText?: {
+    create?: (opts: { html: string }) => RichTextValue | undefined;
+  };
+}
+
+function wp(): WpSurface | undefined {
+  return (window as unknown as { wp?: WpSurface }).wp;
+}
+
 /** Blocks where text-range selection is meaningful. */
-export const TEXT_BLOCKS = new Set([
+export const TEXT_BLOCKS = new Set<string>([
   "core/paragraph",
   "core/heading",
   "core/list",
@@ -24,7 +67,7 @@ export const TEXT_BLOCKS = new Set([
  * Friendly block label for human-facing strings ("core/paragraph" → "paragraph").
  * @param name
  */
-export function blockLabel(name) {
+export function blockLabel(name: string | undefined): string {
   return (name || "").replace(/^core\//, "").replace(/-/g, " ");
 }
 
@@ -32,7 +75,7 @@ export function blockLabel(name) {
  * Strip HTML + collapse whitespace from a string.
  * @param value
  */
-export function stripHtml(value) {
+export function stripHtml(value: unknown): string {
   if (typeof value !== "string") {
     return "";
   }
@@ -49,9 +92,9 @@ export function stripHtml(value) {
  * Normalise both to plain text.
  * @param attrValue
  */
-export function attrToPlainText(attrValue) {
+export function attrToPlainText(attrValue: unknown): string {
   if (typeof attrValue === "string") {
-    const rich = window.wp?.richText?.create?.({ html: attrValue });
+    const rich = wp()?.richText?.create?.({ html: attrValue });
     if (typeof rich?.text === "string") {
       return rich.text;
     }
@@ -60,9 +103,10 @@ export function attrToPlainText(attrValue) {
   if (
     attrValue &&
     typeof attrValue === "object" &&
-    typeof attrValue.text === "string"
+    "text" in attrValue &&
+    typeof (attrValue as { text: unknown }).text === "string"
   ) {
-    return attrValue.text;
+    return (attrValue as { text: string }).text;
   }
   return "";
 }
@@ -71,10 +115,8 @@ export function attrToPlainText(attrValue) {
  * Plain text of a block's primary content attribute, collapsed + trimmed.
  * @param clientId
  */
-export function getBlockText(clientId) {
-  const block = window.wp?.data
-    ?.select?.("core/block-editor")
-    ?.getBlock?.(clientId);
+export function getBlockText(clientId: string): string {
+  const block = wp()?.data?.select?.("core/block-editor")?.getBlock?.(clientId);
   if (!block) {
     return "";
   }
@@ -90,8 +132,8 @@ export function getBlockText(clientId) {
  * after focus has left the editor surface.
  * @param clientId
  */
-export function getBlockSelectionText(clientId) {
-  const select = window.wp?.data?.select?.("core/block-editor");
+export function getBlockSelectionText(clientId: string): string {
+  const select = wp()?.data?.select?.("core/block-editor");
   if (!select) {
     return "";
   }
@@ -114,7 +156,9 @@ export function getBlockSelectionText(clientId) {
   }
 
   const block = select.getBlock?.(clientId);
-  const attrValue = block?.attributes?.[start.attributeKey];
+  const attrValue = start.attributeKey
+    ? block?.attributes?.[start.attributeKey]
+    : undefined;
   const text = attrToPlainText(attrValue);
   if (!text) {
     return "";
@@ -128,21 +172,44 @@ export function getBlockSelectionText(clientId) {
 
 /**
  * Snapshot of what the user has selected in the editor right now, or null when
- * nothing is selected. Drives both the composer chip and the inline context we
- * attach to outgoing messages. Three shapes:
+ * nothing is selected. Three shapes (discriminated on `mode`):
  *
- *   {mode: 'text-range',  clientId, blockName, blockLabel, selectedText, blockText}
- *     A single text-bearing block with a non-empty text-range selection.
- *
- *   {mode: 'whole-block', clientId, blockName, blockLabel, blockText}
- *     A single block selected with no text range (text-bearing or otherwise;
- *     `blockText` is empty for non-text blocks).
- *
- *   {mode: 'multi-block', count, clientIds, blockNames, blockLabels}
- *     Multiple blocks selected at once.
+ *   {mode: 'text-range', …}   single text-bearing block with a range
+ *   {mode: 'whole-block', …}  single block with no range
+ *   {mode: 'multi-block', …}  multiple blocks selected at once
  */
-export function getCurrentSelectionContext() {
-  const select = window.wp?.data?.select?.("core/block-editor");
+export interface TextRangeSelection {
+  mode: "text-range";
+  clientId: string;
+  blockName: string;
+  blockLabel: string;
+  selectedText: string;
+  blockText: string;
+}
+
+export interface WholeBlockSelection {
+  mode: "whole-block";
+  clientId: string;
+  blockName: string;
+  blockLabel: string;
+  blockText: string;
+}
+
+export interface MultiBlockSelection {
+  mode: "multi-block";
+  count: number;
+  clientIds: string[];
+  blockNames: string[];
+  blockLabels: string[];
+}
+
+export type SelectionContext =
+  | TextRangeSelection
+  | WholeBlockSelection
+  | MultiBlockSelection;
+
+export function getCurrentSelectionContext(): SelectionContext | null {
+  const select = wp()?.data?.select?.("core/block-editor");
   if (!select) {
     return null;
   }
@@ -152,7 +219,9 @@ export function getCurrentSelectionContext() {
   }
 
   if (ids.length > 1) {
-    const names = ids.map((id) => select.getBlockName?.(id)).filter(Boolean);
+    const names = ids
+      .map((id) => select.getBlockName?.(id))
+      .filter((n): n is string => !!n);
     if (!names.length) {
       return null;
     }
@@ -165,7 +234,7 @@ export function getCurrentSelectionContext() {
     };
   }
 
-  const clientId = ids[0];
+  const clientId = ids[0]!;
   const name = select.getBlockName?.(clientId);
   if (!name) {
     return null;

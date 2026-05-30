@@ -10,9 +10,15 @@
  */
 
 import { useEffect, useState } from "@wordpress/element";
-import { getCurrentSelectionContext } from "../editor/selection";
+import {
+  getCurrentSelectionContext,
+  type SelectionContext,
+} from "../editor/selection";
 
-function sameSelection(a, b) {
+function sameSelection(
+  a: SelectionContext | null,
+  b: SelectionContext | null,
+): boolean {
   if (a === b) {
     return true;
   }
@@ -22,21 +28,21 @@ function sameSelection(a, b) {
   if (a.mode !== b.mode) {
     return false;
   }
-  if (a.mode === "text-range") {
+  if (a.mode === "text-range" && b.mode === "text-range") {
     return (
       a.clientId === b.clientId &&
       a.selectedText === b.selectedText &&
       a.blockText === b.blockText
     );
   }
-  if (a.mode === "whole-block") {
+  if (a.mode === "whole-block" && b.mode === "whole-block") {
     return (
       a.clientId === b.clientId &&
       a.blockName === b.blockName &&
       a.blockText === b.blockText
     );
   }
-  if (a.mode === "multi-block") {
+  if (a.mode === "multi-block" && b.mode === "multi-block") {
     return (
       a.count === b.count &&
       (a.clientIds || []).join("|") === (b.clientIds || []).join("|")
@@ -45,13 +51,18 @@ function sameSelection(a, b) {
   return false;
 }
 
-export function useEditorSelection() {
-  const [selection, setSelection] = useState(() =>
+export function useEditorSelection(): SelectionContext | null {
+  const [selection, setSelection] = useState<SelectionContext | null>(() =>
     getCurrentSelectionContext(),
   );
 
   useEffect(() => {
-    const data = window.wp?.data;
+    // `wp.data` is typed elsewhere with the narrow surface we use; the
+    // top-level `subscribe` is the generic store-event hook, not on those
+    // narrowed select-key overloads.
+    const data = (
+      window.wp as { data?: { subscribe?: (cb: () => void) => () => void } }
+    )?.data;
     if (!data?.subscribe) {
       return undefined;
     }

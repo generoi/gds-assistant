@@ -22,9 +22,12 @@ const TTS_RATE = 1.35;
 // the composer as user input.
 const TTS_START_EVENT = "gds-assistant-tts-start";
 const TTS_END_EVENT = "gds-assistant-tts-end";
-export const TTS_EVENTS = { start: TTS_START_EVENT, end: TTS_END_EVENT };
+export const TTS_EVENTS = {
+  start: TTS_START_EVENT,
+  end: TTS_END_EVENT,
+} as const;
 
-export function ttsSupported() {
+export function ttsSupported(): boolean {
   return (
     typeof window !== "undefined" &&
     typeof window.speechSynthesis !== "undefined" &&
@@ -32,7 +35,7 @@ export function ttsSupported() {
   );
 }
 
-function readPref() {
+function readPref(): boolean {
   try {
     return localStorage.getItem(ENABLED_KEY) === "1";
   } catch {
@@ -40,7 +43,7 @@ function readPref() {
   }
 }
 
-function writePref(value) {
+function writePref(value: boolean): void {
   try {
     if (value) {
       localStorage.setItem(ENABLED_KEY, "1");
@@ -57,11 +60,11 @@ function writePref(value) {
 }
 
 /** React hook returning [enabled, setEnabled] that survives full-page reloads. */
-export function useTtsEnabled() {
-  const [enabled, setEnabledState] = useState(readPref);
+export function useTtsEnabled(): [boolean, (value: boolean) => void] {
+  const [enabled, setEnabledState] = useState<boolean>(readPref);
 
   useEffect(() => {
-    const sync = () => setEnabledState(readPref());
+    const sync = (): void => setEnabledState(readPref());
     window.addEventListener("storage", sync);
     window.addEventListener(PREF_EVENT, sync);
     return () => {
@@ -70,7 +73,7 @@ export function useTtsEnabled() {
     };
   }, []);
 
-  const setEnabled = (value) => {
+  const setEnabled = (value: boolean): void => {
     const next = !!value;
     writePref(next);
     setEnabledState(next);
@@ -85,7 +88,7 @@ export function useTtsEnabled() {
 
 // ── Voice mode preference (silence-based auto-send) ─────────
 
-function readVoiceMode() {
+function readVoiceMode(): boolean {
   try {
     return localStorage.getItem(VOICE_MODE_KEY) === "1";
   } catch {
@@ -93,7 +96,7 @@ function readVoiceMode() {
   }
 }
 
-function writeVoiceMode(value) {
+function writeVoiceMode(value: boolean): void {
   try {
     if (value) {
       localStorage.setItem(VOICE_MODE_KEY, "1");
@@ -111,11 +114,11 @@ function writeVoiceMode(value) {
  * the message after a short silence (Skype-style turn taking) instead of
  * just dictating into the composer. Mirrors useTtsEnabled in shape.
  */
-export function useVoiceMode() {
-  const [enabled, setEnabledState] = useState(readVoiceMode);
+export function useVoiceMode(): [boolean, (value: boolean) => void] {
+  const [enabled, setEnabledState] = useState<boolean>(readVoiceMode);
 
   useEffect(() => {
-    const sync = () => setEnabledState(readVoiceMode());
+    const sync = (): void => setEnabledState(readVoiceMode());
     window.addEventListener("storage", sync);
     window.addEventListener(VOICE_MODE_EVENT, sync);
     return () => {
@@ -124,7 +127,7 @@ export function useVoiceMode() {
     };
   }, []);
 
-  const setEnabled = (value) => {
+  const setEnabled = (value: boolean): void => {
     writeVoiceMode(!!value);
     setEnabledState(!!value);
   };
@@ -133,7 +136,7 @@ export function useVoiceMode() {
 }
 
 /** Read the currently-picked dictation/TTS language from localStorage, if any. */
-export function readVoiceLang() {
+export function readVoiceLang(): string {
   try {
     return localStorage.getItem(LANG_KEY) || "";
   } catch {
@@ -147,7 +150,7 @@ export function readVoiceLang() {
  * TTS read-aloud should match what the user *hears*, not the raw markdown.
  * @param text
  */
-export function cleanForSpeech(text) {
+export function cleanForSpeech(text: unknown): string {
   if (typeof text !== "string") {
     return "";
   }
@@ -166,12 +169,19 @@ export function cleanForSpeech(text) {
     .trim();
 }
 
+/** Minimal shape of an assistant-ui message the TTS extractor reads. */
+interface ReadableMessage {
+  content?: string | ReadonlyArray<{ type?: string; text?: string }>;
+}
+
 /**
  * Pull readable text out of an assistant message. Skips tool calls / results —
  * they're machinery, not the answer the user wants spoken.
  * @param message
  */
-export function extractAssistantText(message) {
+export function extractAssistantText(
+  message: ReadableMessage | undefined,
+): string {
   if (!message) {
     return "";
   }
@@ -185,7 +195,7 @@ export function extractAssistantText(message) {
     .filter(
       (part) => part && part.type === "text" && typeof part.text === "string",
     )
-    .map((part) => part.text)
+    .map((part) => part.text as string)
     .join("\n\n")
     .trim();
 }
@@ -195,7 +205,7 @@ export function extractAssistantText(message) {
  * `getVoices()` returns [] until the `voiceschanged` event fires; without
  * this gate the first `speak()` may pick no voice and silently no-op.
  */
-function voicesReady() {
+function voicesReady(): Promise<SpeechSynthesisVoice[]> {
   if (!ttsSupported()) {
     return Promise.resolve([]);
   }
@@ -205,7 +215,7 @@ function voicesReady() {
     return Promise.resolve(have);
   }
   return new Promise((resolve) => {
-    const done = () => {
+    const done = (): void => {
       synth.removeEventListener?.("voiceschanged", done);
       resolve(synth.getVoices?.() || []);
     };
@@ -220,7 +230,10 @@ function voicesReady() {
  * @param voices
  * @param lang
  */
-function pickVoice(voices, lang) {
+function pickVoice(
+  voices: SpeechSynthesisVoice[],
+  lang: string | undefined,
+): SpeechSynthesisVoice | null {
   if (!lang || !voices?.length) {
     return null;
   }
@@ -240,14 +253,14 @@ function pickVoice(voices, lang) {
 let outstandingUtterances = 0;
 let sessionActive = false;
 
-function markUtteranceStart() {
+function markUtteranceStart(): void {
   if (!sessionActive) {
     sessionActive = true;
     window.dispatchEvent(new CustomEvent(TTS_START_EVENT));
   }
 }
 
-function markUtteranceEnd() {
+function markUtteranceEnd(): void {
   outstandingUtterances = Math.max(0, outstandingUtterances - 1);
   if (outstandingUtterances === 0 && sessionActive) {
     sessionActive = false;
@@ -255,7 +268,7 @@ function markUtteranceEnd() {
   }
 }
 
-function queueUtterances(chunks, lang) {
+function queueUtterances(chunks: string[], lang: string | undefined): void {
   const synth = window.speechSynthesis;
   const voices = synth.getVoices?.() || [];
   const voice = pickVoice(voices, lang);
@@ -284,7 +297,7 @@ function queueUtterances(chunks, lang) {
  * @param text
  * @param lang
  */
-export function speakAppend(text, lang) {
+export function speakAppend(text: string, lang?: string): void {
   if (!ttsSupported()) {
     return;
   }
@@ -303,7 +316,7 @@ export function speakAppend(text, lang) {
  * @param text
  * @param lang
  */
-export function speak(text, lang) {
+export function speak(text: string, lang?: string): void {
   if (!ttsSupported()) {
     return;
   }
@@ -318,7 +331,7 @@ export function speak(text, lang) {
   // speak past the next tick when there's anything to cancel, and gate on
   // voices having loaded so the first utterance after page load isn't a
   // no-op (Chrome returns [] from getVoices() until `voiceschanged` fires).
-  const launch = () => queueUtterances(chunks, lang);
+  const launch = (): void => queueUtterances(chunks, lang);
   const needCancel = synth.speaking || synth.pending;
   if (needCancel) {
     cancelTts();
@@ -332,7 +345,7 @@ export function speak(text, lang) {
   });
 }
 
-export function cancelTts() {
+export function cancelTts(): void {
   if (!ttsSupported()) {
     return;
   }
@@ -352,13 +365,13 @@ export function cancelTts() {
   }
 }
 
-function chunkForUtterance(text, target) {
+function chunkForUtterance(text: string, target: number): string[] {
   if (text.length <= target) {
     return [text];
   }
   // Split into sentences first, then re-pack into ≤target-sized chunks.
   const sentences = text.split(/(?<=[.!?。！？])\s+/);
-  const chunks = [];
+  const chunks: string[] = [];
   let buf = "";
   for (const sentence of sentences) {
     if (!sentence) {
