@@ -29,7 +29,7 @@ const AssistantModal = lazy(() =>
 
 const OPEN_KEY = "gds-assistant-open";
 
-export function App() {
+export function App(): JSX.Element {
   const {
     runtime,
     loadConversation,
@@ -45,10 +45,12 @@ export function App() {
 
   const handleNewChat = useCallback(() => {
     newChat();
-    loadConversation(null);
+    // Passing an empty UUID resets the thread (loadConversation drops the
+    // active conversation when called with no UUID).
+    loadConversation("");
   }, [loadConversation]);
 
-  const handleContextChange = useCallback((val) => {
+  const handleContextChange = useCallback((val: string) => {
     setContext(val);
     setSystemContext(val);
   }, []);
@@ -79,9 +81,10 @@ export function App() {
     }
 
     // Listen for resume events from the conversations DataView
-    const handler = (e) => {
-      if (e.detail?.uuid) {
-        loadConversation(e.detail.uuid);
+    const handler = (e: Event): void => {
+      const detail = (e as CustomEvent<{ uuid?: string }>).detail;
+      if (detail?.uuid) {
+        loadConversation(detail.uuid);
       }
     };
     window.addEventListener("gds-assistant-resume", handler);

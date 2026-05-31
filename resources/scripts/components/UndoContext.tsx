@@ -17,16 +17,19 @@ import { createContext } from "@wordpress/element";
 
 /** State for a single undoable action, keyed by the assistant-ui tool-call id. */
 export interface UndoableAction {
-  /** Audit log id; passed back to {@link UndoContextValue.onUndo}. */
-  auditId: string;
+  /**
+   * Audit log row id (`{$prefix}gds_assistant_audit_log.id`); passed back to
+   * {@link UndoContextValue.onUndo} which POSTs it to `/undo`.
+   */
+  auditId: number;
   /** Human label shown on the Undo button (e.g. `"Restore post"`). */
   label: string;
   /** Set after the undo POST resolves; the button stops responding. */
   undone: boolean;
   /** While the undo POST is in-flight. */
-  pending: boolean;
+  pending?: boolean;
   /** Error message from a failed undo attempt, if any. */
-  error?: string;
+  error?: string | null;
   /** Caveats returned by the undo (e.g. "term recreated with new id"). */
   caveats?: string[];
 }
@@ -35,7 +38,7 @@ export interface UndoContextValue {
   /** Keyed by tool-call id. Missing key = nothing to undo for that call. */
   undoableActions: Record<string, UndoableAction>;
   /** Called by the Undo button. Null when no provider is mounted (smoke tests). */
-  onUndo: ((toolCallId: string, auditId: string) => void) | null;
+  onUndo: ((toolCallId: string, auditId: number) => void) | null;
   /** Called by the Retry button. Null when no provider is mounted. */
   onRetry: ((toolCallId: string) => void) | null;
   /** Ids currently mid-retry; drives the spinner. */

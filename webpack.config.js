@@ -73,14 +73,14 @@ export default {
     rules: updatedRules,
   },
   entry: {
-    'admin-chat': path.resolve(__dirname, 'resources/scripts/admin-chat.jsx'),
+    'admin-chat': path.resolve(__dirname, 'resources/scripts/admin-chat.tsx'),
     'admin-settings': path.resolve(
       __dirname,
-      'resources/scripts/admin-settings.jsx',
+      'resources/scripts/admin-settings.tsx',
     ),
     'skill-editor': path.resolve(
       __dirname,
-      'resources/scripts/skill-editor.jsx',
+      'resources/scripts/skill-editor.tsx',
     ),
   },
   output: {

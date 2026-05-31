@@ -26,6 +26,7 @@
     "allowImportingTsExtensions": false,
 
     "types": [
+      "jest",
       "wordpress__data",
       "wordpress__element",
       "wordpress__components",
