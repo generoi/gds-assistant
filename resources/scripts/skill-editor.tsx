@@ -1,3 +1,10 @@
+// `@wordpress/editor` + `@wordpress/plugins` ship typings under
+// @types/wordpress__editor / @types/wordpress__plugins, but those packages
+// drag in their own @wordpress/components / media-utils peer trees that
+// resolve to different transitive versions on CI vs local, breaking
+// `npm ci`. The runtime modules are externalised by webpack from
+// `window.wp.*` anyway — declare the narrow surface we use in
+// `types/wp-editor.d.ts`.
 import { PluginDocumentSettingPanel } from "@wordpress/editor";
 import { SelectControl } from "@wordpress/components";
 import { useEntityProp } from "@wordpress/core-data";
@@ -70,17 +77,8 @@ function SkillSettingsPanel(): JSX.Element | null {
     { label: __("Weekly", "gds-assistant"), value: "weekly" },
   ];
 
-  // `PluginDocumentSettingPanel` is typed as not-a-component in some
-  // @types/wordpress__editor releases; cast at the JSX boundary so this
-  // file's strict-mode typecheck doesn't depend on the lib version.
-  const Panel = PluginDocumentSettingPanel as React.ComponentType<{
-    name: string;
-    title: string;
-    children: React.ReactNode;
-  }>;
-
   return (
-    <Panel
+    <PluginDocumentSettingPanel
       name="gds-assistant-skill-settings"
       title={__("Skill Settings", "gds-assistant")}
     >
@@ -100,13 +98,10 @@ function SkillSettingsPanel(): JSX.Element | null {
           setMeta({ ...skillMeta, _assistant_schedule: value as string })
         }
       />
-    </Panel>
+    </PluginDocumentSettingPanel>
   );
 }
 
-// `registerPlugin`'s types mark `icon` required since 6.7, but the runtime
-// still accepts plugins without one (text labels appear in the Plugins
-// dropdown). Cast at the call site rather than ship an icon we don't have.
 registerPlugin("gds-assistant-skill-settings", {
   render: SkillSettingsPanel,
-} as unknown as Parameters<typeof registerPlugin>[1]);
+});
