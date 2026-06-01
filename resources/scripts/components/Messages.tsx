@@ -310,68 +310,77 @@ export function AssistantMessage(): JSX.Element | null {
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--assistant">
       <CopyMessageButton />
-      <AssistantContent />
+      <MessagePrimitive.Content
+        components={{
+          Text: AssistantMessageText,
+          // Per-individual-part fallback for any tool call assistant-ui
+          // routes outside a ToolGroup (e.g. a singleton inside a longer
+          // mixed run). The library types Fallback's bookkeeping
+          // (`status`, `addResult`, `resume`) we don't read; cast at the
+          // boundary.
+          tools: { Fallback: ToolCallFallback as unknown as never },
+          // Wrap every run of consecutive tool calls in our smart group;
+          // it decides whether the run is dense enough to actually
+          // collapse (#35) or should render its children inline. The
+          // library handles WHAT to group (any consecutive tool calls);
+          // we decide HOW it's presented based on same-shape + status.
+          ToolGroup: SmartToolGroup as unknown as never,
+        }}
+      />
       <MessageTimestamp />
     </MessagePrimitive.Root>
   );
 }
 
 /**
- * Render the assistant message's content parts, with grouping applied
- * (#35): adjacent runs of identical-shape tool calls collapse into a
- * single `<ToolCallGroup>`. We bypass `MessagePrimitive.Content` (whose
- * `components.tools.Fallback` only dispatches per individual part) and
- * iterate the parts ourselves so we can emit either a real part or a
- * synthetic `tool-call-group`.
+ * Drop-in for `MessagePrimitive.Content`'s `ToolGroup` slot — the library
+ * hands us each run of consecutive tool-call parts as a `[startIndex,
+ * endIndex]` window with the already-rendered children. We peek at the
+ * window's parts via `useMessage`, check whether the run is grouping-
+ * worthy (#35 rules: same shape, same status bucket, at least min size),
+ * and either:
+ *   - wrap the children in `<ToolCallGroup>` (collapsed-by-default), or
+ *   - render the children inline so they look exactly like ungrouped
+ *     calls.
+ *
+ * We intentionally let the library control which parts are in the run.
+ * Same-shape splitting happens by NOT collapsing when shapes differ —
+ * the library still nests them under one ToolGroup, but we render them
+ * inline so the user sees individual cards.
  */
-function AssistantContent(): JSX.Element {
+interface SmartToolGroupProps {
+  startIndex: number;
+  endIndex: number;
+  children?: React.ReactNode;
+}
+
+function SmartToolGroup({
+  startIndex,
+  endIndex,
+  children,
+}: SmartToolGroupProps): JSX.Element {
   const parts = useMessage(
     (s) => s.content as unknown as UiContentPart[] | undefined,
   );
   const { pendingApprovalIds } = useContext(UndoContext);
-  const grouped = useMemo(
-    () =>
-      groupAdjacentToolCalls(parts || [], {
-        pendingApprovalIds,
-      }),
-    [parts, pendingApprovalIds],
-  );
 
-  return (
-    <>
-      {grouped.map((item, i) => {
-        if (item.type === "tool-call-group") {
-          return (
-            <ToolCallGroup
-              // Group identity is its tool name + first call id; stable
-              // across re-renders unless the underlying ids change.
-              key={`group-${item.toolName}-${item.calls[0]?.toolCallId || i}`}
-              group={item}
-            />
-          );
-        }
-        if (item.type === "text") {
-          return <AssistantMessageText key={`t-${i}`} text={item.text} />;
-        }
-        if (item.type === "tool-call") {
-          return (
-            <ToolCallFallback
-              key={item.toolCallId || `tc-${i}`}
-              toolCallId={item.toolCallId}
-              toolName={item.toolName}
-              args={item.args}
-              result={item.result}
-              isError={item.isError}
-            />
-          );
-        }
-        if (item.type === "image") {
-          return <MessageImage key={`img-${i}`} image={item.image} />;
-        }
-        return null;
-      })}
-    </>
-  );
+  const group = useMemo(() => {
+    if (!parts) {
+      return null;
+    }
+    const window = parts.slice(startIndex, endIndex + 1);
+    const groups = groupAdjacentToolCalls(window, { pendingApprovalIds });
+    // We expect either one group (full collapse) or a passthrough.
+    if (groups.length === 1 && groups[0]!.type === "tool-call-group") {
+      return groups[0];
+    }
+    return null;
+  }, [parts, startIndex, endIndex, pendingApprovalIds]);
+
+  if (group) {
+    return <ToolCallGroup group={group} />;
+  }
+  return <>{children}</>;
 }
 
 // Extra HTML tags we emit inside assistant messages. Streamdown's default
