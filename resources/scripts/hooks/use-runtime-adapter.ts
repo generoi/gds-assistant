@@ -7,8 +7,8 @@ import {
   useMemo,
 } from "@wordpress/element";
 import { getEditorContext, executeClientTool } from "../editor/editor-bridge";
+import { parseSSE } from "./parse-sse";
 import type {
-  RuntimeEvent,
   SessionUsageSnapshot,
   UiContentPart,
   UiImagePart,
@@ -1640,54 +1640,6 @@ function fileToBase64(file: File): Promise<string | null> {
   });
 }
 
-// ── SSE parser ──────────────────────────────────────────────
-
-/**
- * Parse SSE events from a ReadableStream.
- * @param body
- */
-async function* parseSSE(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<RuntimeEvent> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      let eventType: string | null = null;
-      for (const line of lines) {
-        if (line.startsWith("event: ")) {
-          eventType = line.slice(7).trim();
-        } else if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (eventType && data) {
-            try {
-              yield {
-                type: eventType,
-                data: JSON.parse(data),
-              } as RuntimeEvent;
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-          eventType = null;
-        } else if (line.trim() === "") {
-          eventType = null;
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
+// SSE parser lives in `./parse-sse.ts` so the bugfix-regression test can
+// import it without dragging this whole module's WP-element imports into
+// the Jest sandbox.
