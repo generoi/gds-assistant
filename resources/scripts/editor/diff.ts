@@ -10,7 +10,28 @@
  * memory is bounded by what the model can fit in a tool call anyway.
  */
 
-export function diffLines(before, after) {
+export type DiffSegmentType = "eq" | "del" | "add" | "gap";
+
+export interface DiffSegment {
+  type: DiffSegmentType;
+  text: string;
+}
+
+/**
+ * Result of {@link pairModifiedLines}: solo lines stay as is, paired
+ *  del+add runs collapse into a `mod` row carrying both sides plus the
+ *  inline word-level diff for the highlighter.
+ */
+export interface ModifiedLine {
+  type: "mod";
+  del: string;
+  add: string;
+  words: DiffSegment[];
+}
+
+export type DiffRow = DiffSegment | ModifiedLine;
+
+export function diffLines(before: unknown, after: unknown): DiffSegment[] {
   const a = String(before ?? "").split("\n");
   const b = String(after ?? "").split("\n");
   const n = a.length;
@@ -22,35 +43,35 @@ export function diffLines(before, after) {
     const ai = a[i];
     for (let j = m - 1; j >= 0; j--) {
       if (ai === b[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
+        dp[i]![j] = dp[i + 1]![j + 1]! + 1;
       } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        dp[i]![j] = Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
       }
     }
   }
 
-  const out = [];
+  const out: DiffSegment[] = [];
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
     if (a[i] === b[j]) {
-      out.push({ type: "eq", text: a[i] });
+      out.push({ type: "eq", text: a[i]! });
       i++;
       j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ type: "del", text: a[i] });
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      out.push({ type: "del", text: a[i]! });
       i++;
     } else {
-      out.push({ type: "add", text: b[j] });
+      out.push({ type: "add", text: b[j]! });
       j++;
     }
   }
   while (i < n) {
-    out.push({ type: "del", text: a[i] });
+    out.push({ type: "del", text: a[i]! });
     i++;
   }
   while (j < m) {
-    out.push({ type: "add", text: b[j] });
+    out.push({ type: "add", text: b[j]! });
     j++;
   }
   return out;
@@ -66,8 +87,9 @@ export function diffLines(before, after) {
  * @param before
  * @param after
  */
-export function diffWords(before, after) {
-  const tokenize = (s) => String(s ?? "").match(/\S+|\s+/g) || [];
+export function diffWords(before: unknown, after: unknown): DiffSegment[] {
+  const tokenize = (s: unknown): string[] =>
+    String(s ?? "").match(/\S+|\s+/g) || [];
   const a = tokenize(before);
   const b = tokenize(after);
   const n = a.length;
@@ -78,35 +100,35 @@ export function diffWords(before, after) {
     const ai = a[i];
     for (let j = m - 1; j >= 0; j--) {
       if (ai === b[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
+        dp[i]![j] = dp[i + 1]![j + 1]! + 1;
       } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        dp[i]![j] = Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
       }
     }
   }
 
-  const out = [];
+  const out: DiffSegment[] = [];
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
     if (a[i] === b[j]) {
-      out.push({ type: "eq", text: a[i] });
+      out.push({ type: "eq", text: a[i]! });
       i++;
       j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ type: "del", text: a[i] });
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      out.push({ type: "del", text: a[i]! });
       i++;
     } else {
-      out.push({ type: "add", text: b[j] });
+      out.push({ type: "add", text: b[j]! });
       j++;
     }
   }
   while (i < n) {
-    out.push({ type: "del", text: a[i] });
+    out.push({ type: "del", text: a[i]! });
     i++;
   }
   while (j < m) {
-    out.push({ type: "add", text: b[j] });
+    out.push({ type: "add", text: b[j]! });
     j++;
   }
   return out;
@@ -119,38 +141,38 @@ export function diffWords(before, after) {
  * order; the leftovers stay as plain del-only or add-only rows.
  * @param segments
  */
-export function pairModifiedLines(segments) {
-  const out = [];
+export function pairModifiedLines(segments: DiffSegment[]): DiffRow[] {
+  const out: DiffRow[] = [];
   for (let i = 0; i < segments.length; ) {
-    const s = segments[i];
+    const s = segments[i]!;
     if (s.type === "del") {
       // Collect the run of dels, then the run of adds that follows.
-      const dels = [];
-      while (i < segments.length && segments[i].type === "del") {
-        dels.push(segments[i]);
+      const dels: DiffSegment[] = [];
+      while (i < segments.length && segments[i]!.type === "del") {
+        dels.push(segments[i]!);
         i++;
       }
-      const adds = [];
-      while (i < segments.length && segments[i].type === "add") {
-        adds.push(segments[i]);
+      const adds: DiffSegment[] = [];
+      while (i < segments.length && segments[i]!.type === "add") {
+        adds.push(segments[i]!);
         i++;
       }
       const paired = Math.min(dels.length, adds.length);
       for (let k = 0; k < paired; k++) {
         out.push({
           type: "mod",
-          del: dels[k].text,
-          add: adds[k].text,
-          words: diffWords(dels[k].text, adds[k].text),
+          del: dels[k]!.text,
+          add: adds[k]!.text,
+          words: diffWords(dels[k]!.text, adds[k]!.text),
         });
       }
       // Leftover dels (no matching add) and trailing adds (no matching del)
       // stay as solo lines so we don't lose them.
       for (let k = paired; k < dels.length; k++) {
-        out.push(dels[k]);
+        out.push(dels[k]!);
       }
       for (let k = paired; k < adds.length; k++) {
-        out.push(adds[k]);
+        out.push(adds[k]!);
       }
     } else {
       out.push(s);
@@ -168,12 +190,15 @@ export function pairModifiedLines(segments) {
  * @param segments
  * @param context
  */
-export function collapseUnchanged(segments, context = 2) {
+export function collapseUnchanged(
+  segments: DiffSegment[],
+  context = 2,
+): DiffSegment[] {
   // Compute, for each eq segment, distance to nearest non-eq on each side.
-  const out = [];
-  const eqRun = [];
+  const out: DiffSegment[] = [];
+  const eqRun: DiffSegment[] = [];
 
-  const flushEqRun = (hasChangeAfter) => {
+  const flushEqRun = (hasChangeAfter: boolean): void => {
     if (!eqRun.length) {
       return;
     }

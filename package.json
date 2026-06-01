@@ -34,9 +34,13 @@
     "@wordpress/i18n": "^6.16.0",
     "@wordpress/icons": "^12.1.0"
   },
+  "overrides": {
+    "date-fns": "4.3.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@types/wordpress__api-fetch": "^3.2.4",

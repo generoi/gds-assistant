@@ -21,8 +21,12 @@ export interface PendingApproval {
   toolUseId: string;
   toolName?: string;
   input?: unknown;
-  /** Optional hostname surfaced for the "Approve & trust" affordance. */
-  trustableHost?: string;
+  /**
+   * Optional hostname surfaced for the "Approve & trust" affordance. The
+   * runtime adapter normalises empty values to `null` (rather than absent);
+   * we accept both so the modal doesn't need its own coercion.
+   */
+  trustableHost?: string | null;
 }
 
 export interface AssistantModalProps {
@@ -45,8 +49,8 @@ export interface AssistantModalProps {
   pendingApprovals: PendingApproval[];
   /** Per-tool-call undoable state, keyed by tool-call id. */
   undoableActions?: Record<string, UndoableAction>;
-  /** Issue an undo for the given tool-call + audit id. */
-  onUndo: ((toolCallId: string, auditId: string) => void) | null;
+  /** Issue an undo for the given tool-call + audit-log row id. */
+  onUndo: ((toolCallId: string, auditId: number) => void) | null;
   /** Retry a failed tool call. */
   onRetry: ((toolCallId: string) => void) | null;
   /** Tool-call ids currently mid-retry; drives the spinner. */

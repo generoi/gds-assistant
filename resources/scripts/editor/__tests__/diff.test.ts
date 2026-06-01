@@ -8,6 +8,8 @@ import {
   diffWords,
   collapseUnchanged,
   pairModifiedLines,
+  type DiffSegment,
+  type ModifiedLine,
 } from "../diff";
 
 describe("diffLines", () => {
@@ -120,7 +122,7 @@ describe("collapseUnchanged", () => {
 
 describe("pairModifiedLines", () => {
   test("one del followed by one add pairs into a mod", () => {
-    const segs = [
+    const segs: DiffSegment[] = [
       { type: "eq", text: "a" },
       { type: "del", text: "old" },
       { type: "add", text: "new" },
@@ -128,28 +130,28 @@ describe("pairModifiedLines", () => {
     ];
     const paired = pairModifiedLines(segs);
     expect(paired.filter((r) => r.type === "mod")).toHaveLength(1);
-    const mod = paired.find((r) => r.type === "mod");
+    const mod = paired.find((r): r is ModifiedLine => r.type === "mod")!;
     expect(mod.del).toBe("old");
     expect(mod.add).toBe("new");
     expect(Array.isArray(mod.words)).toBe(true);
   });
 
   test("uneven counts: extra del stays solo, extra add stays solo", () => {
-    const segs = [
+    const segs: DiffSegment[] = [
       { type: "del", text: "d1" },
       { type: "del", text: "d2" },
       { type: "add", text: "a1" },
     ];
     const paired = pairModifiedLines(segs);
     const mods = paired.filter((r) => r.type === "mod");
-    const dels = paired.filter((r) => r.type === "del");
+    const dels = paired.filter((r): r is DiffSegment => r.type === "del");
     expect(mods).toHaveLength(1);
     expect(dels).toHaveLength(1);
-    expect(dels[0].text).toBe("d2");
+    expect(dels[0]!.text).toBe("d2");
   });
 
   test("eq + gap segments pass through untouched", () => {
-    const segs = [
+    const segs: DiffSegment[] = [
       { type: "eq", text: "context" },
       { type: "gap", text: "… 5 unchanged lines" },
       { type: "add", text: "new" },
@@ -165,10 +167,10 @@ describe("end-to-end shape: lines → collapse → pair", () => {
     const collapsed = collapseUnchanged(lines, 2);
     const paired = pairModifiedLines(collapsed);
     // Expect: eq `{`, mod (old/new title line), eq `}`
-    const mods = paired.filter((r) => r.type === "mod");
+    const mods = paired.filter((r): r is ModifiedLine => r.type === "mod");
     expect(mods).toHaveLength(1);
     // Inline word diff should mark the "old"/"new" tokens differently
-    const words = mods[0].words;
+    const words = mods[0]!.words;
     const addedTexts = words.filter((w) => w.type === "add").map((w) => w.text);
     const delTexts = words.filter((w) => w.type === "del").map((w) => w.text);
     expect(delTexts.join("")).toContain("old");

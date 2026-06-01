@@ -13,17 +13,20 @@
 
 const SHORTCUT_KEY = "j";
 
-function isInsideEditorCanvas(target) {
+function isInsideEditorCanvas(target: EventTarget | null): boolean {
   if (!target) {
     return false;
   }
+  const el = target as Element & {
+    closest?: (selector: string) => Element | null;
+  };
   // Don't intercept inside our own chat — we have our own shortcuts there.
-  if (target.closest && target.closest(".gds-assistant")) {
+  if (el.closest && el.closest(".gds-assistant")) {
     return false;
   }
   if (
-    target.closest &&
-    target.closest(
+    el.closest &&
+    el.closest(
       "[data-block], .block-editor-rich-text__editable, .editor-styles-wrapper, .interface-interface-skeleton__content",
     )
   ) {
@@ -32,10 +35,12 @@ function isInsideEditorCanvas(target) {
   return false;
 }
 
-function focusComposer() {
+function focusComposer(): void {
   // Tiny delay so the panel transition can mount the composer first.
   setTimeout(() => {
-    const input = document.querySelector(".gds-assistant__input");
+    const input = document.querySelector<
+      HTMLTextAreaElement | HTMLInputElement
+    >(".gds-assistant__input");
     if (input) {
       input.focus();
       const len = (input.value || "").length;
@@ -48,7 +53,7 @@ function focusComposer() {
   }, 120);
 }
 
-function handleKeydown(e) {
+function handleKeydown(e: KeyboardEvent): void {
   const isMeta = e.metaKey || e.ctrlKey;
   if (!isMeta || e.shiftKey || e.altKey) {
     return;
@@ -72,13 +77,15 @@ window.addEventListener("keydown", handleKeydown, { capture: false });
 // Editor canvas iframe (WP 6.3+ mounts the canvas there on most editor
 // surfaces; absent on legacy non-iframed editors) — keydowns inside don't
 // always bubble out, so wire a listener inside it too when it's present.
-function attachIframeListener() {
-  const iframe = document.querySelector('iframe[name="editor-canvas"]');
+function attachIframeListener(): void {
+  const iframe = document.querySelector<
+    HTMLIFrameElement & { _gdsWriteCursorAttached?: boolean }
+  >('iframe[name="editor-canvas"]');
   if (!iframe || iframe._gdsWriteCursorAttached) {
     return;
   }
   iframe._gdsWriteCursorAttached = true;
-  const wire = () => {
+  const wire = (): void => {
     try {
       iframe.contentDocument?.addEventListener("keydown", handleKeydown, {
         capture: false,
