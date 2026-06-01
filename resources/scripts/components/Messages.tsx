@@ -16,10 +16,13 @@
 
 import { MessagePrimitive, useMessage } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { useCallback, useState } from "@wordpress/element";
+import { useCallback, useContext, useMemo, useState } from "@wordpress/element";
 
 import { formatMessageTime } from "../hooks/use-runtime-adapter";
-import { ToolCallFallback } from "./ToolCallFallback";
+import { ToolCallFallback, ToolCallGroup } from "./ToolCallFallback";
+import { UndoContext } from "./UndoContext";
+import { groupAdjacentToolCalls } from "./tool-call-grouping";
+import type { UiContentPart } from "../types/runtime";
 
 interface MessageImageProps {
   image?: string;
@@ -310,18 +313,74 @@ export function AssistantMessage(): JSX.Element | null {
       <MessagePrimitive.Content
         components={{
           Text: AssistantMessageText,
-          // assistant-ui routes tool-call parts through `tools.Fallback`
-          // (not `ToolCallUI` — that key was a no-op, which is why tool calls
-          // previously only appeared as the adapter's inline text). The
-          // library's Fallback prop type carries extra runtime bookkeeping
-          // (status, addResult, resume) we don't read; cast at the boundary
-          // rather than restating the full library type.
+          // Per-individual-part fallback for any tool call assistant-ui
+          // routes outside a ToolGroup (e.g. a singleton inside a longer
+          // mixed run). The library types Fallback's bookkeeping
+          // (`status`, `addResult`, `resume`) we don't read; cast at the
+          // boundary.
           tools: { Fallback: ToolCallFallback as unknown as never },
+          // Wrap every run of consecutive tool calls in our smart group;
+          // it decides whether the run is dense enough to actually
+          // collapse (#35) or should render its children inline. The
+          // library handles WHAT to group (any consecutive tool calls);
+          // we decide HOW it's presented based on same-shape + status.
+          ToolGroup: SmartToolGroup as unknown as never,
         }}
       />
       <MessageTimestamp />
     </MessagePrimitive.Root>
   );
+}
+
+/**
+ * Drop-in for `MessagePrimitive.Content`'s `ToolGroup` slot — the library
+ * hands us each run of consecutive tool-call parts as a `[startIndex,
+ * endIndex]` window with the already-rendered children. We peek at the
+ * window's parts via `useMessage`, check whether the run is grouping-
+ * worthy (#35 rules: same shape, same status bucket, at least min size),
+ * and either:
+ *   - wrap the children in `<ToolCallGroup>` (collapsed-by-default), or
+ *   - render the children inline so they look exactly like ungrouped
+ *     calls.
+ *
+ * We intentionally let the library control which parts are in the run.
+ * Same-shape splitting happens by NOT collapsing when shapes differ —
+ * the library still nests them under one ToolGroup, but we render them
+ * inline so the user sees individual cards.
+ */
+interface SmartToolGroupProps {
+  startIndex: number;
+  endIndex: number;
+  children?: React.ReactNode;
+}
+
+function SmartToolGroup({
+  startIndex,
+  endIndex,
+  children,
+}: SmartToolGroupProps): JSX.Element {
+  const parts = useMessage(
+    (s) => s.content as unknown as UiContentPart[] | undefined,
+  );
+  const { pendingApprovalIds } = useContext(UndoContext);
+
+  const group = useMemo(() => {
+    if (!parts) {
+      return null;
+    }
+    const window = parts.slice(startIndex, endIndex + 1);
+    const groups = groupAdjacentToolCalls(window, { pendingApprovalIds });
+    // We expect either one group (full collapse) or a passthrough.
+    if (groups.length === 1 && groups[0]!.type === "tool-call-group") {
+      return groups[0];
+    }
+    return null;
+  }, [parts, startIndex, endIndex, pendingApprovalIds]);
+
+  if (group) {
+    return <ToolCallGroup group={group} />;
+  }
+  return <>{children}</>;
 }
 
 // Extra HTML tags we emit inside assistant messages. Streamdown's default
