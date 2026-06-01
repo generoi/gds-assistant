@@ -1028,6 +1028,64 @@ abbr.gds-tool {
   word-break: break-word;
 }
 
+/* Tool-call grouping (#35) — adjacent same-shape runs collapse into a single
+ * card; expanding it reveals each call in its full form. Visual weight is
+ * intentionally lower than a solo call so a long bulk run reads as one line. */
+.gds-assistant__tool-call-group {
+  margin: 8px 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fafafa;
+  overflow: hidden;
+}
+.gds-assistant__tool-call-group--error {
+  border-color: #f3b6b6;
+  background: #fff5f5;
+}
+.gds-assistant__tool-call-group--pending-approval {
+  border-color: #f3d8a6;
+  background: #fff7e8;
+}
+.gds-assistant__tool-call-group-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+.gds-assistant__tool-call-group-summary::-webkit-details-marker {
+  display: none;
+}
+.gds-assistant__tool-call-group-summary::before {
+  content: "▶";
+  font-size: 9px;
+  color: #888;
+  display: inline-block;
+  width: 10px;
+  transition: transform 120ms;
+}
+.gds-assistant__tool-call-group[open] > details > summary::before,
+.gds-assistant__tool-call-group > details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.gds-assistant__tool-call-group-count {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+.gds-assistant__tool-call-group-list {
+  border-top: 1px solid #e2e2e2;
+  background: #fff;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gds-assistant__tool-call-group-list .gds-assistant__tool-call {
+  margin: 0;
+}
+
 /* Composer */
 .gds-assistant__composer {
   position: relative;

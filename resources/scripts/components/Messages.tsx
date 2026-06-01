@@ -16,10 +16,13 @@
 
 import { MessagePrimitive, useMessage } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { useCallback, useState } from "@wordpress/element";
+import { useCallback, useContext, useMemo, useState } from "@wordpress/element";
 
 import { formatMessageTime } from "../hooks/use-runtime-adapter";
-import { ToolCallFallback } from "./ToolCallFallback";
+import { ToolCallFallback, ToolCallGroup } from "./ToolCallFallback";
+import { UndoContext } from "./UndoContext";
+import { groupAdjacentToolCalls } from "./tool-call-grouping";
+import type { UiContentPart } from "../types/runtime";
 
 interface MessageImageProps {
   image?: string;
@@ -307,20 +310,67 @@ export function AssistantMessage(): JSX.Element | null {
   return (
     <MessagePrimitive.Root className="gds-assistant__message gds-assistant__message--assistant">
       <CopyMessageButton />
-      <MessagePrimitive.Content
-        components={{
-          Text: AssistantMessageText,
-          // assistant-ui routes tool-call parts through `tools.Fallback`
-          // (not `ToolCallUI` — that key was a no-op, which is why tool calls
-          // previously only appeared as the adapter's inline text). The
-          // library's Fallback prop type carries extra runtime bookkeeping
-          // (status, addResult, resume) we don't read; cast at the boundary
-          // rather than restating the full library type.
-          tools: { Fallback: ToolCallFallback as unknown as never },
-        }}
-      />
+      <AssistantContent />
       <MessageTimestamp />
     </MessagePrimitive.Root>
+  );
+}
+
+/**
+ * Render the assistant message's content parts, with grouping applied
+ * (#35): adjacent runs of identical-shape tool calls collapse into a
+ * single `<ToolCallGroup>`. We bypass `MessagePrimitive.Content` (whose
+ * `components.tools.Fallback` only dispatches per individual part) and
+ * iterate the parts ourselves so we can emit either a real part or a
+ * synthetic `tool-call-group`.
+ */
+function AssistantContent(): JSX.Element {
+  const parts = useMessage(
+    (s) => s.content as unknown as UiContentPart[] | undefined,
+  );
+  const { pendingApprovalIds } = useContext(UndoContext);
+  const grouped = useMemo(
+    () =>
+      groupAdjacentToolCalls(parts || [], {
+        pendingApprovalIds,
+      }),
+    [parts, pendingApprovalIds],
+  );
+
+  return (
+    <>
+      {grouped.map((item, i) => {
+        if (item.type === "tool-call-group") {
+          return (
+            <ToolCallGroup
+              // Group identity is its tool name + first call id; stable
+              // across re-renders unless the underlying ids change.
+              key={`group-${item.toolName}-${item.calls[0]?.toolCallId || i}`}
+              group={item}
+            />
+          );
+        }
+        if (item.type === "text") {
+          return <AssistantMessageText key={`t-${i}`} text={item.text} />;
+        }
+        if (item.type === "tool-call") {
+          return (
+            <ToolCallFallback
+              key={item.toolCallId || `tc-${i}`}
+              toolCallId={item.toolCallId}
+              toolName={item.toolName}
+              args={item.args}
+              result={item.result}
+              isError={item.isError}
+            />
+          );
+        }
+        if (item.type === "image") {
+          return <MessageImage key={`img-${i}`} image={item.image} />;
+        }
+        return null;
+      })}
+    </>
   );
 }
 

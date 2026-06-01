@@ -13,7 +13,7 @@
  * receive it via props.
  */
 
-import { Fragment, useContext, useMemo } from "@wordpress/element";
+import { Fragment, useContext, useMemo, useState } from "@wordpress/element";
 
 import {
   collapseUnchanged,
@@ -21,6 +21,7 @@ import {
   pairModifiedLines,
 } from "../editor/diff";
 import { UndoContext } from "./UndoContext";
+import type { ToolCallGroup as ToolCallGroupShape } from "./tool-call-grouping";
 
 interface ToolDiff {
   before?: string;
@@ -350,6 +351,88 @@ export function ToolCallFallback({
             Undo failed: {undo.error}
           </div>
         )}
+      </details>
+    </div>
+  );
+}
+
+// ── Tool-call grouping (#35) ────────────────────────────────
+
+/** Friendly label per status bucket — matches the badge text on solo calls. */
+const STATUS_LABEL: Record<ToolCallGroupShape["status"], string> = {
+  running: "Running",
+  done: "Done",
+  error: "Error",
+  "pending-approval": "Approval required",
+};
+
+const STATUS_CLASS: Record<ToolCallGroupShape["status"], string> = {
+  running: "",
+  done: "gds-assistant__tool-call-status--done",
+  error: "gds-assistant__tool-call-status--error",
+  "pending-approval": "gds-assistant__tool-call-status--approval",
+};
+
+export interface ToolCallGroupProps {
+  group: ToolCallGroupShape;
+}
+
+/**
+ * Collapsed render of a {@link ToolCallGroupShape}: a single `<details>` row
+ * carrying `▶ gds/content-update × 12 [Done]`. Expanding it spills each
+ * underlying call out as its own {@link ToolCallFallback}, so per-call diff,
+ * Undo, Retry, and approval state all keep working — the group is a folder,
+ * not a replacement.
+ *
+ * The user can still drill into a single call: each `ToolCallFallback`
+ * renders its own `<details>` for the args / result preview.
+ * @param root0
+ * @param root0.group
+ */
+export function ToolCallGroup({ group }: ToolCallGroupProps): JSX.Element {
+  // Default collapsed so a 12-row run reads as one line until the user asks.
+  // Local state — assistant-ui re-mounts content on certain stream events,
+  // but the group fingerprint stays stable across those.
+  const [open, setOpen] = useState(false);
+  const statusLabel = STATUS_LABEL[group.status];
+  const statusClass = STATUS_CLASS[group.status];
+  const count = group.calls.length;
+
+  return (
+    <div
+      className={`gds-assistant__tool-call-group gds-assistant__tool-call-group--${group.status}`}
+    >
+      <details
+        open={open}
+        onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="gds-assistant__tool-call-group-summary">
+          <span className="gds-assistant__tool-call-name">
+            {group.toolName}
+          </span>
+          <span className="gds-assistant__tool-call-group-count">
+            × {count}
+          </span>
+          {statusLabel && (
+            <span className={`gds-assistant__tool-call-status ${statusClass}`}>
+              {group.status === "pending-approval"
+                ? statusLabel
+                : `${statusLabel} (${count})`}
+            </span>
+          )}
+        </summary>
+        <div className="gds-assistant__tool-call-group-list">
+          {group.calls.map((call) => (
+            <ToolCallFallback
+              key={call.toolCallId || `${call.toolName}-${count}`}
+              toolCallId={call.toolCallId}
+              toolName={call.toolName}
+              args={call.args}
+              result={call.result}
+              isError={call.isError}
+            />
+          ))}
+        </div>
       </details>
     </div>
   );
