@@ -18,6 +18,7 @@ import { MessagePrimitive, useMessage } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { useCallback, useContext, useMemo, useState } from "@wordpress/element";
 
+import { VALIDATION_NOTE_PREFIX } from "../editor/post-write-validation";
 import { formatMessageTime } from "../hooks/use-runtime-adapter";
 import { ToolCallFallback, ToolCallGroup } from "./ToolCallFallback";
 import { UndoContext } from "./UndoContext";
@@ -39,7 +40,8 @@ function MessageImage({ image }: MessageImageProps): JSX.Element | null {
 
 // Out-of-band notes (e.g. the Undo button's "↩ Reverted…") are stored as user
 // messages so the model sees them, but render as a centered system line rather
-// than a user bubble. The leading ↩ is our marker.
+// than a user bubble. The leading ↩ is our marker; block-validation follow-ups
+// (sent to the model after a write saved invalid blocks) render the same way.
 const SYSTEM_NOTE_MARKER = "↩";
 
 /** Minimal shape for the content parts a message carries (matches Ui*Part). */
@@ -60,11 +62,23 @@ export function UserMessage(): JSX.Element {
       .map((p) => p.text || "")
       .join("")
       .trim();
-    return text.startsWith(SYSTEM_NOTE_MARKER) ? text : null;
+    return text.startsWith(SYSTEM_NOTE_MARKER) ||
+      text.startsWith(VALIDATION_NOTE_PREFIX)
+      ? text
+      : null;
   });
 
   if (systemNote) {
-    return <div className="gds-assistant__system-note">{systemNote}</div>;
+    const warning = systemNote.startsWith(VALIDATION_NOTE_PREFIX);
+    return (
+      <div
+        className={`gds-assistant__system-note${
+          warning ? " gds-assistant__system-note--warning" : ""
+        }`}
+      >
+        {systemNote}
+      </div>
+    );
   }
 
   return (

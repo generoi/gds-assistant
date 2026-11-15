@@ -701,6 +701,25 @@ abbr.gds-tool {
   text-align: center;
 }
 
+.gds-assistant__system-note--warning {
+  color: #6b4c00;
+  background: #fcf9e8;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* Warnings on a tool card: gds-mcp's result `warnings` + block validation. */
+.gds-assistant__tool-call-warnings {
+  margin: 4px 0;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #6b4c00;
+  background: #fcf9e8;
+  border-left: 2px solid #dba617;
+  overflow-wrap: anywhere;
+}
+
 /* "⋯" overflow menu in the header (holds context + export) */
 .gds-assistant__more {
   position: relative;
@@ -1014,6 +1033,10 @@ abbr.gds-tool {
 
 .gds-assistant__tool-call-status--error {
   color: #d63638;
+}
+
+.gds-assistant__tool-call-status--warning {
+  color: #996800;
 }
 
 .gds-assistant__tool-call-args,
