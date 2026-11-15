@@ -69,7 +69,9 @@ jobs:
 
   e2e:
     name: Playwright E2E
-    runs-on: ubuntu-latest
+    # Playwright 1.59 can't install browsers on ubuntu-latest (26.04); its
+    # bump is held by @wordpress/scripts' peer range.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
