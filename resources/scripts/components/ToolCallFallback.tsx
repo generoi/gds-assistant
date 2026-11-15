@@ -218,6 +218,36 @@ function DiffViewer({ diff }: DiffViewerProps): JSX.Element | null {
   );
 }
 
+/**
+ * Warnings on a tool result: gds-mcp's `warnings` array (unknown blocks,
+ * attributes outside the schema, preset colours), with the chat's own
+ * block-validation issues merged into the same array. Entries may be strings
+ * or objects; objects are shown by their message.
+ * @param result
+ */
+export function toolWarnings(result: unknown): string[] {
+  const raw =
+    result && typeof result === "object" && !Array.isArray(result)
+      ? (result as { warnings?: unknown }).warnings
+      : null;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((w) => {
+      if (typeof w === "string") {
+        return w;
+      }
+      if (w && typeof w === "object") {
+        const o = w as Record<string, unknown>;
+        const message = o.message ?? o.text ?? o.warning;
+        return typeof message === "string" ? message : JSON.stringify(w);
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
 export interface ToolCallFallbackProps {
   toolCallId?: string;
   toolName: string;
@@ -244,6 +274,7 @@ export function ToolCallFallback({
       : null;
   const undo = toolCallId ? undoableActions?.[toolCallId] : null;
   const isRetrying = !!(toolCallId && retryingIds?.has(toolCallId));
+  const warnings = toolWarnings(result);
 
   return (
     <div
@@ -275,6 +306,11 @@ export function ToolCallFallback({
           {!needsApproval && isError && (
             <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--error">
               Error
+            </span>
+          )}
+          {warnings.length > 0 && (
+            <span className="gds-assistant__tool-call-status gds-assistant__tool-call-status--warning">
+              ⚠ {warnings.length}
             </span>
           )}
           {/* Retry — only meaningful on errored, completed calls. The retry
@@ -323,6 +359,13 @@ export function ToolCallFallback({
               </button>
             ))}
         </summary>
+        {warnings.length > 0 && (
+          <div className="gds-assistant__tool-call-warnings">
+            {warnings.map((w, i) => (
+              <div key={i}>⚠ {w}</div>
+            ))}
+          </div>
+        )}
         {diff && <DiffViewer diff={diff} />}
         {/* Args + raw JSON result are redundant once the diff is rendered —
             the diff already shows the same information in a much more

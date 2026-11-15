@@ -8,6 +8,7 @@
  * text-range edits are deferred.
  */
 
+import { collectBlockIssues, formatBlockIssues } from "./block-validation";
 import { getCurrentSelectionContext } from "./selection";
 
 // ── wp.* globals ────────────────────────────────────────────
@@ -900,15 +901,10 @@ interface ParseResult {
 // applying a broken/unrecognized block (so the model can retry).
 function parseValidated(markup: string | undefined): ParseResult {
   const parsed = wpBlocks()?.parse(markup || "") || [];
-  const issues: string[] = [];
+  const issues: string[] = formatBlockIssues(collectBlockIssues(parsed));
   const visit = (b: Block | undefined): void => {
     if (!b) {
       return;
-    }
-    if (b.name === "core/missing") {
-      issues.push("unrecognized block in markup");
-    } else if (b.isValid === false) {
-      issues.push(`invalid content for ${b.name}`);
     }
     colorIssues(b.attributes).forEach((i) => issues.push(i));
     (b.innerBlocks || []).forEach(visit);

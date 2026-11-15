@@ -188,6 +188,8 @@ class Plugin
 
         $undoEndpoint = new Api\UndoEndpoint;
         $undoEndpoint->register();
+
+        (new Api\BlockMarkupEndpoint)->register();
     }
 
     public function registerPostTypes(): void

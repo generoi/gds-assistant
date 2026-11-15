@@ -7,6 +7,12 @@ import {
   useMemo,
 } from "@wordpress/element";
 import { getEditorContext, executeClientTool } from "../editor/editor-bridge";
+import { formatBlockIssues } from "../editor/block-validation";
+import {
+  buildValidationFollowUp,
+  validateSavedPost,
+  writtenPostIds,
+} from "../editor/post-write-validation";
 import { parseSSE } from "./parse-sse";
 import type {
   SessionUsageSnapshot,
@@ -33,6 +39,19 @@ let currentSystemContext = "";
 // server's per-request iteration limit doesn't bound the chain). Stops a model
 // that keeps calling editor tools without converging.
 const MAX_CLIENT_TOOL_ROUNDTRIPS = 12;
+
+// Post-write block validation (see editor/post-write-validation). Tool names
+// by tool_use_id, so a result that arrives in a later stream (after an
+// approval) can still be matched to its ability.
+const toolNameById = new Map<string, string>();
+// Posts written by server abilities since the last check → the tool calls
+// that wrote them (their cards get the issues as warnings).
+const postsToValidate = new Map<number, Set<string>>();
+// Issues last reported per post: an unchanged list isn't re-sent, so a model
+// that can't fix a block (or leaves pre-existing ones alone) doesn't loop.
+const lastReportedIssues = new Map<number, string>();
+// Automatic "fix these blocks" follow-ups allowed per user message.
+const MAX_VALIDATION_ROUNDS = 2;
 
 // Persist the active conversation across full-page wp-admin navigations so the
 // chat can reopen on the same thread. Cleared by newChat().
@@ -203,6 +222,8 @@ function emitUsage(
 export function newChat(): void {
   currentConversationId = null;
   persistConversationId(null);
+  postsToValidate.clear();
+  lastReportedIssues.clear();
   sessionUsage.inputTokens = 0;
   sessionUsage.outputTokens = 0;
   sessionUsage.cost = 0;
@@ -281,6 +302,8 @@ export interface OnNewMessage {
   }>;
   /** How many client-tool resumes deep we already are. */
   clientToolDepth?: number;
+  /** How many block-validation follow-ups deep we already are. */
+  validationRound?: number;
 }
 
 /** Tool-call awaiting an approval click in the chat UI. */
@@ -474,6 +497,9 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
         toolName: string;
         input: Record<string, unknown>;
       }> = [];
+      // An approval is pending: the loop isn't finished, so post-write
+      // validation waits for the stream that resolves it.
+      let sawApprovalRequest = false;
 
       const ensureTextPart = (): number => {
         if (currentTextIdx < 0 || turnParts[currentTextIdx]?.type !== "text") {
@@ -572,6 +598,9 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
             }
             const toolLabel = event.data.name?.replace("__", "/") || "unknown";
             const toolId = event.data.id || "";
+            if (toolId) {
+              toolNameById.set(toolId, toolLabel);
+            }
             setRunStatus(toolStatusLabel(event.data.name));
             // Emit a real tool-call content part — assistant-ui renders it via
             // the ToolCallUI component (ToolCallFallback), which shows running/
@@ -593,6 +622,18 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
 
           case "tool_result": {
             const toolId = event.data.tool_use_id || "";
+
+            // Queue posts a content-writing ability saved for validation.
+            if (toolId && !event.data.is_error) {
+              for (const postId of writtenPostIds(
+                toolNameById.get(toolId) || "",
+                event.data.result,
+              )) {
+                const ids = postsToValidate.get(postId) || new Set<string>();
+                ids.add(toolId);
+                postsToValidate.set(postId, ids);
+              }
+            }
 
             // Attach the result to the matching tool-call part so it flips
             // from "Running" to Done/Error. Match the first part that's still
@@ -686,6 +727,10 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
             const toolLabel =
               event.data.tool_name?.replace("__", "/") || "unknown";
             const toolId = event.data.tool_use_id || "";
+            sawApprovalRequest = true;
+            if (toolId) {
+              toolNameById.set(toolId, toolLabel);
+            }
             // The provider already emitted tool_use_start for this tool, so a
             // card usually exists — approval just flags it (via pendingApprovals
             // → context). Only mint a card if one isn't there yet; pushing a
@@ -832,6 +877,25 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
             content: "__client_result__",
             clientToolResults: results,
             clientToolDepth: depth,
+            validationRound: message.validationRound,
+          });
+        }
+      } else if (!sawApprovalRequest && postsToValidate.size) {
+        // The loop finished: check what server abilities saved against the
+        // editor's block registry and, if blocks are invalid, ask the model
+        // to fix them in a follow-up turn.
+        setRunStatus("Checking blocks…");
+        const round = message.validationRound || 0;
+        const followUp = await validateWrittenPosts(
+          round < MAX_VALIDATION_ROUNDS,
+          (toolIds, lines) =>
+            setMessages((prev) => attachToolWarnings(prev, toolIds, lines)),
+        );
+        if (followUp) {
+          resuming = true;
+          await onNewRef.current?.({
+            content: followUp,
+            validationRound: round + 1,
           });
         }
       }
@@ -1517,6 +1581,89 @@ export function useAssistantRuntime(): AssistantRuntimeHandle {
 }
 
 // ── Helpers ─────────────────────────────────────────────────
+
+/**
+ * Validate the posts queued in {@link postsToValidate} and return the
+ * follow-up message for the model, or null when there's nothing new to fix
+ * (all valid, unchanged since last reported, no registry on this page, or
+ * `sendFollowUp` is false because the round cap was hit).
+ * @param sendFollowUp
+ * @param onIssues     called per post with its issues, to show on the cards
+ */
+async function validateWrittenPosts(
+  sendFollowUp: boolean,
+  onIssues: (toolIds: Set<string>, lines: string[]) => void,
+): Promise<string | null> {
+  const queued = [...postsToValidate];
+  postsToValidate.clear();
+
+  const reports = [];
+  for (const [postId, toolIds] of queued) {
+    const issues = await validateSavedPost(postId);
+    if (!issues) {
+      continue;
+    }
+    if (!issues.length) {
+      lastReportedIssues.delete(postId);
+      continue;
+    }
+    const lines = formatBlockIssues(issues);
+    onIssues(toolIds, lines);
+    const signature = lines.join("\n");
+    if (lastReportedIssues.get(postId) === signature) {
+      continue;
+    }
+    lastReportedIssues.set(postId, signature);
+    reports.push({ postId, issues });
+  }
+
+  return sendFollowUp && reports.length
+    ? buildValidationFollowUp(reports)
+    : null;
+}
+
+/**
+ * Append block-validation lines to the `warnings` of these tool calls' results
+ * (the UI copy only; gds-mcp's own warnings stay first), so the card shows
+ * both in one list.
+ * @param messages
+ * @param toolIds
+ * @param lines
+ */
+function attachToolWarnings(
+  messages: UiMessage[],
+  toolIds: Set<string>,
+  lines: string[],
+): UiMessage[] {
+  return messages.map((m) => {
+    if (m.role !== "assistant" || !Array.isArray(m.content)) {
+      return m;
+    }
+    let changed = false;
+    const content = m.content.map((p) => {
+      if (p.type !== "tool-call" || !toolIds.has(p.toolCallId)) {
+        return p;
+      }
+      const result =
+        p.result && typeof p.result === "object" && !Array.isArray(p.result)
+          ? (p.result as Record<string, unknown>)
+          : {};
+      const existing = Array.isArray(result.warnings) ? result.warnings : [];
+      changed = true;
+      return {
+        ...p,
+        result: {
+          ...result,
+          warnings: [
+            ...existing,
+            ...lines.filter((l) => !existing.includes(l)),
+          ],
+        },
+      };
+    });
+    return changed ? { ...m, content } : m;
+  });
+}
 
 /**
  * Format a timestamp for display in the message-time footer.
