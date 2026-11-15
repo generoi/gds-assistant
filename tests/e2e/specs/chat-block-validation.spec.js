@@ -35,9 +35,11 @@ const FIXED_RESPONSE = [
   '',
 ].join('\n');
 
+// A heading whose tag doesn't match its level is invalid in the real editor;
+// a paragraph saved as <div> isn't (a deprecation migrates it).
 const SAVED_MARKUP =
   '<!-- wp:paragraph --><p>Fine</p><!-- /wp:paragraph -->' +
-  '<!-- wp:paragraph --><div>Broken</div><!-- /wp:paragraph -->' +
+  '<!-- wp:heading {"level":2} --><h3 class="wp-block-heading">Broken</h3><!-- /wp:heading -->' +
   '<!-- wp:acme/widget {"size":2} --><div>x</div><!-- /wp:acme/widget -->';
 
 test.describe('Block validation after a write', () => {
@@ -82,7 +84,7 @@ test.describe('Block validation after a write', () => {
     const followUp = chatBodies[1].messages[0].content[0].text;
     expect(followUp).toContain('⚠ Block validation:');
     expect(followUp).toContain(
-      'core/paragraph (occurrence 2, block 2): Expected tag name `p`, instead saw `div`.',
+      'core/heading (occurrence 1, block 2): Expected tag name `h2`, instead saw `h3`.',
     );
     expect(followUp).toContain(
       'acme/widget (occurrence 1, block 3): block type is not registered on this site',
