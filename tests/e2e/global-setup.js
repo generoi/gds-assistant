@@ -6,13 +6,15 @@ const WP_BASE_URL = process.env.WP_BASE_URL || 'http://localhost:8889';
 const WP_USERNAME = process.env.WP_USERNAME || 'admin';
 const WP_PASSWORD = process.env.WP_PASSWORD || 'password';
 
-module.exports = async function globalSetup() {
+module.exports = async function globalSetup(config) {
   const storageDir = path.join(__dirname, 'artifacts');
   if (!fs.existsSync(storageDir)) {
     fs.mkdirSync(storageDir, {recursive: true});
   }
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    channel: config.projects[0].use.channel,
+  });
   const page = await browser.newPage();
 
   // Log in to WordPress
