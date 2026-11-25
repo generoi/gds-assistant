@@ -88,9 +88,6 @@ jobs:
           npm ci
           composer install --no-interaction
 
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-
       - name: Configure wp-env for CI
         run: cp .wp-env.override.json.ci .wp-env.override.json
 

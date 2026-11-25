@@ -13,6 +13,9 @@ module.exports = defineConfig({
       [['html', {outputFolder: path.join(e2eDir, 'artifacts', 'report')}]]
     : 'html',
   use: {
+    // The installed Google Chrome, not the Chromium bundled with the pinned
+    // @playwright/test, so the browser stays patched. GitHub's runners ship it.
+    channel: 'chrome',
     baseURL: process.env.WP_BASE_URL || 'http://localhost:8889',
     storageState: path.join(e2eDir, 'artifacts', 'storage-state.json'),
     viewport: {width: 1280, height: 900},
